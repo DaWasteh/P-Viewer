@@ -703,6 +703,24 @@
     background: #f5f6f8;
   }
 
+  .light .markdown-body :global(th),
+  .light .markdown-body :global(td) {
+    border-color: #d7dae2;
+  }
+
+  .light .markdown-body :global(th) {
+    color: #202530;
+    background: #eef0f4;
+  }
+
+  .light .markdown-body :global(tr:nth-child(2n)) {
+    background: #f7f8fa;
+  }
+
+  .light .markdown-body :global(hr) {
+    background: #d8dbe2;
+  }
+
   @media (max-width: 850px) {
     .preview-grid {
       grid-template-columns: 165px minmax(0, 1fr);

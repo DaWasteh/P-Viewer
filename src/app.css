@@ -10,6 +10,12 @@
   color-scheme: dark;
 }
 
+:root[data-theme="light"] {
+  color: #242933;
+  background: #fbfbfc;
+  color-scheme: light;
+}
+
 * {
   box-sizing: border-box;
 }

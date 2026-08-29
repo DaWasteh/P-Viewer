@@ -83,12 +83,12 @@
       fontSize={fileType.kind === "markdown" ? previewFontSize : editorFontSize}
     />
   {:else if previewLoadError}
-    <div class="preview-state error" role="alert">
+    <div class:light={theme === "light"} class="preview-state error" role="alert">
       <strong>Vorschau konnte nicht geladen werden.</strong>
       <span>{previewLoadError}</span>
     </div>
   {:else if previewLoading}
-    <div class="preview-state">
+    <div class:light={theme === "light"} class="preview-state">
       <span class="spinner"></span>
       <span>Formatvorschau wird geladen …</span>
     </div>
@@ -132,6 +132,11 @@
 
   .preview-state.error strong {
     color: #ef9a9f;
+  }
+
+  .preview-state.light {
+    color: #687181;
+    background: #fff;
   }
 
   .preview-state span,

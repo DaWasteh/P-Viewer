@@ -11,6 +11,7 @@
     FolderOpen,
     Pencil,
     Save,
+    Settings2,
   } from "@lucide/svelte";
   import EditorPane from "$lib/editor/EditorPane.svelte";
   import PreviewPane from "$lib/preview/PreviewPane.svelte";
@@ -23,6 +24,14 @@
   } from "$lib/files/documents";
   import { countLines, countWords } from "$lib/files/fileTypes";
   import type { OpenDocument, ViewMode } from "$lib/files/types";
+  import SettingsPanel from "$lib/settings/SettingsPanel.svelte";
+  import {
+    DEFAULT_SETTINGS,
+    loadSettings,
+    resetSettings,
+    saveSettings,
+    type AppSettings,
+  } from "$lib/settings/settings";
 
   let document = $state<OpenDocument>(createUntitledDocument());
   let mode = $state<ViewMode>("edit");
@@ -33,18 +42,67 @@
   let cursorLine = $state(1);
   let cursorColumn = $state(1);
   let selectedCharacters = $state(0);
+  let settings = $state<AppSettings>({ ...DEFAULT_SETTINGS });
+  let settingsOpen = $state(false);
+  let settingsReady = $state(false);
+  let systemDark = $state(true);
   let appWindow = $state.raw<TauriWindow | null>(null);
 
   const dirty = $derived(document.content !== document.savedContent);
   const lineCount = $derived(countLines(document.content));
   const wordCount = $derived(countWords(document.content));
+  const activeTheme = $derived(
+    settings.theme === "system" ? (systemDark ? "dark" : "light") : settings.theme,
+  );
   const desktop =
     typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
   $effect(() => {
     if (!appWindow) return;
     const title = `${dirty ? "● " : ""}${document.name} — PandaViewer`;
-    void appWindow.setTitle(title);
+    void appWindow.setTitle(title).catch((error) => {
+      console.warn("Fenstertitel konnte nicht aktualisiert werden.", error);
+    });
+  });
+
+  $effect(() => {
+    if (typeof window === "undefined") return;
+    window.document.documentElement.dataset.theme = activeTheme;
+    window.document.documentElement.style.colorScheme = activeTheme;
+    void appWindow?.setTheme(activeTheme).catch((error) => {
+      console.warn("Native Fensterdarstellung konnte nicht aktualisiert werden.", error);
+    });
+  });
+
+  $effect(() => {
+    const snapshot = { ...settings };
+    if (!settingsReady) return;
+    const timer = window.setTimeout(() => {
+      void saveSettings(snapshot).catch((error) => {
+        errorMessage = `Einstellungen konnten nicht gespeichert werden: ${messageFrom(error)}`;
+      });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  });
+
+  onMount(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const updateSystemTheme = () => (systemDark = media.matches);
+    updateSystemTheme();
+    media.addEventListener("change", updateSystemTheme);
+
+    void loadSettings()
+      .then((loaded) => {
+        settings = loaded;
+      })
+      .catch((error) => {
+        errorMessage = `Einstellungen konnten nicht geladen werden: ${messageFrom(error)}`;
+      })
+      .finally(() => {
+        settingsReady = true;
+      });
+
+    return () => media.removeEventListener("change", updateSystemTheme);
   });
 
   onMount(() => {
@@ -170,6 +228,14 @@
     selectedCharacters = position.selected;
   }
 
+  function updateSettings(next: AppSettings): void {
+    settings = next;
+  }
+
+  function restoreSettings(): void {
+    settings = resetSettings();
+  }
+
   function handleShortcut(event: KeyboardEvent): void {
     const primary = event.ctrlKey || event.metaKey;
     if (!primary) return;
@@ -193,6 +259,9 @@
     } else if (key === "p" && event.shiftKey) {
       event.preventDefault();
       mode = "split";
+    } else if (key === ",") {
+      event.preventDefault();
+      settingsOpen = true;
     }
   }
 
@@ -214,7 +283,13 @@
 
 <svelte:window onkeydown={handleShortcut} onbeforeunload={handleBeforeUnload} />
 
-<main class="app-shell" class:has-error={Boolean(errorMessage)} aria-busy={busy}>
+<main
+  class="app-shell"
+  class:has-error={Boolean(errorMessage)}
+  class:light={activeTheme === "light"}
+  style={`--icon-scale: ${settings.iconSize / DEFAULT_SETTINGS.iconSize}`}
+  aria-busy={busy}
+>
   <header class="titlebar">
     <div class="brand-mark" aria-hidden="true">P</div>
     <strong>PandaViewer</strong>
@@ -223,7 +298,7 @@
       <span>{document.name}</span>
       {#if dirty}<span class="dirty-dot" title="Ungespeicherte Änderungen">●</span>{/if}
     </div>
-    <span class="version">v0.0.3</span>
+    <span class="version">v0.0.4</span>
   </header>
 
   <nav class="toolbar" aria-label="Dokumentaktionen">
@@ -262,6 +337,10 @@
     </div>
 
     <div class="format-pill">{document.fileType.label}</div>
+    <button class="icon-button settings-button" class:active={settingsOpen} title="Einstellungen (Strg/Cmd+,)" onclick={() => (settingsOpen = true)}>
+      <Settings2 size={17} aria-hidden="true" />
+      <span class="sr-only">Einstellungen öffnen</span>
+    </button>
   </nav>
 
   {#if errorMessage}
@@ -278,10 +357,10 @@
           value={document.content}
           fileName={document.name}
           readOnly={false}
-          theme="dark"
-          fontSize={14}
-          wordWrap={document.fileType.kind === "text" || document.fileType.kind === "markdown"}
-          spellcheck={document.fileType.kind === "text" || document.fileType.kind === "markdown"}
+          theme={activeTheme}
+          fontSize={settings.editorFontSize}
+          wordWrap={settings.wordWrap && (document.fileType.kind === "text" || document.fileType.kind === "markdown")}
+          spellcheck={settings.spellcheck && (document.fileType.kind === "text" || document.fileType.kind === "markdown")}
           markdownTools={document.fileType.kind === "markdown"}
           onChange={updateContent}
           onCursorChange={updateCursor}
@@ -296,10 +375,10 @@
           fileName={document.name}
           path={document.path}
           fileType={document.fileType}
-          theme="dark"
-          editorFontSize={14}
-          previewFontSize={16}
-          wordWrap
+          theme={activeTheme}
+          editorFontSize={settings.editorFontSize}
+          previewFontSize={settings.previewFontSize}
+          wordWrap={settings.wordWrap}
           onOpenPath={openDroppedDocument}
         />
       </div>
@@ -323,6 +402,16 @@
     {#if document.lossy}<span class="warning">Kodierung mit Ersatzzeichen</span>{/if}
     <span class="path" title={document.path}>{document.path || "Noch nicht gespeichert"}</span>
   </footer>
+
+  {#if settingsOpen}
+    <SettingsPanel
+      {settings}
+      {activeTheme}
+      onChange={updateSettings}
+      onClose={() => (settingsOpen = false)}
+      onReset={restoreSettings}
+    />
+  {/if}
 </main>
 
 <style>
@@ -331,10 +420,14 @@
     --surface: #171a20;
     --surface-raised: #1d2028;
     --surface-hover: #242833;
+    --chrome: #13161b;
+    --inset: #12151a;
     --border: #2a2e38;
     --border-strong: #373c49;
     --text: #e7e9ef;
     --text-muted: #9ba2b1;
+    --text-faint: #737b8d;
+    --status-text: #8991a1;
     --accent: #7183e7;
     --accent-strong: #8796ed;
     --danger: #ef8b91;
@@ -348,6 +441,28 @@
     height: 100vh;
     color: var(--text);
     background: var(--bg);
+  }
+
+  .app-shell.light {
+    --bg: #fbfbfc;
+    --surface: #f2f3f6;
+    --surface-raised: #ffffff;
+    --surface-hover: #e5e7ec;
+    --chrome: #f7f8fa;
+    --inset: #e9ebf0;
+    --border: #d9dce3;
+    --border-strong: #c8ccd5;
+    --text: #242933;
+    --text-muted: #646c7a;
+    --text-faint: #8c93a0;
+    --status-text: #707887;
+    --accent: #5369d8;
+    --accent-strong: #435bce;
+  }
+
+  .app-shell :global(svg) {
+    scale: var(--icon-scale);
+    transition: scale 120ms ease;
   }
 
   .app-shell.has-error {
@@ -366,7 +481,7 @@
     min-width: 0;
     padding: 0 14px;
     border-bottom: 1px solid var(--border);
-    background: #13161b;
+    background: var(--chrome);
   }
 
   .brand-mark {
@@ -410,7 +525,7 @@
 
   .version {
     margin-left: auto;
-    color: #737b8d;
+    color: var(--text-faint);
     font-size: 11px;
   }
 
@@ -458,9 +573,14 @@
     background: transparent;
   }
 
-  .icon-button:hover:not(:disabled) {
+  .icon-button:hover:not(:disabled),
+  .icon-button.active {
     color: var(--text);
     background: var(--surface-hover);
+  }
+
+  .settings-button {
+    margin-left: -6px;
   }
 
   .mode-switch {
@@ -468,7 +588,7 @@
     padding: 3px;
     border: 1px solid var(--border);
     border-radius: 8px;
-    background: #12151a;
+    background: var(--inset);
   }
 
   .mode-switch button {
@@ -568,13 +688,18 @@
     font-size: 13px;
   }
 
+  .light .drop-overlay {
+    color: #34427b;
+    background: rgb(242 244 251 / 94%);
+  }
+
   .statusbar {
     gap: 13px;
     min-width: 0;
     padding: 0 10px;
     border-top: 1px solid var(--border);
-    color: #8991a1;
-    background: #13161b;
+    color: var(--status-text);
+    background: var(--chrome);
     font-size: 10px;
   }
 

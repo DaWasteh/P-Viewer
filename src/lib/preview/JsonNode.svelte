@@ -12,6 +12,7 @@
     sortKeys?: boolean;
     expansionVersion?: number;
     expandAll?: boolean;
+    theme?: "dark" | "light";
   }
 
   let {
@@ -22,6 +23,7 @@
     sortKeys = false,
     expansionVersion = 0,
     expandAll = true,
+    theme = "dark",
   }: Props = $props();
 
   let expanded = $state(untrack(() => depth < 2));
@@ -71,7 +73,7 @@
   }
 </script>
 
-<div class="json-node" style={`--depth: ${depth}`}>
+<div class:light={theme === "light"} class="json-node" style={`--depth: ${depth}`}>
   <div class="node-line">
     {#if isContainer}
       <button
@@ -115,6 +117,7 @@
           {sortKeys}
           {expansionVersion}
           {expandAll}
+          {theme}
         />
       {/each}
     </div>
@@ -222,5 +225,41 @@
   .value-null {
     color: #7d8596;
     font-style: italic;
+  }
+
+  .light .node-line:hover,
+  .light .closing-line:hover {
+    background: rgb(70 93 205 / 6%);
+  }
+
+  .light .toggle,
+  .light .colon,
+  .light .comma {
+    color: #818897;
+  }
+
+  .light .key {
+    color: #315fa1;
+  }
+
+  .light .bracket {
+    color: #4d5563;
+  }
+
+  .light .summary,
+  .light .value-null {
+    color: #747c8a;
+  }
+
+  .light .value-string {
+    color: #477a2f;
+  }
+
+  .light .value-number {
+    color: #8b4a9b;
+  }
+
+  .light .value-boolean {
+    color: #a05c26;
   }
 </style>

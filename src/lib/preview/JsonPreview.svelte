@@ -91,6 +91,7 @@
           {sortKeys}
           {expansionVersion}
           {expandAll}
+          {theme}
         />
       </div>
     {:else}
