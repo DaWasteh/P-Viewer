@@ -64,6 +64,7 @@ jobs:
           test -n "$UPDATE_PUBLIC_KEY" || { echo "Missing repository variable P_VIEWER_UPDATER_PUBKEY" >&2; exit 1; }
           test -n "$SIGNING_PRIVATE_KEY" || { echo "Missing secret TAURI_SIGNING_PRIVATE_KEY" >&2; exit 1; }
           test -n "$SIGNING_PRIVATE_KEY_PASSWORD" || { echo "Missing secret TAURI_SIGNING_PRIVATE_KEY_PASSWORD" >&2; exit 1; }
+          node --input-type=module -e 'import { readFileSync } from "node:fs"; const config = JSON.parse(readFileSync("src-tauri/tauri.release.conf.json", "utf8")); const embedded = config.plugins?.updater?.pubkey?.trim(); if (embedded !== process.env.UPDATE_PUBLIC_KEY.trim()) { console.error("Embedded updater public key does not match P_VIEWER_UPDATER_PUBKEY."); process.exit(1); }'
 
       - name: Check Svelte and TypeScript
         run: npm run check

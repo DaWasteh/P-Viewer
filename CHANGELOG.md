@@ -7,7 +7,7 @@ Alle Entwicklungsstufen folgen semantischer Vorabversionierung.
 - finalen Produktnamen **P-Viewer** in Oberfläche, Metadaten, nativen Kennungen, Launchern und Dokumentation vereinheitlicht
 - Versionsmetadaten und MIT-Lizenzhinweis für die erste öffentliche Version aktualisiert
 - bekannte Low-Severity-Cookie-Sicherheitslücke in der SvelteKit-Abhängigkeitskette geschlossen
-- eigenen GitHub-Testworkflow sowie vorgeschaltete Qualitätsprüfungen im signierten Release-Workflow ergänzt
+- eigenen GitHub-Testworkflow sowie vorgeschaltete Qualitäts- und Signaturschlüsselprüfungen im signierten Release-Workflow ergänzt
 - Release-Matrix für Windows, Linux sowie Intel- und Apple-Silicon-macOS aktualisiert
 
 ## 0.0.6

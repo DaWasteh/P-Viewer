@@ -36,9 +36,10 @@ https://github.com/OWNER/REPOSITORY/releases/latest/download/latest.json
 ```
 
 Die Release-Builds erhalten Endpunkt und Public Key über die Build-Variablen
-`P_VIEWER_UPDATE_ENDPOINT` und `P_VIEWER_UPDATER_PUBKEY`. Die Release-Konfiguration
-`src-tauri/tauri.release.conf.json` aktiviert signierte Updater-Artefakte nur in CI;
-lokale Standard-Builds benötigen deshalb keinen privaten Key.
+`P_VIEWER_UPDATE_ENDPOINT` und `P_VIEWER_UPDATER_PUBKEY`. Für die Signaturerzeugung
+enthält `src-tauri/tauri.release.conf.json` denselben öffentlichen Key und aktiviert
+Updater-Artefakte nur in CI; der Workflow bricht bei abweichenden Keys ab. Lokale
+Standard-Builds benötigen deshalb keinen privaten Key.
 
 ## Release-Ablauf
 
