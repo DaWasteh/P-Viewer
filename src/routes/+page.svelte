@@ -1,127 +1,630 @@
+<script lang="ts">
+  import { onMount } from "svelte";
+  import type { Window as TauriWindow } from "@tauri-apps/api/window";
+  import {
+    Columns2,
+    Eye,
+    FileOutput,
+    FilePlus2,
+    FileText,
+    FolderOpen,
+    Pencil,
+    Save,
+  } from "@lucide/svelte";
+  import {
+    chooseAndOpenDocument,
+    confirmDiscardChanges,
+    createUntitledDocument,
+    openDocumentPath,
+    saveDocument,
+  } from "$lib/files/documents";
+  import { countLines, countWords } from "$lib/files/fileTypes";
+  import type { OpenDocument, ViewMode } from "$lib/files/types";
+
+  let document = $state<OpenDocument>(createUntitledDocument());
+  let mode = $state<ViewMode>("edit");
+  let busy = $state(false);
+  let errorMessage = $state("");
+  let dragActive = $state(false);
+  let appWindow = $state.raw<TauriWindow | null>(null);
+
+  const dirty = $derived(document.content !== document.savedContent);
+  const lineCount = $derived(countLines(document.content));
+  const wordCount = $derived(countWords(document.content));
+  const desktop =
+    typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+  $effect(() => {
+    if (!appWindow) return;
+    const title = `${dirty ? "● " : ""}${document.name} — PandaViewer`;
+    void appWindow.setTitle(title);
+  });
+
+  onMount(() => {
+    if (!desktop) return;
+
+    let disposed = false;
+    const cleanups: Array<() => void> = [];
+
+    void (async () => {
+      const [{ getCurrentWindow }, { getCurrentWebview }] = await Promise.all([
+        import("@tauri-apps/api/window"),
+        import("@tauri-apps/api/webview"),
+      ]);
+      if (disposed) return;
+
+      appWindow = getCurrentWindow();
+      cleanups.push(
+        await appWindow.onCloseRequested(async (event) => {
+          if (!dirty) return;
+          event.preventDefault();
+          if (await confirmDiscardChanges(document.name)) {
+            await appWindow?.destroy();
+          }
+        }),
+      );
+      cleanups.push(
+        await getCurrentWebview().onDragDropEvent((event) => {
+          const payload = event.payload;
+          dragActive = payload.type === "enter" || payload.type === "over";
+          if (payload.type === "drop" && payload.paths[0]) {
+            dragActive = false;
+            void openDroppedDocument(payload.paths[0]);
+          }
+        }),
+      );
+    })().catch((error) => {
+      errorMessage = messageFrom(error);
+    });
+
+    return () => {
+      disposed = true;
+      for (const cleanup of cleanups) cleanup();
+    };
+  });
+
+  function messageFrom(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  async function mayReplaceDocument(): Promise<boolean> {
+    return !dirty || (await confirmDiscardChanges(document.name));
+  }
+
+  async function newDocument(): Promise<void> {
+    if (!(await mayReplaceDocument())) return;
+    document = createUntitledDocument();
+    mode = "edit";
+    errorMessage = "";
+  }
+
+  async function openDocument(): Promise<void> {
+    if (busy || !(await mayReplaceDocument())) return;
+    busy = true;
+    errorMessage = "";
+    try {
+      const opened = await chooseAndOpenDocument();
+      if (opened) document = opened;
+    } catch (error) {
+      errorMessage = messageFrom(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function openDroppedDocument(path: string): Promise<void> {
+    if (busy || !(await mayReplaceDocument())) return;
+    busy = true;
+    errorMessage = "";
+    try {
+      document = await openDocumentPath(path);
+    } catch (error) {
+      errorMessage = messageFrom(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function saveCurrent(forceDialog = false): Promise<boolean> {
+    if (busy) return false;
+    busy = true;
+    errorMessage = "";
+    try {
+      const saved = await saveDocument(document, forceDialog);
+      if (saved) {
+        document = saved;
+        return true;
+      }
+    } catch (error) {
+      errorMessage = messageFrom(error);
+    } finally {
+      busy = false;
+    }
+    return false;
+  }
+
+  function updateContent(event: Event): void {
+    document.content = (event.currentTarget as HTMLTextAreaElement).value;
+  }
+
+  function handleShortcut(event: KeyboardEvent): void {
+    const primary = event.ctrlKey || event.metaKey;
+    if (!primary) return;
+
+    const key = event.key.toLowerCase();
+    if (key === "n") {
+      event.preventDefault();
+      void newDocument();
+    } else if (key === "o") {
+      event.preventDefault();
+      void openDocument();
+    } else if (key === "s") {
+      event.preventDefault();
+      void saveCurrent(event.shiftKey);
+    } else if (key === "e" && event.shiftKey) {
+      event.preventDefault();
+      mode = "edit";
+    } else if (key === "v" && event.shiftKey) {
+      event.preventDefault();
+      mode = "view";
+    } else if (key === "p" && event.shiftKey) {
+      event.preventDefault();
+      mode = "split";
+    }
+  }
+
+  function handleBeforeUnload(event: BeforeUnloadEvent): void {
+    if (!dirty) return;
+    event.preventDefault();
+  }
+
+  function lineEndingLabel(value: string): string {
+    if (value === "crlf") return "CRLF";
+    if (value === "cr") return "CR";
+    return "LF";
+  }
+</script>
+
 <svelte:head>
-  <title>PandaViewer</title>
+  <title>{document.name} — PandaViewer</title>
 </svelte:head>
 
-<main class="shell">
-  <header>
+<svelte:window onkeydown={handleShortcut} onbeforeunload={handleBeforeUnload} />
+
+<main class="app-shell" class:has-error={Boolean(errorMessage)} aria-busy={busy}>
+  <header class="titlebar">
     <div class="brand-mark" aria-hidden="true">P</div>
     <strong>PandaViewer</strong>
-    <span class="version">v0.0.1</span>
+    <div class="document-title" title={document.path || document.name}>
+      <FileText size={15} aria-hidden="true" />
+      <span>{document.name}</span>
+      {#if dirty}<span class="dirty-dot" title="Ungespeicherte Änderungen">●</span>{/if}
+    </div>
+    <span class="version">v0.0.2</span>
   </header>
 
-  <section class="welcome" aria-labelledby="welcome-title">
-    <div class="eyebrow">SCHNELL · FOKUSSIERT · PLATTFORMÜBERGREIFEND</div>
-    <h1 id="welcome-title">Dokumente, nicht Ablenkungen.</h1>
-    <p>
-      Das Grundgerüst steht. Als Nächstes kommen Datei-E/A, CodeMirror und die
-      formatgerechten Vorschauen für Markdown, JSON und LaTeX.
-    </p>
-    <div class="formats" aria-label="Geplante Formate">
-      <span>TXT</span><span>MD</span><span>JSON</span><span>PY</span><span>TS</span><span>TEX</span>
+  <nav class="toolbar" aria-label="Dokumentaktionen">
+    <div class="tool-group">
+      <button class="icon-button" title="Neu (Strg/Cmd+N)" onclick={() => void newDocument()}>
+        <FilePlus2 size={17} aria-hidden="true" />
+        <span class="sr-only">Neues Dokument</span>
+      </button>
+      <button class="icon-button" title="Öffnen (Strg/Cmd+O)" onclick={() => void openDocument()} disabled={busy}>
+        <FolderOpen size={17} aria-hidden="true" />
+        <span class="sr-only">Dokument öffnen</span>
+      </button>
+      <button class="icon-button" title="Speichern (Strg/Cmd+S)" onclick={() => void saveCurrent()} disabled={busy || (!dirty && !document.untitled)}>
+        <Save size={17} aria-hidden="true" />
+        <span class="sr-only">Dokument speichern</span>
+      </button>
+      <button class="icon-button" title="Speichern unter (Strg/Cmd+Umschalt+S)" onclick={() => void saveCurrent(true)} disabled={busy}>
+        <FileOutput size={17} aria-hidden="true" />
+        <span class="sr-only">Dokument speichern unter</span>
+      </button>
     </div>
+
+    <div class="mode-switch" aria-label="Ansichtsmodus">
+      <button class:active={mode === "edit"} aria-pressed={mode === "edit"} onclick={() => (mode = "edit")} title="Bearbeiten (Strg/Cmd+Umschalt+E)">
+        <Pencil size={15} aria-hidden="true" />
+        <span>Edit</span>
+      </button>
+      <button class:active={mode === "view"} aria-pressed={mode === "view"} onclick={() => (mode = "view")} title="Ansehen (Strg/Cmd+Umschalt+V)">
+        <Eye size={15} aria-hidden="true" />
+        <span>View</span>
+      </button>
+      <button class:active={mode === "split"} aria-pressed={mode === "split"} onclick={() => (mode = "split")} title="Geteilt (Strg/Cmd+Umschalt+P)">
+        <Columns2 size={15} aria-hidden="true" />
+        <span>Split</span>
+      </button>
+    </div>
+
+    <div class="format-pill">{document.fileType.label}</div>
+  </nav>
+
+  {#if errorMessage}
+    <div class="error-banner" role="alert">
+      <span>{errorMessage}</span>
+      <button aria-label="Fehlermeldung schließen" onclick={() => (errorMessage = "")}>×</button>
+    </div>
+  {/if}
+
+  <section class:split={mode === "split"} class="workspace">
+    {#if mode === "edit" || mode === "split"}
+      <div class="pane editor-pane" aria-label="Editor">
+        <textarea
+          aria-label={`Inhalt von ${document.name}`}
+          value={document.content}
+          oninput={updateContent}
+          spellcheck={document.fileType.kind === "text" || document.fileType.kind === "markdown"}
+        ></textarea>
+      </div>
+    {/if}
+
+    {#if mode === "view" || mode === "split"}
+      <div class="pane viewer-pane" aria-label="Leseansicht">
+        {#if document.content}
+          <pre>{document.content}</pre>
+        {:else}
+          <div class="empty-view">
+            <Eye size={28} strokeWidth={1.5} aria-hidden="true" />
+            <strong>Noch kein Inhalt</strong>
+            <span>Die formatgerechte Vorschau erscheint hier.</span>
+          </div>
+        {/if}
+      </div>
+    {/if}
   </section>
 
-  <footer>Lokale Entwicklung · MIT License</footer>
+  {#if dragActive}
+    <div class="drop-overlay" aria-hidden="true">
+      <FolderOpen size={34} strokeWidth={1.5} />
+      <strong>Datei hier öffnen</strong>
+    </div>
+  {/if}
+
+  <footer class="statusbar">
+    <span>{lineCount.toLocaleString("de-DE")} Zeilen</span>
+    <span>{wordCount.toLocaleString("de-DE")} Wörter</span>
+    <span>{document.encoding}{document.hasBom ? " BOM" : ""}</span>
+    <span>{lineEndingLabel(document.lineEnding)}</span>
+    {#if document.lossy}<span class="warning">Kodierung mit Ersatzzeichen</span>{/if}
+    <span class="path" title={document.path}>{document.path || "Noch nicht gespeichert"}</span>
+  </footer>
 </main>
 
 <style>
-  .shell {
+  :global(:root) {
+    --bg: #111318;
+    --surface: #171a20;
+    --surface-raised: #1d2028;
+    --surface-hover: #242833;
+    --border: #2a2e38;
+    --border-strong: #373c49;
+    --text: #e7e9ef;
+    --text-muted: #9ba2b1;
+    --accent: #7183e7;
+    --accent-strong: #8796ed;
+    --danger: #ef8b91;
+    --mono: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  }
+
+  .app-shell {
     display: grid;
-    grid-template-rows: 54px 1fr 34px;
+    grid-template-rows: 48px 46px minmax(0, 1fr) 28px;
     width: 100vw;
     height: 100vh;
-    background:
-      radial-gradient(circle at 50% 42%, rgb(85 103 202 / 14%), transparent 38%),
-      #111318;
+    color: var(--text);
+    background: var(--bg);
   }
 
-  header,
-  footer {
+  .app-shell.has-error {
+    grid-template-rows: 48px 46px auto minmax(0, 1fr) 28px;
+  }
+
+  .titlebar,
+  .toolbar,
+  .statusbar {
     display: flex;
     align-items: center;
-    border-color: #282c35;
-    color: #aeb4c2;
   }
 
-  header {
-    gap: 10px;
-    padding: 0 16px;
-    border-bottom: 1px solid #282c35;
-  }
-
-  header strong {
-    color: #f1f2f6;
-    letter-spacing: -0.01em;
+  .titlebar {
+    gap: 9px;
+    min-width: 0;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--border);
+    background: #13161b;
   }
 
   .brand-mark {
     display: grid;
-    width: 27px;
-    height: 27px;
+    flex: 0 0 26px;
+    width: 26px;
+    height: 26px;
     place-items: center;
     border-radius: 7px;
     color: #fff;
-    background: #5b6fd8;
-    font-size: 14px;
+    background: #5e70d7;
+    font-size: 13px;
     font-weight: 800;
+  }
+
+  .titlebar strong {
+    font-size: 13px;
+    letter-spacing: -0.01em;
+  }
+
+  .document-title {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+    margin-left: 18px;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  .document-title span:not(.dirty-dot) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dirty-dot {
+    color: var(--accent-strong);
+    font-size: 9px;
   }
 
   .version {
     margin-left: auto;
+    color: #737b8d;
+    font-size: 11px;
+  }
+
+  .toolbar {
+    gap: 12px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .tool-group,
+  .mode-switch {
+    display: flex;
+    align-items: center;
+  }
+
+  .tool-group {
+    gap: 2px;
+    padding-right: 12px;
+    border-right: 1px solid var(--border);
+  }
+
+  button {
+    border: 0;
+    cursor: pointer;
+  }
+
+  button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
+  button:disabled {
+    cursor: default;
+    opacity: 0.38;
+  }
+
+  .icon-button {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border-radius: 6px;
+    color: var(--text-muted);
+    background: transparent;
+  }
+
+  .icon-button:hover:not(:disabled) {
+    color: var(--text);
+    background: var(--surface-hover);
+  }
+
+  .mode-switch {
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #12151a;
+  }
+
+  .mode-switch button {
+    display: flex;
+    height: 28px;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+    border-radius: 5px;
+    color: var(--text-muted);
+    background: transparent;
+    font-size: 11px;
+  }
+
+  .mode-switch button:hover,
+  .mode-switch button.active {
+    color: var(--text);
+  }
+
+  .mode-switch button.active {
+    background: var(--surface-raised);
+    box-shadow: 0 1px 4px rgb(0 0 0 / 24%);
+  }
+
+  .format-pill {
+    margin-left: auto;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 10px;
+  }
+
+  .error-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 7px 12px;
+    border-bottom: 1px solid #713e45;
+    color: #ffd4d7;
+    background: #3a252a;
     font-size: 12px;
   }
 
-  .welcome {
-    align-self: center;
-    justify-self: center;
-    width: min(640px, calc(100vw - 48px));
-    text-align: center;
+  .error-banner button {
+    padding: 0 4px;
+    color: inherit;
+    background: transparent;
+    font-size: 18px;
   }
 
-  .eyebrow {
-    color: #7f8fe2;
-    font-size: 11px;
-    font-weight: 750;
-    letter-spacing: 0.16em;
+  .workspace {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  h1 {
-    margin: 18px 0 14px;
-    color: #f5f6f9;
-    font-size: clamp(34px, 5vw, 54px);
-    letter-spacing: -0.045em;
-    line-height: 1.02;
+  .workspace.split {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  p {
-    max-width: 570px;
-    margin: 0 auto;
-    color: #aeb4c2;
-    font-size: 16px;
-    line-height: 1.7;
+  .pane {
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    background: var(--bg);
   }
 
-  .formats {
+  .split .pane + .pane {
+    border-left: 1px solid var(--border-strong);
+  }
+
+  textarea {
+    display: block;
+    width: 100%;
+    height: 100%;
+    resize: none;
+    padding: 22px 26px 70px;
+    border: 0;
+    outline: 0;
+    color: #dfe2ea;
+    background: transparent;
+    caret-color: var(--accent-strong);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.65;
+    tab-size: 2;
+  }
+
+  .viewer-pane pre {
+    min-width: max-content;
+    margin: 0;
+    padding: 22px 26px 70px;
+    color: #cdd1dc;
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .empty-view {
     display: flex;
-    flex-wrap: wrap;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
     gap: 8px;
-    justify-content: center;
-    margin-top: 28px;
+    color: #6f7788;
   }
 
-  .formats span {
-    padding: 6px 9px;
-    border: 1px solid #313745;
-    border-radius: 6px;
-    color: #c5cad5;
-    background: #191c23;
-    font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
-    font-size: 11px;
+  .empty-view strong {
+    margin-top: 4px;
+    color: #a8aebc;
+    font-size: 13px;
   }
 
-  footer {
+  .empty-view span {
+    font-size: 12px;
+  }
+
+  .drop-overlay {
+    position: fixed;
+    z-index: 10;
+    inset: 58px 12px 38px;
+    display: flex;
+    align-items: center;
     justify-content: center;
-    border-top: 1px solid #282c35;
-    font-size: 11px;
+    flex-direction: column;
+    gap: 10px;
+    border: 2px dashed #7c8de8;
+    border-radius: 12px;
+    color: #dfe3ff;
+    background: rgb(22 26 37 / 92%);
+    pointer-events: none;
+  }
+
+  .drop-overlay strong {
+    font-size: 13px;
+  }
+
+  .statusbar {
+    gap: 13px;
+    min-width: 0;
+    padding: 0 10px;
+    border-top: 1px solid var(--border);
+    color: #8991a1;
+    background: #13161b;
+    font-size: 10px;
+  }
+
+  .path {
+    overflow: hidden;
+    margin-left: auto;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .warning {
+    color: #e6bd72;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  @media (max-width: 720px) {
+    .document-title {
+      margin-left: 4px;
+    }
+
+    .mode-switch span,
+    .format-pill,
+    .statusbar span:nth-child(2) {
+      display: none;
+    }
+
+    .mode-switch button {
+      padding: 0 8px;
+    }
   }
 </style>
