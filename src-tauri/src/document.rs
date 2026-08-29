@@ -1,6 +1,8 @@
 use atomic_write_file::AtomicWriteFile;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use chardetng::{EncodingDetector, Iso2022JpDetection, Utf8Detection};
 use encoding_rs::Encoding;
+use percent_encoding::percent_decode_str;
 use serde::Serialize;
 use std::{
     fs,
@@ -11,6 +13,7 @@ use std::{
 const UTF8_BOM: &[u8] = &[0xEF, 0xBB, 0xBF];
 const UTF16_LE_BOM: &[u8] = &[0xFF, 0xFE];
 const UTF16_BE_BOM: &[u8] = &[0xFE, 0xFF];
+const MAX_LOCAL_IMAGE_BYTES: u64 = 25 * 1024 * 1024;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,11 +35,27 @@ pub struct SaveResult {
     pub size: u64,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalImagePayload {
+    pub data_url: String,
+    pub path: String,
+}
+
 struct DecodedText {
     content: String,
     encoding: String,
     has_bom: bool,
     lossy: bool,
+}
+
+#[tauri::command]
+pub fn initial_document_path() -> Option<String> {
+    std::env::args_os()
+        .skip(1)
+        .map(PathBuf::from)
+        .find(|path| path.is_file())
+        .map(|path| path.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
@@ -113,6 +132,69 @@ pub fn write_document(
     })
 }
 
+#[tauri::command]
+pub fn read_local_image(
+    document_path: String,
+    source: String,
+) -> Result<LocalImagePayload, String> {
+    let document_path = checked_path(&document_path)?;
+    let parent = document_path
+        .parent()
+        .ok_or_else(|| "Das Dokument besitzt keinen gültigen übergeordneten Ordner.".to_string())?;
+    let source_without_suffix = source
+        .split(['?', '#'])
+        .next()
+        .ok_or_else(|| "Die Bildreferenz ist leer.".to_string())?;
+    let decoded_source = percent_decode_str(source_without_suffix)
+        .decode_utf8()
+        .map_err(|_| "Die Bildreferenz enthält ungültige URL-Zeichen.".to_string())?;
+    let source_path = PathBuf::from(decoded_source.as_ref());
+    let image_path = if source_path.is_absolute() {
+        source_path
+    } else {
+        parent.join(source_path)
+    };
+    let canonical = image_path
+        .canonicalize()
+        .map_err(|error| format!("Lokales Bild kann nicht gefunden werden: {error}"))?;
+    let mime = image_mime(&canonical)?;
+    let metadata = fs::metadata(&canonical)
+        .map_err(|error| format!("Bildmetadaten können nicht gelesen werden: {error}"))?;
+    if !metadata.is_file() {
+        return Err("Die Bildreferenz zeigt nicht auf eine Datei.".into());
+    }
+    if metadata.len() > MAX_LOCAL_IMAGE_BYTES {
+        return Err(format!(
+            "Das Bild ist größer als {} MiB.",
+            MAX_LOCAL_IMAGE_BYTES / 1024 / 1024
+        ));
+    }
+    let bytes = fs::read(&canonical)
+        .map_err(|error| format!("Lokales Bild kann nicht gelesen werden: {error}"))?;
+
+    Ok(LocalImagePayload {
+        data_url: format!("data:{mime};base64,{}", BASE64.encode(bytes)),
+        path: canonical.to_string_lossy().into_owned(),
+    })
+}
+
+fn image_mime(path: &Path) -> Result<&'static str, String> {
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    match extension.as_str() {
+        "png" => Ok("image/png"),
+        "jpg" | "jpeg" => Ok("image/jpeg"),
+        "gif" => Ok("image/gif"),
+        "webp" => Ok("image/webp"),
+        "bmp" => Ok("image/bmp"),
+        "ico" => Ok("image/x-icon"),
+        _ => Err("Aus Sicherheitsgründen werden nur PNG, JPEG, GIF, WebP, BMP und ICO als lokale Bilder geladen.".into()),
+    }
+}
+
 fn checked_path(value: &str) -> Result<PathBuf, String> {
     if value.trim().is_empty() {
         return Err("Es wurde kein Dateipfad angegeben.".into());
@@ -174,7 +256,7 @@ fn decode_text(bytes: &[u8]) -> Result<DecodedText, String> {
 }
 
 fn decode_utf16(bytes: &[u8], little_endian: bool, has_bom: bool) -> Result<DecodedText, String> {
-    if bytes.len() % 2 != 0 {
+    if !bytes.len().is_multiple_of(2) {
         return Err("Die UTF-16-Datei besitzt eine unvollständige Bytefolge.".into());
     }
 

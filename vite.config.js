@@ -7,6 +7,11 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [sveltekit()],
+  // Markdown and PDF renderers are lazy chunks; keep the startup bundle small
+  // without warning for the intentionally isolated renderer payloads.
+  build: {
+    chunkSizeWarningLimit: 700,
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

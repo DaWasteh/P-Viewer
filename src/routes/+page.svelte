@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import type { Window as TauriWindow } from "@tauri-apps/api/window";
   import {
     Columns2,
@@ -11,6 +12,8 @@
     Pencil,
     Save,
   } from "@lucide/svelte";
+  import EditorPane from "$lib/editor/EditorPane.svelte";
+  import PreviewPane from "$lib/preview/PreviewPane.svelte";
   import {
     chooseAndOpenDocument,
     confirmDiscardChanges,
@@ -26,6 +29,10 @@
   let busy = $state(false);
   let errorMessage = $state("");
   let dragActive = $state(false);
+  let documentRevision = $state(0);
+  let cursorLine = $state(1);
+  let cursorColumn = $state(1);
+  let selectedCharacters = $state(0);
   let appWindow = $state.raw<TauriWindow | null>(null);
 
   const dirty = $derived(document.content !== document.savedContent);
@@ -73,6 +80,11 @@
           }
         }),
       );
+
+      const initialPath = await invoke<string | null>("initial_document_path");
+      if (initialPath && document.untitled && !dirty) {
+        await openDroppedDocument(initialPath);
+      }
     })().catch((error) => {
       errorMessage = messageFrom(error);
     });
@@ -94,6 +106,7 @@
   async function newDocument(): Promise<void> {
     if (!(await mayReplaceDocument())) return;
     document = createUntitledDocument();
+    documentRevision += 1;
     mode = "edit";
     errorMessage = "";
   }
@@ -104,7 +117,10 @@
     errorMessage = "";
     try {
       const opened = await chooseAndOpenDocument();
-      if (opened) document = opened;
+      if (opened) {
+        document = opened;
+        documentRevision += 1;
+      }
     } catch (error) {
       errorMessage = messageFrom(error);
     } finally {
@@ -118,6 +134,7 @@
     errorMessage = "";
     try {
       document = await openDocumentPath(path);
+      documentRevision += 1;
     } catch (error) {
       errorMessage = messageFrom(error);
     } finally {
@@ -143,8 +160,14 @@
     return false;
   }
 
-  function updateContent(event: Event): void {
-    document.content = (event.currentTarget as HTMLTextAreaElement).value;
+  function updateContent(content: string): void {
+    document.content = content;
+  }
+
+  function updateCursor(position: { line: number; column: number; selected: number }): void {
+    cursorLine = position.line;
+    cursorColumn = position.column;
+    selectedCharacters = position.selected;
   }
 
   function handleShortcut(event: KeyboardEvent): void {
@@ -200,7 +223,7 @@
       <span>{document.name}</span>
       {#if dirty}<span class="dirty-dot" title="Ungespeicherte Änderungen">●</span>{/if}
     </div>
-    <span class="version">v0.0.2</span>
+    <span class="version">v0.0.3</span>
   </header>
 
   <nav class="toolbar" aria-label="Dokumentaktionen">
@@ -249,28 +272,36 @@
   {/if}
 
   <section class:split={mode === "split"} class="workspace">
-    {#if mode === "edit" || mode === "split"}
-      <div class="pane editor-pane" aria-label="Editor">
-        <textarea
-          aria-label={`Inhalt von ${document.name}`}
+    <div class:hidden={mode === "view"} class="pane editor-pane" aria-label="Editor">
+      {#key documentRevision}
+        <EditorPane
           value={document.content}
-          oninput={updateContent}
+          fileName={document.name}
+          readOnly={false}
+          theme="dark"
+          fontSize={14}
+          wordWrap={document.fileType.kind === "text" || document.fileType.kind === "markdown"}
           spellcheck={document.fileType.kind === "text" || document.fileType.kind === "markdown"}
-        ></textarea>
-      </div>
-    {/if}
+          markdownTools={document.fileType.kind === "markdown"}
+          onChange={updateContent}
+          onCursorChange={updateCursor}
+        />
+      {/key}
+    </div>
 
     {#if mode === "view" || mode === "split"}
       <div class="pane viewer-pane" aria-label="Leseansicht">
-        {#if document.content}
-          <pre>{document.content}</pre>
-        {:else}
-          <div class="empty-view">
-            <Eye size={28} strokeWidth={1.5} aria-hidden="true" />
-            <strong>Noch kein Inhalt</strong>
-            <span>Die formatgerechte Vorschau erscheint hier.</span>
-          </div>
-        {/if}
+        <PreviewPane
+          content={document.content}
+          fileName={document.name}
+          path={document.path}
+          fileType={document.fileType}
+          theme="dark"
+          editorFontSize={14}
+          previewFontSize={16}
+          wordWrap
+          onOpenPath={openDroppedDocument}
+        />
       </div>
     {/if}
   </section>
@@ -285,6 +316,8 @@
   <footer class="statusbar">
     <span>{lineCount.toLocaleString("de-DE")} Zeilen</span>
     <span>{wordCount.toLocaleString("de-DE")} Wörter</span>
+    <span>Ln {cursorLine}, Sp {cursorColumn}</span>
+    {#if selectedCharacters > 0}<span>{selectedCharacters} ausgewählt</span>{/if}
     <span>{document.encoding}{document.hasBom ? " BOM" : ""}</span>
     <span>{lineEndingLabel(document.lineEnding)}</span>
     {#if document.lossy}<span class="warning">Kodierung mit Ersatzzeichen</span>{/if}
@@ -503,61 +536,16 @@
   .pane {
     min-width: 0;
     min-height: 0;
-    overflow: auto;
+    overflow: hidden;
     background: var(--bg);
+  }
+
+  .pane.hidden {
+    display: none;
   }
 
   .split .pane + .pane {
     border-left: 1px solid var(--border-strong);
-  }
-
-  textarea {
-    display: block;
-    width: 100%;
-    height: 100%;
-    resize: none;
-    padding: 22px 26px 70px;
-    border: 0;
-    outline: 0;
-    color: #dfe2ea;
-    background: transparent;
-    caret-color: var(--accent-strong);
-    font-family: var(--mono);
-    font-size: 14px;
-    line-height: 1.65;
-    tab-size: 2;
-  }
-
-  .viewer-pane pre {
-    min-width: max-content;
-    margin: 0;
-    padding: 22px 26px 70px;
-    color: #cdd1dc;
-    font-family: var(--mono);
-    font-size: 14px;
-    line-height: 1.65;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-
-  .empty-view {
-    display: flex;
-    height: 100%;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 8px;
-    color: #6f7788;
-  }
-
-  .empty-view strong {
-    margin-top: 4px;
-    color: #a8aebc;
-    font-size: 13px;
-  }
-
-  .empty-view span {
-    font-size: 12px;
   }
 
   .drop-overlay {
