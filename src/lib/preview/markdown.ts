@@ -45,7 +45,7 @@ function remarkCallouts() {
         hName: "aside",
         hProperties: {
           className: ["callout", `callout-${kind}`],
-          "data-callout": kind,
+          dataCallout: kind,
         },
       };
     });

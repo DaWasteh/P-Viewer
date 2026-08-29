@@ -5,15 +5,19 @@ use encoding_rs::Encoding;
 use percent_encoding::percent_decode_str;
 use serde::Serialize;
 use std::{
+    collections::HashSet,
     fs,
     io::Write,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 const UTF8_BOM: &[u8] = &[0xEF, 0xBB, 0xBF];
 const UTF16_LE_BOM: &[u8] = &[0xFF, 0xFE];
 const UTF16_BE_BOM: &[u8] = &[0xFE, 0xFF];
-const MAX_LOCAL_IMAGE_BYTES: u64 = 25 * 1024 * 1024;
+const MAX_LOCAL_IMAGE_BYTES: u64 = 5 * 1024 * 1024;
+const MAX_LOCAL_IMAGE_TOTAL_BYTES: u64 = 10 * 1024 * 1024;
+const MAX_LOCAL_IMAGE_COUNT: usize = 32;
+const MAX_LOCAL_IMAGE_SOURCE_LENGTH: usize = 2_048;
 const MAX_DOCUMENT_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Serialize)]
@@ -39,8 +43,10 @@ pub struct SaveResult {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalImagePayload {
-    pub data_url: String,
-    pub path: String,
+    pub source: String,
+    pub data_url: Option<String>,
+    pub path: Option<String>,
+    pub error: Option<String>,
 }
 
 struct DecodedText {
@@ -146,14 +152,67 @@ pub fn write_document(
 }
 
 #[tauri::command]
-pub fn read_local_image(
+pub fn read_local_images(
     document_path: String,
-    source: String,
-) -> Result<LocalImagePayload, String> {
-    let document_path = checked_path(&document_path)?;
+    sources: Vec<String>,
+) -> Result<Vec<LocalImagePayload>, String> {
+    if sources.len() > MAX_LOCAL_IMAGE_COUNT {
+        return Err(format!(
+            "Pro Vorschau werden höchstens {MAX_LOCAL_IMAGE_COUNT} lokale Bilder geladen."
+        ));
+    }
+
+    let document_path = checked_path(&document_path)?
+        .canonicalize()
+        .map_err(|error| format!("Dokumentpfad kann nicht aufgelöst werden: {error}"))?;
+    if !document_path.is_file() {
+        return Err("Der Dokumentpfad zeigt nicht auf eine Datei.".into());
+    }
     let parent = document_path
         .parent()
         .ok_or_else(|| "Das Dokument besitzt keinen gültigen übergeordneten Ordner.".to_string())?;
+
+    let mut seen = HashSet::new();
+    let mut total_bytes = 0u64;
+    let mut payloads = Vec::with_capacity(sources.len());
+
+    for source in sources {
+        if !seen.insert(source.clone()) {
+            continue;
+        }
+        payloads.push(
+            match resolve_local_image(parent, &source, &mut total_bytes) {
+                Ok((data_url, path)) => LocalImagePayload {
+                    source,
+                    data_url: Some(data_url),
+                    path: Some(path),
+                    error: None,
+                },
+                Err(error) => LocalImagePayload {
+                    source,
+                    data_url: None,
+                    path: None,
+                    error: Some(error),
+                },
+            },
+        );
+    }
+
+    Ok(payloads)
+}
+
+fn resolve_local_image(
+    parent: &Path,
+    source: &str,
+    total_bytes: &mut u64,
+) -> Result<(String, String), String> {
+    if source.trim().is_empty() {
+        return Err("Die Bildreferenz ist leer.".into());
+    }
+    if source.len() > MAX_LOCAL_IMAGE_SOURCE_LENGTH {
+        return Err("Die Bildreferenz ist zu lang.".into());
+    }
+
     let source_without_suffix = source
         .split(['?', '#'])
         .next()
@@ -162,15 +221,22 @@ pub fn read_local_image(
         .decode_utf8()
         .map_err(|_| "Die Bildreferenz enthält ungültige URL-Zeichen.".to_string())?;
     let source_path = PathBuf::from(decoded_source.as_ref());
-    let image_path = if source_path.is_absolute() {
-        source_path
-    } else {
-        parent.join(source_path)
-    };
-    let canonical = image_path
+    if source_path.is_absolute()
+        || source_path
+            .components()
+            .any(|component| matches!(component, Component::Prefix(_) | Component::RootDir))
+    {
+        return Err("Aus Sicherheitsgründen sind nur relative Bildpfade erlaubt.".into());
+    }
+
+    let canonical = parent
+        .join(source_path)
         .canonicalize()
         .map_err(|error| format!("Lokales Bild kann nicht gefunden werden: {error}"))?;
-    let mime = image_mime(&canonical)?;
+    if !canonical.starts_with(parent) {
+        return Err("Die Bildreferenz liegt außerhalb des Dokumentordners.".into());
+    }
+
     let metadata = fs::metadata(&canonical)
         .map_err(|error| format!("Bildmetadaten können nicht gelesen werden: {error}"))?;
     if !metadata.is_file() {
@@ -182,29 +248,44 @@ pub fn read_local_image(
             MAX_LOCAL_IMAGE_BYTES / 1024 / 1024
         ));
     }
+    if total_bytes.saturating_add(metadata.len()) > MAX_LOCAL_IMAGE_TOTAL_BYTES {
+        return Err(format!(
+            "Lokale Bilder überschreiten zusammen das Limit von {} MiB.",
+            MAX_LOCAL_IMAGE_TOTAL_BYTES / 1024 / 1024
+        ));
+    }
+
     let bytes = fs::read(&canonical)
         .map_err(|error| format!("Lokales Bild kann nicht gelesen werden: {error}"))?;
+    if bytes.len() as u64 > MAX_LOCAL_IMAGE_BYTES
+        || total_bytes.saturating_add(bytes.len() as u64) > MAX_LOCAL_IMAGE_TOTAL_BYTES
+    {
+        return Err("Das lokale Bildlimit wurde während des Lesens überschritten.".into());
+    }
+    let mime = image_mime(&bytes)?;
+    *total_bytes += bytes.len() as u64;
 
-    Ok(LocalImagePayload {
-        data_url: format!("data:{mime};base64,{}", BASE64.encode(bytes)),
-        path: canonical.to_string_lossy().into_owned(),
-    })
+    Ok((
+        format!("data:{mime};base64,{}", BASE64.encode(bytes)),
+        canonical.to_string_lossy().into_owned(),
+    ))
 }
 
-fn image_mime(path: &Path) -> Result<&'static str, String> {
-    let extension = path
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    match extension.as_str() {
-        "png" => Ok("image/png"),
-        "jpg" | "jpeg" => Ok("image/jpeg"),
-        "gif" => Ok("image/gif"),
-        "webp" => Ok("image/webp"),
-        "bmp" => Ok("image/bmp"),
-        "ico" => Ok("image/x-icon"),
-        _ => Err("Aus Sicherheitsgründen werden nur PNG, JPEG, GIF, WebP, BMP und ICO als lokale Bilder geladen.".into()),
+fn image_mime(bytes: &[u8]) -> Result<&'static str, String> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Ok("image/png")
+    } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Ok("image/jpeg")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Ok("image/gif")
+    } else if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        Ok("image/webp")
+    } else if bytes.starts_with(b"BM") {
+        Ok("image/bmp")
+    } else if bytes.starts_with(&[0x00, 0x00, 0x01, 0x00]) {
+        Ok("image/x-icon")
+    } else {
+        Err("Aus Sicherheitsgründen werden nur geprüfte PNG-, JPEG-, GIF-, WebP-, BMP- und ICO-Bilder geladen.".into())
     }
 }
 
@@ -469,21 +550,94 @@ mod tests {
     }
 
     #[test]
-    fn local_image_loader_is_type_limited() {
+    fn local_image_loader_uses_content_type_and_reports_individual_errors() {
         let directory = tempfile::tempdir().unwrap();
         let document = directory.path().join("paper.md");
-        let image = directory.path().join("figure.png");
-        let disallowed = directory.path().join("figure.svg");
-        fs::write(&document, "![figure](figure.png)").unwrap();
-        fs::write(&image, [0x89, b'P', b'N', b'G']).unwrap();
-        fs::write(&disallowed, "<svg/>").unwrap();
+        let image = directory.path().join("figure.asset");
+        let disguised_svg = directory.path().join("figure.png");
+        fs::write(&document, "![figure](figure.asset)").unwrap();
+        fs::write(&image, b"\x89PNG\r\n\x1a\ncontent").unwrap();
+        fs::write(&disguised_svg, "<svg/>").unwrap();
 
-        let payload =
-            read_local_image(document.to_string_lossy().into_owned(), "figure.png".into()).unwrap();
-        assert!(payload.data_url.starts_with("data:image/png;base64,"));
+        let payloads = read_local_images(
+            document.to_string_lossy().into_owned(),
+            vec!["figure.asset".into(), "figure.png".into()],
+        )
+        .unwrap();
 
-        let error = read_local_image(document.to_string_lossy().into_owned(), "figure.svg".into())
-            .unwrap_err();
-        assert!(error.contains("Sicherheitsgründen"));
+        assert_eq!(payloads.len(), 2);
+        assert!(payloads[0]
+            .data_url
+            .as_deref()
+            .unwrap()
+            .starts_with("data:image/png;base64,"));
+        assert!(payloads[0].error.is_none());
+        assert!(payloads[1].data_url.is_none());
+        assert!(payloads[1]
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("Sicherheitsgründen"));
+    }
+
+    #[test]
+    fn local_image_loader_blocks_paths_outside_document_directory() {
+        let directory = tempfile::tempdir().unwrap();
+        let document_directory = directory.path().join("document");
+        fs::create_dir(&document_directory).unwrap();
+        let document = document_directory.join("paper.html");
+        let outside = directory.path().join("outside.png");
+        fs::write(&document, "<img src=\"../outside.png\">").unwrap();
+        fs::write(&outside, b"\x89PNG\r\n\x1a\ncontent").unwrap();
+
+        let payloads = read_local_images(
+            document.to_string_lossy().into_owned(),
+            vec!["../outside.png".into()],
+        )
+        .unwrap();
+
+        assert!(payloads[0].data_url.is_none());
+        assert!(payloads[0].error.as_deref().unwrap().contains("außerhalb"));
+    }
+
+    #[test]
+    fn local_image_loader_enforces_aggregate_size() {
+        let directory = tempfile::tempdir().unwrap();
+        let document = directory.path().join("paper.html");
+        fs::write(&document, "<p>Preview</p>").unwrap();
+        let mut image = vec![0u8; 4 * 1024 * 1024];
+        image[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+        for index in 0..3 {
+            fs::write(directory.path().join(format!("image-{index}.png")), &image).unwrap();
+        }
+
+        let payloads = read_local_images(
+            document.to_string_lossy().into_owned(),
+            vec![
+                "image-0.png".into(),
+                "image-1.png".into(),
+                "image-2.png".into(),
+            ],
+        )
+        .unwrap();
+
+        assert!(payloads[0].data_url.is_some());
+        assert!(payloads[1].data_url.is_some());
+        assert!(payloads[2].data_url.is_none());
+        assert!(payloads[2].error.as_deref().unwrap().contains("zusammen"));
+    }
+
+    #[test]
+    fn local_image_loader_limits_source_count() {
+        let directory = tempfile::tempdir().unwrap();
+        let document = directory.path().join("paper.html");
+        fs::write(&document, "<p>Preview</p>").unwrap();
+        let sources = (0..=MAX_LOCAL_IMAGE_COUNT)
+            .map(|index| format!("image-{index}.png"))
+            .collect();
+
+        let error =
+            read_local_images(document.to_string_lossy().into_owned(), sources).unwrap_err();
+        assert!(error.contains("höchstens"));
     }
 }

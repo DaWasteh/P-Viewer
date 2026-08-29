@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
-  import { invoke } from "@tauri-apps/api/core";
   import { ChevronDown, ChevronsDownUp, ChevronsUpDown, ListTree } from "@lucide/svelte";
+  import { isRelativeImageSource, readLocalImages } from "$lib/files/localImages";
   import { resolveDocumentReference } from "$lib/files/paths";
   import "katex/dist/katex.min.css";
   import "highlight.js/styles/github-dark-dimmed.css";
@@ -17,11 +17,6 @@
     fontSize?: number;
     theme?: "dark" | "light";
     onOpenPath?: (path: string) => void;
-  }
-
-  interface LocalImagePayload {
-    dataUrl: string;
-    path: string;
   }
 
   let {
@@ -86,34 +81,45 @@
   }
 
   async function resolveLocalImages(): Promise<void> {
-    if (!article || !path || !("__TAURI_INTERNALS__" in window)) return;
+    if (!article || !path) return;
     const currentArticle = article;
     const images = Array.from(currentArticle.querySelectorAll<HTMLImageElement>("img[src]"));
+    const pending = images
+      .map((image) => ({ image, source: image.getAttribute("src") ?? "" }))
+      .filter(({ image, source }) => isRelativeImageSource(source) && image.dataset.localSource !== source);
+    if (pending.length === 0) return;
 
-    await Promise.all(
-      images.map(async (image) => {
-        const source = image.getAttribute("src") ?? "";
-        if (!source || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(source)) return;
-        if (image.dataset.localSource === source) return;
-        image.dataset.localSource = source;
-        image.classList.add("local-image-loading");
-        try {
-          const payload = await invoke<LocalImagePayload>("read_local_image", {
-            documentPath: path,
-            source,
-          });
-          if (!image.isConnected || image.dataset.localSource !== source) return;
+    for (const { image, source } of pending) {
+      image.dataset.localSource = source;
+      image.classList.add("local-image-loading");
+    }
+
+    try {
+      const payloads = await readLocalImages(path, pending.map(({ source }) => source));
+      const bySource = new Map(payloads.map((payload) => [payload.source, payload]));
+      for (const { image, source } of pending) {
+        if (!image.isConnected || image.dataset.localSource !== source) continue;
+        const payload = bySource.get(source);
+        image.classList.remove("local-image-loading");
+        if (payload?.dataUrl) {
           image.src = payload.dataUrl;
-          image.title = payload.path;
-          image.classList.remove("local-image-loading", "local-image-error");
-        } catch (error) {
-          if (!image.isConnected || image.dataset.localSource !== source) return;
-          image.classList.remove("local-image-loading");
+          image.title = payload.path ?? source;
+          image.classList.remove("local-image-error");
+        } else {
+          image.removeAttribute("src");
           image.classList.add("local-image-error");
-          image.title = error instanceof Error ? error.message : String(error);
+          image.title = payload?.error ?? "Lokales Bild konnte nicht geladen werden.";
         }
-      }),
-    );
+      }
+    } catch (error) {
+      for (const { image, source } of pending) {
+        if (!image.isConnected || image.dataset.localSource !== source) continue;
+        image.removeAttribute("src");
+        image.classList.remove("local-image-loading");
+        image.classList.add("local-image-error");
+        image.title = error instanceof Error ? error.message : String(error);
+      }
+    }
   }
 
   function updateFoldVisibility(): void {

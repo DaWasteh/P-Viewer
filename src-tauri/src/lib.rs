@@ -13,7 +13,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             document::initial_document_path,
             document::read_document,
-            document::read_local_image,
+            document::read_local_images,
             document::write_document,
             latex::compile_latex,
             latex::detect_latex_engines,

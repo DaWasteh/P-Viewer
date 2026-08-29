@@ -5,13 +5,14 @@ P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter f
 [![Tests](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml/badge.svg)](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-blue.svg)](LICENSE)
 
-> **Status:** aktuelle Version `v0.0.7`.
+> **Status:** aktuelle Version `v0.0.8`.
 
 ## Aktueller Funktionsumfang
 
 - Text- und Code-Dateien encoding-sicher lesen, atomar speichern, erstellen und bearbeiten
-- breite Syntaxhervorhebung mit sicherem Plaintext-Fallback
+- breite Syntaxhervorhebung mit sicherem Plaintext-Fallback, inklusive gemischter Astro-, Svelte- und Vue-Syntax
 - Edit-, View- und Split-Ansicht
+- isolierte HTML-/HTM-/XHTML-Vorschau mit Inline-CSS und begrenzten lokalen Rasterbildern
 - Markdown mit GFM, Gliederung, Folding, Tabellen, Aufgabenlisten, Callouts und KaTeX-Mathematik
 - einklappbare JSON-Strukturansicht
 - LaTeX-/TeX-Editor mit PDF-Build über eine lokale TeX-Distribution
@@ -25,7 +26,7 @@ P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter f
 - **Desktop:** Tauri 2 / Rust
 - **UI:** Svelte 5 / TypeScript / Vite
 - **Editor:** CodeMirror 6
-- **Dokument-Rendering:** unified/remark/rehype, KaTeX und PDF.js
+- **Dokument-Rendering:** unified/remark/rehype, sandboxed HTML `srcdoc`, KaTeX und PDF.js
 
 Die Entscheidung ist in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) dokumentiert. Änderungen je Version stehen im [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -64,6 +65,16 @@ cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo test --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```
+
+## HTML und Webkomponenten
+
+HTML, HTM und XHTML besitzen eine gerenderte **View**-Vorschau. Vor dem Rendern wird das Dokument ohne Browser-Ressourcenabruf geparst und auf einen statischen HTML-Teil reduziert. Die Vorschau läuft in einem Iframe mit undurchsichtiger Herkunft, leerem Sandbox-Rechtesatz und eigener deny-by-default-CSP.
+
+- Skripte, Event-Handler, Navigation, Formulare, eingebettete Frames und externe Netzwerkressourcen werden entfernt beziehungsweise blockiert.
+- Inline-CSS bleibt für eine realistische Darstellung erhalten; CSP verhindert dessen Netzwerkzugriffe.
+- Relative PNG-, JPEG-, GIF-, WebP-, BMP- und ICO-Dateien werden nur innerhalb des Dokumentordners, anhand ihrer Dateisignatur und mit Anzahl-/Größenlimits geladen.
+- HTML-Vorschauen sind auf 1 MiB Quelltext begrenzt; größere Dateien bleiben vollständig im Editor nutzbar.
+- Astro, Svelte und Vue werden als hervorgehobener Quelltext angezeigt. Insbesondere Astro wird nicht ausgeführt oder ohne Projekt-Build unzuverlässig nachgebildet.
 
 ## LaTeX
 

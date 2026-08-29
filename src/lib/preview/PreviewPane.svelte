@@ -35,7 +35,15 @@
   const specialized = $derived(
     fileType.kind === "markdown" ||
       fileType.kind === "json" ||
-      fileType.kind === "latex",
+      fileType.kind === "latex" ||
+      fileType.kind === "html",
+  );
+  const sourceNotice = $derived(
+    fileType.language === "astro"
+      ? "Astro-Quelltextansicht – Frontmatter und Projektcode werden nicht ausgeführt."
+      : fileType.language === "svelte" || fileType.language === "vue"
+        ? "Komponenten-Quelltextansicht – Dokumentcode wird nicht ausgeführt."
+        : "",
   );
 
   $effect(() => {
@@ -44,7 +52,7 @@
     SpecializedPreview = null;
     previewLoadError = "";
 
-    if (kind !== "markdown" && kind !== "json" && kind !== "latex") {
+    if (kind !== "markdown" && kind !== "json" && kind !== "latex" && kind !== "html") {
       previewLoading = false;
       return;
     }
@@ -55,7 +63,9 @@
         ? import("./MarkdownPreview.svelte")
         : kind === "json"
           ? import("./JsonPreview.svelte")
-          : import("./LatexPreview.svelte");
+          : kind === "latex"
+            ? import("./LatexPreview.svelte")
+            : import("./HtmlPreview.svelte");
 
     void modulePromise
       .then((module) => {
@@ -94,14 +104,19 @@
     </div>
   {/if}
 {:else if fileType.kind === "code"}
-  <EditorPane
-    value={content}
-    {fileName}
-    readOnly
-    {theme}
-    fontSize={editorFontSize}
-    {wordWrap}
-  />
+  <div class:with-notice={Boolean(sourceNotice)} class="code-preview">
+    {#if sourceNotice}
+      <div class:light={theme === "light"} class="source-notice">{sourceNotice}</div>
+    {/if}
+    <EditorPane
+      value={content}
+      {fileName}
+      readOnly
+      {theme}
+      fontSize={editorFontSize}
+      {wordWrap}
+    />
+  </div>
 {:else}
   <div class:light={theme === "light"} class="text-preview">
     {#if content}
@@ -116,6 +131,33 @@
 {/if}
 
 <style>
+  .code-preview {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .code-preview.with-notice {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .source-notice {
+    min-height: 34px;
+    padding: 8px 12px;
+    border-bottom: 1px solid #2a2e38;
+    color: #aab1c0;
+    background: #171a20;
+    font-size: 11px;
+  }
+
+  .source-notice.light {
+    border-color: #d9dce3;
+    color: #646c7a;
+    background: #f2f3f6;
+  }
+
   .preview-state,
   .empty-text {
     display: flex;

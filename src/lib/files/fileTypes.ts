@@ -59,8 +59,10 @@ const TYPES: Record<string, FileTypeInfo> = {
   cmd: { kind: "code", language: "batch", label: "Windows Command" },
   ps1: { kind: "code", language: "powershell", label: "PowerShell" },
 
-  html: { kind: "code", language: "html", label: "HTML" },
-  htm: { kind: "code", language: "html", label: "HTML" },
+  html: { kind: "html", language: "html", label: "HTML" },
+  htm: { kind: "html", language: "html", label: "HTML" },
+  xhtml: { kind: "html", language: "html", label: "XHTML" },
+  astro: { kind: "code", language: "astro", label: "Astro" },
   css: { kind: "code", language: "css", label: "CSS" },
   scss: { kind: "code", language: "sass", label: "SCSS" },
   sass: { kind: "code", language: "sass", label: "Sass" },

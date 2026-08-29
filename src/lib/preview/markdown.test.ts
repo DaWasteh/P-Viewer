@@ -25,6 +25,7 @@ $E = mc^2$
     const html = renderMarkdown("> [!WARNING]\n> Reproduzierbarkeit prüfen.");
     expect(html).toContain("<aside");
     expect(html).toContain("callout-warning");
+    expect(html).toContain('data-callout="warning"');
     expect(html).not.toContain("[!WARNING]");
   });
 

@@ -1,5 +1,5 @@
 export type ViewMode = "edit" | "view" | "split";
-export type DocumentKind = "markdown" | "json" | "latex" | "code" | "text";
+export type DocumentKind = "markdown" | "json" | "latex" | "html" | "code" | "text";
 export type LineEnding = "lf" | "crlf" | "cr";
 
 export interface FileTypeInfo {

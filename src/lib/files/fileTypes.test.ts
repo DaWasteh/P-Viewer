@@ -19,6 +19,11 @@ describe("file type detection", () => {
     expect(detectFileType("data.json")).toMatchObject({ kind: "json" });
     expect(detectFileType("script.py")).toMatchObject({ kind: "code", language: "python" });
     expect(detectFileType("run.bat")).toMatchObject({ kind: "code", language: "batch" });
+    expect(detectFileType("index.html")).toMatchObject({ kind: "html", language: "html" });
+    expect(detectFileType("legacy.HTM")).toMatchObject({ kind: "html", language: "html" });
+    expect(detectFileType("page.xhtml")).toMatchObject({ kind: "html", language: "html" });
+    expect(detectFileType("Card.ASTRO")).toMatchObject({ kind: "code", language: "astro" });
+    expect(detectFileType("Widget.svelte")).toMatchObject({ kind: "code", language: "svelte" });
   });
 
   it("falls back to plain text for unknown extensions", () => {

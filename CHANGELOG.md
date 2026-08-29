@@ -2,6 +2,17 @@
 
 Alle Entwicklungsstufen folgen semantischer Vorabversionierung.
 
+## 0.0.8
+
+- HTML-, HTM- und XHTML-Dateien in einer sanitisierten, vollständig sandboxed `srcdoc`-Vorschau gerendert
+- Skripte, Event-Handler, Formulare, Navigation, eingebettete Inhalte und Netzwerkzugriffe in HTML-Vorschauen fail-closed blockiert
+- lokale Rasterbilder auf relative Pfade innerhalb des Dokumentordners, geprüfte Dateisignaturen sowie Anzahl- und Gesamtgrößenlimits begrenzt
+- dediziertes, lazy geladenes Astro-Highlighting für Frontmatter, Ausdrücke, Skripte und Styles mit HTML-Fallback ergänzt
+- Svelte-Mischsyntax sowie Highlighting-Fallbacks für JSONC/JSON5, MDX und verwandte Formate korrigiert
+- Dateidialog um Astro, Svelte, Vue, XHTML, HTM und weitere bereits unterstützte Webformate erweitert
+- verlorenes `data-callout`-Attribut in der Markdown-Sanitizer-Pipeline korrigiert
+- HTML-Vorschau auf 1 MiB Quelltext begrenzt und asynchrone Render-Races abgefangen
+
 ## 0.0.7
 
 - finalen Produktnamen **P-Viewer** in Oberfläche, Metadaten, nativen Kennungen, Launchern und Dokumentation vereinheitlicht
