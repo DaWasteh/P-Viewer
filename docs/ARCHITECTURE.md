@@ -1,11 +1,11 @@
 # Architekturentscheidung
 
 **Status:** angenommen  
-**Version:** v0.0.6
+**Version:** v0.0.7
 
 ## Entscheidung
 
-PandaViewer wird als **Tauri-2-App mit Rust-Backend und Svelte-5-/TypeScript-Frontend** umgesetzt.
+P-Viewer wird als **Tauri-2-App mit Rust-Backend und Svelte-5-/TypeScript-Frontend** umgesetzt.
 
 Diese Kombination liefert native, kleine Desktop-Pakete und direkten, kontrollierten Datei-/Prozesszugriff, ohne eine komplette Browser-Runtime wie Electron auszuliefern. Svelte hält die Oberfläche klein; TypeScript erschließt das ausgereifte Editor- und Dokument-Ökosystem.
 
@@ -37,7 +37,7 @@ Diese Kombination liefert native, kleine Desktop-Pakete und direkten, kontrollie
 
 ## LaTeX-Grenze
 
-„Volle LaTeX-Unterstützung“ bedeutet in PandaViewer:
+„Volle LaTeX-Unterstützung“ bedeutet in P-Viewer:
 
 - TeX-Syntax, Bearbeitung, Suche und Folding,
 - Wahl und Erkennung des Compilers,

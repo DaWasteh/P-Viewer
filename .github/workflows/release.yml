@@ -6,33 +6,121 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  release:
-    name: Build ${{ matrix.platform }}
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          - windows-latest
-          - macos-latest
-          - ubuntu-22.04
-
-    runs-on: ${{ matrix.platform }}
+  verify:
+    name: Verify release candidate
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+
+      - name: Install Linux system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            xdg-utils
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy,rustfmt
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Audit JavaScript dependencies
+        run: npm audit --audit-level=low
+
+      - name: Verify version and signing configuration
+        shell: bash
+        env:
+          UPDATE_PUBLIC_KEY: ${{ vars.P_VIEWER_UPDATER_PUBKEY }}
+          SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          node scripts/check-version.mjs "${GITHUB_REF_NAME}"
+          test -n "$UPDATE_PUBLIC_KEY" || { echo "Missing repository variable P_VIEWER_UPDATER_PUBKEY" >&2; exit 1; }
+          test -n "$SIGNING_PRIVATE_KEY" || { echo "Missing secret TAURI_SIGNING_PRIVATE_KEY" >&2; exit 1; }
+          test -n "$SIGNING_PRIVATE_KEY_PASSWORD" || { echo "Missing secret TAURI_SIGNING_PRIVATE_KEY_PASSWORD" >&2; exit 1; }
+
+      - name: Check Svelte and TypeScript
+        run: npm run check
+
+      - name: Run frontend tests
+        run: npm test
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+
+      - name: Run Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Lint Rust
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+  release:
+    name: Build ${{ matrix.name }}
+    needs: verify
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            platform: windows-latest
+            args: ""
+          - name: Linux x64
+            platform: ubuntu-22.04
+            args: ""
+          - name: macOS Apple Silicon
+            platform: macos-latest
+            args: --target aarch64-apple-darwin
+          - name: macOS Intel
+            platform: macos-latest
+            args: --target x86_64-apple-darwin
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Cache Rust build
         uses: swatinem/rust-cache@v2
@@ -47,20 +135,11 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
-            patchelf
+            patchelf \
+            xdg-utils
 
       - name: Install JavaScript dependencies
         run: npm ci
-
-      - name: Verify release configuration
-        shell: bash
-        env:
-          UPDATE_PUBLIC_KEY: ${{ vars.PANDAVIEWER_UPDATER_PUBKEY }}
-          SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        run: |
-          node scripts/check-version.mjs "${GITHUB_REF_NAME}"
-          test -n "$UPDATE_PUBLIC_KEY" || { echo "Missing repository variable PANDAVIEWER_UPDATER_PUBKEY" >&2; exit 1; }
-          test -n "$SIGNING_PRIVATE_KEY" || { echo "Missing secret TAURI_SIGNING_PRIVATE_KEY" >&2; exit 1; }
 
       - name: Build signed draft release
         uses: tauri-apps/tauri-action@v1
@@ -68,16 +147,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          PANDAVIEWER_UPDATE_ENDPOINT: https://github.com/${{ github.repository }}/releases/latest/download/latest.json
-          PANDAVIEWER_UPDATER_PUBKEY: ${{ vars.PANDAVIEWER_UPDATER_PUBKEY }}
+          P_VIEWER_UPDATE_ENDPOINT: https://github.com/${{ github.repository }}/releases/latest/download/latest.json
+          P_VIEWER_UPDATER_PUBKEY: ${{ vars.P_VIEWER_UPDATER_PUBKEY }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "PandaViewer ${{ github.ref_name }}"
+          releaseName: "P-Viewer ${{ github.ref_name }}"
           releaseBody: |
-            Signierte Desktop-Builds für Windows, macOS und Linux.
+            Signierte Desktop-Builds für Windows, Linux sowie macOS auf Intel und Apple Silicon.
 
-            Vor der Veröffentlichung bitte Installations-Smoke-Tests durchführen und den Entwurf manuell freigeben.
+            Änderungen stehen im Changelog. Vor der Veröffentlichung werden die erzeugten Pakete, Signaturen und `latest.json` geprüft.
           releaseDraft: true
           prerelease: false
+          generateReleaseNotes: true
           updaterJsonPreferNsis: true
-          args: --config src-tauri/tauri.release.conf.json
+          retryAttempts: 2
+          args: --config src-tauri/tauri.release.conf.json ${{ matrix.args }}

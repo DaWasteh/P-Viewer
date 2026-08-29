@@ -1,8 +1,11 @@
-# PandaViewer
+# P-Viewer
 
-PandaViewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter für Windows, macOS und Linux. Das Ziel ist die Dateiformat-Kompetenz eines großen Code-Editors in einer ruhigen, übersichtlichen Oberfläche.
+P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter für Windows, macOS und Linux. Das Ziel ist die Dateiformat-Kompetenz eines großen Code-Editors in einer ruhigen, übersichtlichen Oberfläche.
 
-> **Status:** lokale Version `v0.0.6`. Das Projekt ist funktionsfähig, aber noch nicht veröffentlicht.
+[![Tests](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml/badge.svg)](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml)
+[![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-blue.svg)](LICENSE)
+
+> **Status:** aktuelle Version `v0.0.7`.
 
 ## Aktueller Funktionsumfang
 
@@ -41,28 +44,30 @@ npm run tauri dev
 
 ### Per Doppelklick starten
 
-Ein optimierter Root-Launcher wird mit einem Befehl gebaut und nach `PandaViewer.exe` im Projektstamm kopiert:
+Ein optimierter Root-Launcher wird mit einem Befehl gebaut und nach `P-Viewer.exe` im Projektstamm kopiert:
 
 ```bash
 npm run build:launcher
 ```
 
-Danach lässt sich `PandaViewer.exe` direkt doppelklicken oder über **Rechtsklick → Weitere Optionen anzeigen → Verknüpfung erstellen** auf dem Desktop verknüpfen. `Start-PandaViewer.cmd` im Projektstamm dient als Fallback und findet automatisch den Root-, Release- oder Debug-Build.
+Danach lässt sich `P-Viewer.exe` direkt doppelklicken oder über **Rechtsklick → Weitere Optionen anzeigen → Verknüpfung erstellen** auf dem Desktop verknüpfen. `Start-P-Viewer.cmd` im Projektstamm dient als Fallback und findet automatisch den Root-, Release- oder Debug-Build.
 
 Prüfungen:
 
 ```bash
+npm audit --audit-level=low
 npm run check:version
 npm run check
 npm test
 npm run build
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo test --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```
 
 ## LaTeX
 
-Eine vollständige TeX-Distribution ist bewusst nicht Teil des schlanken App-Pakets. PandaViewer steuert sicher eine lokal installierte Distribution an, bevorzugt `latexmk`; unterstützt werden außerdem Tectonic, `pdflatex`, `xelatex` und `lualatex`.
+Eine vollständige TeX-Distribution ist bewusst nicht Teil des schlanken App-Pakets. P-Viewer steuert sicher eine lokal installierte Distribution an, bevorzugt `latexmk`; unterstützt werden außerdem Tectonic, `pdflatex`, `xelatex` und `lualatex`.
 
 - Windows: MiKTeX oder TeX Live
 - macOS: MacTeX
@@ -72,7 +77,7 @@ Shell-Escape bleibt standardmäßig deaktiviert.
 
 ## Versionierung
 
-Lokale Entwicklungsstufen werden fortlaufend als `v0.0.1`, `v0.0.2`, … committed und getaggt. Der Ablauf für signierte Draft-Releases ist in [`docs/RELEASING.md`](docs/RELEASING.md) beschrieben.
+Versionen folgen semantischer Vorabversionierung und werden als `vX.Y.Z` getaggt. Der Ablauf für signierte GitHub-Releases ist in [`docs/RELEASING.md`](docs/RELEASING.md) beschrieben.
 
 ## Lizenz
 

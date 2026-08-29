@@ -2571,8 +2571,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "pandaviewer"
-version = "0.0.6"
+name = "p-viewer"
+version = "0.0.7"
 dependencies = [
  "atomic-write-file",
  "base64 0.22.1",

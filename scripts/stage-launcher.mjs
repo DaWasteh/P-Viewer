@@ -3,8 +3,8 @@ import { constants } from "node:fs";
 import { resolve } from "node:path";
 
 const windows = process.platform === "win32";
-const binaryName = windows ? "pandaviewer.exe" : "pandaviewer";
-const destinationName = windows ? "PandaViewer.exe" : "PandaViewer";
+const binaryName = windows ? "p-viewer.exe" : "p-viewer";
+const destinationName = windows ? "P-Viewer.exe" : "P-Viewer";
 const candidates = [
   resolve("src-tauri", "target", "release", binaryName),
   resolve("src-tauri", "target", "debug", binaryName),
@@ -23,7 +23,7 @@ for (const candidate of candidates) {
 
 if (!source) {
   console.error(
-    "Kein PandaViewer-Build gefunden. Zuerst `npm run tauri build -- --no-bundle` ausführen.",
+    "Kein P-Viewer-Build gefunden. Zuerst `npm run tauri build -- --no-bundle` ausführen.",
   );
   process.exit(1);
 }
@@ -34,7 +34,7 @@ try {
   if (!windows) await chmod(destination, 0o755);
 } catch (error) {
   console.error(
-    `Launcher konnte nicht aktualisiert werden. PandaViewer gegebenenfalls schließen.\n${error}`,
+    `Launcher konnte nicht aktualisiert werden. P-Viewer gegebenenfalls schließen.\n${error}`,
   );
   process.exit(1);
 }

@@ -10,9 +10,9 @@ use tauri::{AppHandle, Emitter, WebviewWindow};
 use tauri_plugin_updater::{Update, UpdaterExt};
 use url::Url;
 
-const UPDATE_ENDPOINT: Option<&str> = option_env!("PANDAVIEWER_UPDATE_ENDPOINT");
-const UPDATE_PUBLIC_KEY: Option<&str> = option_env!("PANDAVIEWER_UPDATER_PUBKEY");
-const UPDATE_PROGRESS_EVENT: &str = "pandaviewer://update-progress";
+const UPDATE_ENDPOINT: Option<&str> = option_env!("P_VIEWER_UPDATE_ENDPOINT");
+const UPDATE_PUBLIC_KEY: Option<&str> = option_env!("P_VIEWER_UPDATER_PUBKEY");
+const UPDATE_PROGRESS_EVENT: &str = "p-viewer://update-progress";
 
 struct ReleaseChannel {
     endpoint: Url,
@@ -224,7 +224,7 @@ mod tests {
     #[test]
     fn accepts_https_release_channels() {
         let channel = validate_release_channel(
-            "https://github.com/example/PandaViewer/releases/latest/download/latest.json",
+            "https://github.com/DaWasteh/P-Viewer/releases/latest/download/latest.json",
             "public-key",
         )
         .unwrap();

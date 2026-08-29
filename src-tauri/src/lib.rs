@@ -22,5 +22,5 @@ pub fn run() {
             updater::updater_configuration
         ])
         .run(tauri::generate_context!())
-        .expect("failed to run PandaViewer");
+        .expect("failed to run P-Viewer");
 }

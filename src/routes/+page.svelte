@@ -64,7 +64,7 @@
 
   $effect(() => {
     if (!appWindow) return;
-    const title = `${dirty ? "● " : ""}${document.name} — PandaViewer`;
+    const title = `${dirty ? "● " : ""}${document.name} — P-Viewer`;
     void appWindow.setTitle(title).catch((error) => {
       console.warn("Fenstertitel konnte nicht aktualisiert werden.", error);
     });
@@ -297,7 +297,7 @@
 </script>
 
 <svelte:head>
-  <title>{document.name} — PandaViewer</title>
+  <title>{document.name} — P-Viewer</title>
 </svelte:head>
 
 <svelte:window onkeydown={handleShortcut} onbeforeunload={handleBeforeUnload} />
@@ -311,7 +311,7 @@
 >
   <header class="titlebar">
     <div class="brand-mark" aria-hidden="true">P</div>
-    <strong>PandaViewer</strong>
+    <strong>P-Viewer</strong>
     <div class="document-title" title={document.path || document.name}>
       <FileText size={15} aria-hidden="true" />
       <span>{document.name}</span>

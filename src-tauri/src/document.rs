@@ -413,7 +413,7 @@ mod tests {
 
     #[test]
     fn round_trips_utf16_le_with_bom() {
-        let original = "Panda \u{1F43C}\nFormel";
+        let original = "P-Viewer \u{1F43C}\nFormel";
         let encoded = encode_text(original, "UTF-16LE", true).unwrap();
         let decoded = decode_text(&encoded).unwrap();
         assert_eq!(decoded.content, original);

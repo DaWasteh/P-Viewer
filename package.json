@@ -1,6 +1,6 @@
 {
-  "name": "pandaviewer",
-  "version": "0.0.6",
+  "name": "p-viewer",
+  "version": "0.0.7",
   "description": "A fast, focused cross-platform editor and document viewer.",
   "type": "module",
   "scripts": {
@@ -15,8 +15,11 @@
     "build:launcher": "tauri build --no-bundle && node scripts/stage-launcher.mjs",
     "tauri": "tauri"
   },
-  "author": "PandaViewer contributors",
+  "author": "P-Viewer contributors",
   "license": "MIT",
+  "overrides": {
+    "cookie": "0.7.2"
+  },
   "dependencies": {
     "@codemirror/commands": "^6.11.0",
     "@codemirror/language": "^6.12.4",

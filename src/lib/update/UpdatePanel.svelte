@@ -60,7 +60,7 @@
 
   onMount(() => {
     let unlisten: UnlistenFn | null = null;
-    void listen<UpdateProgress>("pandaviewer://update-progress", (event) => {
+    void listen<UpdateProgress>("p-viewer://update-progress", (event) => {
       progress = event.payload;
     }).then((cleanup) => {
       unlisten = cleanup;
@@ -101,7 +101,7 @@
   async function installUpdate(): Promise<void> {
     if (installing || !checkResult?.available || hasUnsavedChanges) return;
     const accepted = await confirm(
-      `PandaViewer ${checkResult.version ?? ""} wird signiert geprüft, installiert und die App anschließend neu gestartet.`,
+      `P-Viewer ${checkResult.version ?? ""} wird signiert geprüft, installiert und die App anschließend neu gestartet.`,
       {
         title: "Update installieren?",
         kind: "info",
@@ -153,7 +153,7 @@
     <header>
       <div>
         <span class="eyebrow">SICHERE RELEASES</span>
-        <h2 id="update-title">PandaViewer aktualisieren</h2>
+        <h2 id="update-title">P-Viewer aktualisieren</h2>
       </div>
       <button class="close-button" aria-label="Update-Dialog schließen" onclick={onClose} disabled={installing}>
         <X size={18} aria-hidden="true" />
@@ -213,7 +213,7 @@
       {:else}
         <div class="state-card current">
           <CheckCircle2 size={36} strokeWidth={1.4} aria-hidden="true" />
-          <strong>PandaViewer ist aktuell</strong>
+          <strong>P-Viewer ist aktuell</strong>
           <p>Für Version {checkResult?.currentVersion ?? configuration.currentVersion} liegt kein neueres signiertes Release vor.</p>
           <button onclick={() => void checkNow()}><RefreshCw size={14} /> Erneut prüfen</button>
         </div>

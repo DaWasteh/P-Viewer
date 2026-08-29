@@ -1,6 +1,14 @@
 # Changelog
 
-Alle lokalen Entwicklungsstufen folgen semantischer Vorabversionierung.
+Alle Entwicklungsstufen folgen semantischer Vorabversionierung.
+
+## 0.0.7
+
+- finalen Produktnamen **P-Viewer** in Oberfläche, Metadaten, nativen Kennungen, Launchern und Dokumentation vereinheitlicht
+- Versionsmetadaten und MIT-Lizenzhinweis für die erste öffentliche Version aktualisiert
+- bekannte Low-Severity-Cookie-Sicherheitslücke in der SvelteKit-Abhängigkeitskette geschlossen
+- eigenen GitHub-Testworkflow sowie vorgeschaltete Qualitätsprüfungen im signierten Release-Workflow ergänzt
+- Release-Matrix für Windows, Linux sowie Intel- und Apple-Silicon-macOS aktualisiert
 
 ## 0.0.6
 
@@ -10,7 +18,7 @@ Alle lokalen Entwicklungsstufen folgen semantischer Vorabversionierung.
 - PDF.js-Laderace behoben und vollständigen TeX→PDF-UI-Fluss geprüft
 - JSON-Baumdarstellung für Array-Eigenschaften und numerische Indizes korrigiert
 - System-Theme gibt eine zuvor erzwungene Hell-/Dunkelwahl wieder korrekt an das Betriebssystem zurück
-- optimierten `PandaViewer.exe`-Root-Launcher und Doppelklick-Fallback ergänzt
+- optimierten `P-Viewer.exe`-Root-Launcher und Doppelklick-Fallback ergänzt
 - Architektur- und Release-Dokumentation aktualisiert
 
 ## 0.0.5
@@ -44,5 +52,5 @@ Alle lokalen Entwicklungsstufen folgen semantischer Vorabversionierung.
 
 ## 0.0.1
 
-- Tauri-2-/Svelte-5-/Rust-Projektbasis und PandaViewer-Oberfläche angelegt
+- Tauri-2-/Svelte-5-/Rust-Projektbasis und P-Viewer-Oberfläche angelegt
 - Architekturentscheidung, MIT-Lizenz und Grunddokumentation hinzugefügt

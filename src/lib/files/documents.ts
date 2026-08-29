@@ -69,7 +69,7 @@ function inTauri(): boolean {
 function requireDesktop(): void {
   if (!inTauri()) {
     throw new Error(
-      "Native Dateidialoge sind nur in der PandaViewer-Desktop-App verfügbar.",
+      "Native Dateidialoge sind nur in der P-Viewer-Desktop-App verfügbar.",
     );
   }
 }

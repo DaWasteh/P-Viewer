@@ -71,7 +71,7 @@
   <div class:light={activeTheme === "light"} class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <header>
       <div>
-        <span class="eyebrow">PANDAVIEWER</span>
+        <span class="eyebrow">P-VIEWER</span>
         <h2 id="settings-title">Einstellungen</h2>
       </div>
       <button class="close-button" aria-label="Einstellungen schließen" title="Schließen (Esc)" onclick={onClose}>

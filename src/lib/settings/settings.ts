@@ -20,7 +20,7 @@ export const DEFAULT_SETTINGS: AppSettings = Object.freeze({
 
 const STORE_FILE = "settings.json";
 const STORE_KEY = "preferences";
-const LOCAL_STORAGE_KEY = "pandaviewer.settings";
+const LOCAL_STORAGE_KEY = "p-viewer.settings";
 
 type NativeStore = Awaited<ReturnType<typeof import("@tauri-apps/plugin-store")["load"]>>;
 let nativeStorePromise: Promise<NativeStore> | null = null;

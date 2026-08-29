@@ -33,4 +33,4 @@ if (tag && tag !== `v${expected}`) {
   process.exit(1);
 }
 
-console.log(`PandaViewer version metadata is synchronized at v${expected}.`);
+console.log(`P-Viewer version metadata is synchronized at v${expected}.`);

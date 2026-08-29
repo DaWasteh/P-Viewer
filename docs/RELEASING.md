@@ -1,6 +1,6 @@
 # Signierte Releases und Updates
 
-PandaViewer verwendet den Tauri-v2-Updater. Ein Entwicklungsbuild bleibt **fail-closed**:
+P-Viewer verwendet den Tauri-v2-Updater. Ein Entwicklungsbuild bleibt **fail-closed**:
 Ohne vollständigen HTTPS-Endpunkt und öffentlichen Signaturschlüssel wird kein
 Update-Netzwerkzugriff gestartet. Der Update-Dialog weist dann auf den lokalen Build hin.
 
@@ -9,7 +9,7 @@ Update-Netzwerkzugriff gestartet. Der Update-Dialog weist dann auf den lokalen B
 Erzeuge den Schlüssel auf einem vertrauenswürdigen Rechner und wähle ein starkes Passwort:
 
 ```bash
-npm run tauri -- signer generate --write-keys "$HOME/.tauri/pandaviewer.key"
+npm run tauri -- signer generate --write-keys "$HOME/.tauri/p-viewer.key"
 ```
 
 Dabei entstehen eine private Schlüsseldatei und eine `.pub`-Datei.
@@ -21,13 +21,13 @@ Dabei entstehen eine private Schlüsseldatei und eine `.pub`-Datei.
 
 ## GitHub konfigurieren
 
-In **Settings → Secrets and variables → Actions** des späteren Repositorys:
+In **Settings → Secrets and variables → Actions** des Repositorys:
 
 | Typ | Name | Inhalt |
 | --- | --- | --- |
 | Secret | `TAURI_SIGNING_PRIVATE_KEY` | kompletter Inhalt der privaten Key-Datei |
 | Secret | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Passwort des privaten Keys |
-| Variable | `PANDAVIEWER_UPDATER_PUBKEY` | kompletter Inhalt der `.pub`-Datei |
+| Variable | `P_VIEWER_UPDATER_PUBKEY` | kompletter Inhalt der `.pub`-Datei |
 
 Der Workflow leitet den Update-Endpunkt automatisch aus `${{ github.repository }}` ab:
 
@@ -36,7 +36,7 @@ https://github.com/OWNER/REPOSITORY/releases/latest/download/latest.json
 ```
 
 Die Release-Builds erhalten Endpunkt und Public Key über die Build-Variablen
-`PANDAVIEWER_UPDATE_ENDPOINT` und `PANDAVIEWER_UPDATER_PUBKEY`. Die Release-Konfiguration
+`P_VIEWER_UPDATE_ENDPOINT` und `P_VIEWER_UPDATER_PUBKEY`. Die Release-Konfiguration
 `src-tauri/tauri.release.conf.json` aktiviert signierte Updater-Artefakte nur in CI;
 lokale Standard-Builds benötigen deshalb keinen privaten Key.
 
@@ -47,16 +47,20 @@ lokale Standard-Builds benötigen deshalb keinen privaten Key.
 2. Prüfen:
 
    ```bash
+   npm audit --audit-level=low
    npm run check:version
    npm run check
    npm test
+   npm run build
+   cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
    cargo test --manifest-path src-tauri/Cargo.toml
    cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
    ```
 
 3. Commit und exakt passendes Tag erstellen, zum Beispiel `v0.0.7`.
-4. Branch und Tag zu GitHub pushen. `.github/workflows/release.yml` baut Windows,
-   macOS und Linux, signiert die Pakete und erzeugt `latest.json`.
+4. Branch und Tag zu GitHub pushen. `.github/workflows/release.yml` wiederholt die
+   Qualitätsprüfungen, baut Windows, Linux sowie macOS für Intel und Apple Silicon,
+   signiert die Pakete und erzeugt `latest.json`.
 5. Der Workflow erstellt absichtlich einen **Draft Release**. Installer auf allen drei
    Plattformen testen, Signaturdateien und `latest.json` kontrollieren und erst danach
    den Entwurf manuell veröffentlichen.
@@ -67,8 +71,10 @@ fehlen. Er bevorzugt unter Windows NSIS für das Updater-Manifest.
 ## Einstellungsbestand
 
 Der Updater ersetzt ausschließlich das installierte App-Paket. `settings.json` liegt im
-plattformüblichen App-Datenordner (`io.pandaking.pandaviewer`) und nicht im
-Installationsordner. Updates löschen oder überschreiben diese Datei nicht.
+plattformüblichen App-Datenordner (`io.github.dawasteh.pviewer`) und nicht im
+Installationsordner. Mit v0.0.7 wurde diese endgültige App-Kennung festgelegt;
+Einstellungen älterer lokaler Vorab-Builds mit abweichender Kennung werden einmalig
+nicht migriert. Updates ab v0.0.7 löschen oder überschreiben die Einstellungsdatei nicht.
 
 ## Sicherheit
 

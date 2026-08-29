@@ -134,7 +134,7 @@
         <strong>Kein LaTeX-Compiler gefunden</strong>
         <p>
           Installiere MiKTeX oder TeX Live unter Windows, MacTeX unter macOS oder
-          TeX Live unter Linux. PandaViewer bevorzugt <code>latexmk</code> und
+          TeX Live unter Linux. P-Viewer bevorzugt <code>latexmk</code> und
           unterstützt außerdem Tectonic, LuaLaTeX, XeLaTeX und pdfLaTeX.
         </p>
         <button onclick={() => void detectEngines()}>
