@@ -97,6 +97,12 @@ export function resetSettings(): AppSettings {
   return { ...DEFAULT_SETTINGS };
 }
 
+export function nativeThemeFor(
+  preference: ThemePreference,
+): "dark" | "light" | null {
+  return preference === "system" ? null : preference;
+}
+
 async function getNativeStore(): Promise<NativeStore> {
   nativeStorePromise ??= import("@tauri-apps/plugin-store").then(({ load }) =>
     load(STORE_FILE, {

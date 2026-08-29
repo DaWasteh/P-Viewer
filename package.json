@@ -1,6 +1,6 @@
 {
   "name": "pandaviewer",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "A fast, focused cross-platform editor and document viewer.",
   "type": "module",
   "scripts": {
@@ -11,6 +11,8 @@
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "check:version": "node scripts/check-version.mjs",
     "test": "vitest run",
+    "stage:launcher": "node scripts/stage-launcher.mjs",
+    "build:launcher": "tauri build --no-bundle && node scripts/stage-launcher.mjs",
     "tauri": "tauri"
   },
   "author": "PandaViewer contributors",

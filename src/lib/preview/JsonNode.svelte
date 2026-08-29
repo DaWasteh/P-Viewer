@@ -7,6 +7,7 @@
   interface Props {
     value: JsonValue;
     keyName?: string | null;
+    keyIsIndex?: boolean;
     depth?: number;
     isLast?: boolean;
     sortKeys?: boolean;
@@ -18,6 +19,7 @@
   let {
     value,
     keyName = null,
+    keyIsIndex = false,
     depth = 0,
     isLast = true,
     sortKeys = false,
@@ -90,7 +92,7 @@
     {/if}
 
     {#if keyName !== null}
-      <span class="key">{isArray ? keyName : JSON.stringify(keyName)}</span><span class="colon">:</span>
+      <span class="key">{keyIsIndex ? keyName : JSON.stringify(keyName)}</span><span class="colon">:</span>
     {/if}
 
     {#if isContainer}
@@ -112,6 +114,7 @@
         <JsonNode
           value={childValue}
           keyName={childKey}
+          keyIsIndex={isArray}
           depth={depth + 1}
           isLast={index === entries.length - 1}
           {sortKeys}

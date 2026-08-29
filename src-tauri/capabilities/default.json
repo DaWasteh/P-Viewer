@@ -9,8 +9,12 @@
     "core:window:allow-set-theme",
     "core:window:allow-set-title",
     "dialog:default",
-    "opener:default",
+    "opener:allow-default-urls",
+    "opener:allow-open-url",
     "process:allow-restart",
-    "store:default"
+    "store:allow-get",
+    "store:allow-load",
+    "store:allow-save",
+    "store:allow-set"
   ]
 }

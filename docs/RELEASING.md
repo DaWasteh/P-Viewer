@@ -54,7 +54,7 @@ lokale Standard-Builds benötigen deshalb keinen privaten Key.
    cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
    ```
 
-3. Commit und exakt passendes Tag erstellen, zum Beispiel `v0.0.5`.
+3. Commit und exakt passendes Tag erstellen, zum Beispiel `v0.0.7`.
 4. Branch und Tag zu GitHub pushen. `.github/workflows/release.yml` baut Windows,
    macOS und Linux, signiert die Pakete und erzeugt `latest.json`.
 5. Der Workflow erstellt absichtlich einen **Draft Release**. Installer auf allen drei

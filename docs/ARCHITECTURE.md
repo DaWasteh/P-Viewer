@@ -1,7 +1,7 @@
 # Architekturentscheidung
 
 **Status:** angenommen  
-**Version:** v0.0.1
+**Version:** v0.0.6
 
 ## Entscheidung
 
@@ -30,8 +30,10 @@ Diese Kombination liefert native, kleine Desktop-Pakete und direkten, kontrollie
 2. **Ein Dokument, wenig Ablenkung:** Edit-, View- und Split-Modus stehen im Mittelpunkt.
 3. **Keine Ausführung von Dokumentcode:** Markdown-HTML wird sanitisiert; HTML-/Script-Inhalte laufen nicht im App-Kontext.
 4. **Minimale native Rechte:** Dateioperationen laufen über eng begrenzte Rust-Commands statt pauschaler Dateisystemfreigaben.
-5. **Einstellungen getrennt vom Programm:** Updates ersetzen nur Anwendungsartefakte. Einstellungen bleiben in `%APPDATA%`, `~/Library/Application Support` beziehungsweise `$XDG_CONFIG_HOME` erhalten.
-6. **Sichere TeX-Vorgaben:** Compiler werden ohne Shell-String gestartet, temporäre Ausgaben isoliert und `shell-escape` bleibt aus.
+5. **Einstellungen getrennt vom Programm:** Updates ersetzen nur Anwendungsartefakte. Einstellungen bleiben in `%APPDATA%`, `~/Library/Application Support` beziehungsweise `$XDG_DATA_HOME` erhalten.
+6. **Sichere TeX-Vorgaben:** Compiler werden über absolute Programme aus bereinigten PATH-Ordnern ohne Benutzershell gestartet. Arbeitsausgaben bleiben temporär, Projektdateien werden nur als Inputs gesucht, und `shell-escape` bleibt aus.
+7. **Defense in depth:** Eine restriktive Content Security Policy, sanitisiertes Markdown, Größenlimits und eng zugeschnittene Tauri-Capabilities begrenzen Dokument- und WebView-Inhalte.
+8. **Fail-closed Updates:** Lokale Builds laden nichts. Release-Builds benötigen HTTPS-Endpunkt, Public Key und signierte Pakete; unvollständige Konfiguration wird abgelehnt.
 
 ## LaTeX-Grenze
 
@@ -50,21 +52,21 @@ Eine vollständige TeX-Live-Installation kann mehrere Gigabyte groß sein und wi
 - macOS: MacTeX
 - Linux: TeX Live
 
-Tectonic kann später als optionale portable Engine ergänzt werden, ersetzt aber nicht jede spezialisierte TeX-Live-Konfiguration.
+Tectonic wird als optionale Engine im `--untrusted`-Modus unterstützt, ersetzt aber nicht jede spezialisierte TeX-Live-Konfiguration.
 
 ## Geplante Modulgrenzen
 
 ```text
 src/lib/
-  editor/       CodeMirror-Integration und Sprachauflösung
-  files/        Dateitypen, Dokumentzustand und Dialoge
-  preview/      Markdown-, JSON-, Text- und PDF-Ansichten
+  editor/       CodeMirror-Integration und lazy Sprachauflösung
+  files/        Dateitypen, Dokumentzustand, Pfade und Dialoge
+  preview/      Markdown-, JSON-, Text-, LaTeX- und PDF-Ansichten
   settings/     persistente UI-/Editor-Einstellungen
-  update/       signierter GitHub-Release-Updater
+  update/       Oberfläche des signierten Release-Updaters
 src-tauri/src/
-  commands/     schmale Tauri-Commands
-  document.rs   Encoding-sichere Datei-E/A
-  latex.rs      sichere Compilersteuerung
+  document.rs   Encoding-sichere und atomare Datei-E/A
+  latex.rs      isolierte Compilersteuerung mit Timeouts
+  updater.rs    HTTPS-, Signatur- und Installationsgrenze
 ```
 
 ## Verworfene Alternativen

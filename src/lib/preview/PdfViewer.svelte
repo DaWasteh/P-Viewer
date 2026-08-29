@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { Minus, Plus, RotateCcw } from "@lucide/svelte";
   import type {
     PDFDocumentLoadingTask,
@@ -47,12 +47,13 @@
   $effect(() => {
     const encoded = pdfBase64;
     if (!container) return;
-    void loadPdf(encoded);
+    untrack(() => void loadPdf(encoded));
   });
 
   $effect(() => {
     zoom;
-    if (pdfDocument) void renderPages(pdfDocument);
+    const loaded = untrack(() => pdfDocument);
+    if (loaded) void renderPages(loaded);
   });
 
   function decodeBase64(value: string): Uint8Array {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SETTINGS,
+  nativeThemeFor,
   normalizeSettings,
   resetSettings,
 } from "./settings";
@@ -51,5 +52,11 @@ describe("settings normalization", () => {
     const reset = resetSettings();
     reset.editorFontSize = 20;
     expect(DEFAULT_SETTINGS.editorFontSize).toBe(14);
+  });
+
+  it("releases native theme control for the system preference", () => {
+    expect(nativeThemeFor("system")).toBeNull();
+    expect(nativeThemeFor("dark")).toBe("dark");
+    expect(nativeThemeFor("light")).toBe("light");
   });
 });

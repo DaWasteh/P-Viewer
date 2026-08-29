@@ -2,7 +2,7 @@
 
 PandaViewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter für Windows, macOS und Linux. Das Ziel ist die Dateiformat-Kompetenz eines großen Code-Editors in einer ruhigen, übersichtlichen Oberfläche.
 
-> **Status:** lokale Version `v0.0.5`. Das Projekt ist funktionsfähig, aber noch nicht veröffentlicht.
+> **Status:** lokale Version `v0.0.6`. Das Projekt ist funktionsfähig, aber noch nicht veröffentlicht.
 
 ## Aktueller Funktionsumfang
 
@@ -24,7 +24,7 @@ PandaViewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachte
 - **Editor:** CodeMirror 6
 - **Dokument-Rendering:** unified/remark/rehype, KaTeX und PDF.js
 
-Die Entscheidung ist in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) dokumentiert.
+Die Entscheidung ist in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) dokumentiert. Änderungen je Version stehen im [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Lokale Entwicklung
 
@@ -38,6 +38,16 @@ Voraussetzungen:
 npm install
 npm run tauri dev
 ```
+
+### Per Doppelklick starten
+
+Ein optimierter Root-Launcher wird mit einem Befehl gebaut und nach `PandaViewer.exe` im Projektstamm kopiert:
+
+```bash
+npm run build:launcher
+```
+
+Danach lässt sich `PandaViewer.exe` direkt doppelklicken oder über **Rechtsklick → Weitere Optionen anzeigen → Verknüpfung erstellen** auf dem Desktop verknüpfen. `Start-PandaViewer.cmd` im Projektstamm dient als Fallback und findet automatisch den Root-, Release- oder Debug-Build.
 
 Prüfungen:
 

@@ -1,6 +1,6 @@
 [package]
 name = "pandaviewer"
-version = "0.0.5"
+version = "0.0.6"
 description = "A fast, focused cross-platform editor and document viewer"
 authors = ["PandaViewer contributors"]
 license = "MIT"

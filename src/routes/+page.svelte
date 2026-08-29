@@ -31,6 +31,7 @@
   import {
     DEFAULT_SETTINGS,
     loadSettings,
+    nativeThemeFor,
     resetSettings,
     saveSettings,
     type AppSettings,
@@ -73,9 +74,18 @@
     if (typeof window === "undefined") return;
     window.document.documentElement.dataset.theme = activeTheme;
     window.document.documentElement.style.colorScheme = activeTheme;
-    void appWindow?.setTheme(activeTheme).catch((error) => {
-      console.warn("Native Fensterdarstellung konnte nicht aktualisiert werden.", error);
-    });
+    const themePreference = settings.theme;
+    const nativeTheme = nativeThemeFor(themePreference);
+    void appWindow
+      ?.setTheme(nativeTheme)
+      .then(() => {
+        if (themePreference === "system") {
+          systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        }
+      })
+      .catch((error) => {
+        console.warn("Native Fensterdarstellung konnte nicht aktualisiert werden.", error);
+      });
   });
 
   $effect(() => {

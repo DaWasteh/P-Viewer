@@ -14,6 +14,7 @@ const UTF8_BOM: &[u8] = &[0xEF, 0xBB, 0xBF];
 const UTF16_LE_BOM: &[u8] = &[0xFF, 0xFE];
 const UTF16_BE_BOM: &[u8] = &[0xFE, 0xFF];
 const MAX_LOCAL_IMAGE_BYTES: u64 = 25 * 1024 * 1024;
+const MAX_DOCUMENT_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,6 +68,12 @@ pub fn read_document(path: String) -> Result<DocumentPayload, String> {
     if !metadata.is_file() {
         return Err("Der gewählte Pfad ist keine Datei.".into());
     }
+    if metadata.len() > MAX_DOCUMENT_BYTES {
+        return Err(format!(
+            "Die Datei ist größer als {} MiB und wird zum Schutz des Editors nicht geöffnet.",
+            MAX_DOCUMENT_BYTES / 1024 / 1024
+        ));
+    }
 
     let bytes =
         fs::read(&path).map_err(|error| format!("Datei kann nicht geöffnet werden: {error}"))?;
@@ -118,6 +125,12 @@ pub fn write_document(
     let normalized = normalize_line_endings(&content, &line_ending)?;
     let bytes = encode_text(&normalized, &encoding, has_bom)?;
     let size = bytes.len() as u64;
+    if size > MAX_DOCUMENT_BYTES {
+        return Err(format!(
+            "Das Dokument ist größer als {} MiB und wird nicht gespeichert.",
+            MAX_DOCUMENT_BYTES / 1024 / 1024
+        ));
+    }
 
     let mut file = AtomicWriteFile::open(&path)
         .map_err(|error| format!("Temporäre Speicherdatei kann nicht erstellt werden: {error}"))?;
@@ -426,5 +439,49 @@ mod tests {
             .err()
             .unwrap();
         assert!(error.contains("UTF-8"));
+    }
+
+    #[test]
+    fn command_round_trip_preserves_utf16_bom_and_crlf() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("paper.txt");
+        let path_string = path.to_string_lossy().into_owned();
+
+        let saved = write_document(
+            path_string.clone(),
+            "Alpha α\nBeta β\n".into(),
+            "UTF-16LE".into(),
+            true,
+            "crlf".into(),
+        )
+        .unwrap();
+        let raw = fs::read(&path).unwrap();
+        let opened = read_document(path_string).unwrap();
+
+        assert_eq!(saved.size, raw.len() as u64);
+        assert!(raw.starts_with(UTF16_LE_BOM));
+        assert_eq!(opened.content, "Alpha α\r\nBeta β\r\n");
+        assert_eq!(opened.encoding, "UTF-16LE");
+        assert!(opened.has_bom);
+        assert_eq!(opened.line_ending, "crlf");
+    }
+
+    #[test]
+    fn local_image_loader_is_type_limited() {
+        let directory = tempfile::tempdir().unwrap();
+        let document = directory.path().join("paper.md");
+        let image = directory.path().join("figure.png");
+        let disallowed = directory.path().join("figure.svg");
+        fs::write(&document, "![figure](figure.png)").unwrap();
+        fs::write(&image, [0x89, b'P', b'N', b'G']).unwrap();
+        fs::write(&disallowed, "<svg/>").unwrap();
+
+        let payload =
+            read_local_image(document.to_string_lossy().into_owned(), "figure.png".into()).unwrap();
+        assert!(payload.data_url.starts_with("data:image/png;base64,"));
+
+        let error = read_local_image(document.to_string_lossy().into_owned(), "figure.svg".into())
+            .unwrap_err();
+        assert!(error.contains("Sicherheitsgründen"));
     }
 }
