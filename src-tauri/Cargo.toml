@@ -1,6 +1,6 @@
 [package]
 name = "pandaviewer"
-version = "0.0.4"
+version = "0.0.5"
 description = "A fast, focused cross-platform editor and document viewer"
 authors = ["PandaViewer contributors"]
 license = "MIT"
@@ -32,4 +32,7 @@ tempfile = "3"
 wait-timeout = "0.2"
 percent-encoding = "2"
 tauri-plugin-store = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+url = "2"
 

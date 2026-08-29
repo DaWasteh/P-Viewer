@@ -2,11 +2,11 @@
 
 PandaViewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter für Windows, macOS und Linux. Das Ziel ist die Dateiformat-Kompetenz eines großen Code-Editors in einer ruhigen, übersichtlichen Oberfläche.
 
-> **Status:** frühe lokale Entwicklung. Das Projekt wird noch nicht veröffentlicht.
+> **Status:** lokale Version `v0.0.5`. Das Projekt ist funktionsfähig, aber noch nicht veröffentlicht.
 
-## Geplanter Funktionsumfang
+## Aktueller Funktionsumfang
 
-- Text- und Code-Dateien lesen, erstellen und bearbeiten
+- Text- und Code-Dateien encoding-sicher lesen, atomar speichern, erstellen und bearbeiten
 - breite Syntaxhervorhebung mit sicherem Plaintext-Fallback
 - Edit-, View- und Split-Ansicht
 - Markdown mit GFM, Gliederung, Folding, Tabellen, Aufgabenlisten, Callouts und KaTeX-Mathematik
@@ -15,7 +15,7 @@ PandaViewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachte
 - Dark Mode als Standard, optionaler Light Mode
 - anpassbare Schrift- und Symbolgrößen
 - persistente Einstellungen im plattformüblichen Benutzer-Konfigurationsverzeichnis
-- signierte In-App-Updates aus einem späteren GitHub-Release-Kanal, ohne Benutzereinstellungen zu überschreiben
+- vorbereiteter, fail-closed In-App-Updater für signierte GitHub-Releases, ohne Benutzereinstellungen zu überschreiben
 
 ## Technologie
 
@@ -39,16 +39,20 @@ npm install
 npm run tauri dev
 ```
 
-Frontend-Prüfung:
+Prüfungen:
 
 ```bash
+npm run check:version
 npm run check
+npm test
 npm run build
+cargo test --manifest-path src-tauri/Cargo.toml
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```
 
 ## LaTeX
 
-Eine vollständige TeX-Distribution ist bewusst nicht Teil des schlanken App-Pakets. PandaViewer steuert sicher eine lokal installierte Distribution an, bevorzugt `latexmk`; unterstützt werden außerdem `pdflatex`, `xelatex`, `lualatex` und später optional Tectonic.
+Eine vollständige TeX-Distribution ist bewusst nicht Teil des schlanken App-Pakets. PandaViewer steuert sicher eine lokal installierte Distribution an, bevorzugt `latexmk`; unterstützt werden außerdem Tectonic, `pdflatex`, `xelatex` und `lualatex`.
 
 - Windows: MiKTeX oder TeX Live
 - macOS: MacTeX
@@ -58,7 +62,7 @@ Shell-Escape bleibt standardmäßig deaktiviert.
 
 ## Versionierung
 
-Lokale Entwicklungsstufen werden fortlaufend als `v0.0.1`, `v0.0.2`, … committed und getaggt.
+Lokale Entwicklungsstufen werden fortlaufend als `v0.0.1`, `v0.0.2`, … committed und getaggt. Der Ablauf für signierte Draft-Releases ist in [`docs/RELEASING.md`](docs/RELEASING.md) beschrieben.
 
 ## Lizenz
 

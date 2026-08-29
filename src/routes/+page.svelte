@@ -3,6 +3,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import type { Window as TauriWindow } from "@tauri-apps/api/window";
   import {
+    CircleArrowUp,
     Columns2,
     Eye,
     FileOutput,
@@ -24,7 +25,9 @@
   } from "$lib/files/documents";
   import { countLines, countWords } from "$lib/files/fileTypes";
   import type { OpenDocument, ViewMode } from "$lib/files/types";
+  import { APP_VERSION } from "$lib/version";
   import SettingsPanel from "$lib/settings/SettingsPanel.svelte";
+  import UpdatePanel from "$lib/update/UpdatePanel.svelte";
   import {
     DEFAULT_SETTINGS,
     loadSettings,
@@ -44,6 +47,7 @@
   let selectedCharacters = $state(0);
   let settings = $state<AppSettings>({ ...DEFAULT_SETTINGS });
   let settingsOpen = $state(false);
+  let updateOpen = $state(false);
   let settingsReady = $state(false);
   let systemDark = $state(true);
   let appWindow = $state.raw<TauriWindow | null>(null);
@@ -261,7 +265,12 @@
       mode = "split";
     } else if (key === ",") {
       event.preventDefault();
+      updateOpen = false;
       settingsOpen = true;
+    } else if (key === "u" && event.shiftKey) {
+      event.preventDefault();
+      settingsOpen = false;
+      updateOpen = true;
     }
   }
 
@@ -298,7 +307,7 @@
       <span>{document.name}</span>
       {#if dirty}<span class="dirty-dot" title="Ungespeicherte Änderungen">●</span>{/if}
     </div>
-    <span class="version">v0.0.4</span>
+    <span class="version">v{APP_VERSION}</span>
   </header>
 
   <nav class="toolbar" aria-label="Dokumentaktionen">
@@ -337,7 +346,22 @@
     </div>
 
     <div class="format-pill">{document.fileType.label}</div>
-    <button class="icon-button settings-button" class:active={settingsOpen} title="Einstellungen (Strg/Cmd+,)" onclick={() => (settingsOpen = true)}>
+    <button
+      class="icon-button settings-button"
+      class:active={updateOpen}
+      title="Auf Updates prüfen (Strg/Cmd+Umschalt+U)"
+      onclick={() => {
+        settingsOpen = false;
+        updateOpen = true;
+      }}
+    >
+      <CircleArrowUp size={17} aria-hidden="true" />
+      <span class="sr-only">Auf Updates prüfen</span>
+    </button>
+    <button class="icon-button settings-button" class:active={settingsOpen} title="Einstellungen (Strg/Cmd+,)" onclick={() => {
+      updateOpen = false;
+      settingsOpen = true;
+    }}>
       <Settings2 size={17} aria-hidden="true" />
       <span class="sr-only">Einstellungen öffnen</span>
     </button>
@@ -410,6 +434,15 @@
       onChange={updateSettings}
       onClose={() => (settingsOpen = false)}
       onReset={restoreSettings}
+    />
+  {/if}
+
+  {#if updateOpen}
+    <UpdatePanel
+      {activeTheme}
+      hasUnsavedChanges={dirty}
+      onSave={() => saveCurrent()}
+      onClose={() => (updateOpen = false)}
     />
   {/if}
 </main>

@@ -1,6 +1,6 @@
 {
   "name": "pandaviewer",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "A fast, focused cross-platform editor and document viewer.",
   "type": "module",
   "scripts": {
@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "check:version": "node scripts/check-version.mjs",
     "test": "vitest run",
     "tauri": "tauri"
   },
@@ -25,7 +26,9 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.2",
     "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-store": "^2.4.4",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "codemirror": "^6.0.2",
     "github-slugger": "^2.0.0",
     "hast-util-sanitize": "^5.0.2",

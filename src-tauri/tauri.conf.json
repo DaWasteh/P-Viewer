@@ -1,13 +1,22 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "PandaViewer",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "identifier": "io.pandaking.pandaviewer",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../build"
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [],
+      "pubkey": "",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   },
   "app": {
     "windows": [
