@@ -1,3 +1,8 @@
+import {
+  FILE_ASSOCIATION_IDS,
+  normalizeAssociationIds,
+} from "$lib/files/associations";
+
 export type ThemePreference = "dark" | "light" | "system";
 
 export interface AppSettings {
@@ -7,6 +12,8 @@ export interface AppSettings {
   iconSize: number;
   wordWrap: boolean;
   spellcheck: boolean;
+  debugMode: boolean;
+  defaultAppAssociations: string[];
 }
 
 export const DEFAULT_SETTINGS: AppSettings = Object.freeze({
@@ -16,6 +23,8 @@ export const DEFAULT_SETTINGS: AppSettings = Object.freeze({
   iconSize: 17,
   wordWrap: true,
   spellcheck: true,
+  debugMode: false,
+  defaultAppAssociations: [...FILE_ASSOCIATION_IDS],
 });
 
 const STORE_FILE = "settings.json";
@@ -51,6 +60,9 @@ export function normalizeSettings(value: unknown): AppSettings {
       typeof source.spellcheck === "boolean"
         ? source.spellcheck
         : DEFAULT_SETTINGS.spellcheck,
+    debugMode:
+      typeof source.debugMode === "boolean" ? source.debugMode : DEFAULT_SETTINGS.debugMode,
+    defaultAppAssociations: normalizeAssociationIds(source.defaultAppAssociations),
   };
 }
 
@@ -94,7 +106,10 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
 }
 
 export function resetSettings(): AppSettings {
-  return { ...DEFAULT_SETTINGS };
+  return {
+    ...DEFAULT_SETTINGS,
+    defaultAppAssociations: [...DEFAULT_SETTINGS.defaultAppAssociations],
+  };
 }
 
 export function nativeThemeFor(

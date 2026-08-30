@@ -162,7 +162,8 @@ const FALLBACK: FileTypeInfo = {
 };
 
 export function fileNameFromPath(path: string): string {
-  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+  const segments = path.split(/[\\/]/).filter(Boolean);
+  return segments[segments.length - 1] ?? path;
 }
 
 export function extensionOf(fileName: string): string {

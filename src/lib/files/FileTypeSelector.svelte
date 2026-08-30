@@ -168,6 +168,7 @@
   select {
     width: min(190px, 24vw);
     height: 27px;
+    -webkit-appearance: none;
     appearance: none;
     padding: 0 27px 0 9px;
     overflow: hidden;
@@ -217,6 +218,7 @@
 
   dialog::backdrop {
     background: rgb(4 6 10 / 58%);
+    -webkit-backdrop-filter: blur(2px);
     backdrop-filter: blur(2px);
   }
 

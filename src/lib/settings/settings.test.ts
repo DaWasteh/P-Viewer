@@ -21,6 +21,8 @@ describe("settings normalization", () => {
         iconSize: 22,
         wordWrap: false,
         spellcheck: false,
+        debugMode: true,
+        defaultAppAssociations: ["markdown", "json"],
       }),
     ).toEqual({
       theme: "light",
@@ -29,6 +31,8 @@ describe("settings normalization", () => {
       iconSize: 22,
       wordWrap: false,
       spellcheck: false,
+      debugMode: true,
+      defaultAppAssociations: ["markdown", "json"],
     });
   });
 
@@ -51,7 +55,11 @@ describe("settings normalization", () => {
   it("returns a mutable reset copy", () => {
     const reset = resetSettings();
     reset.editorFontSize = 20;
+    reset.defaultAppAssociations.pop();
     expect(DEFAULT_SETTINGS.editorFontSize).toBe(14);
+    expect(reset.defaultAppAssociations).toHaveLength(
+      DEFAULT_SETTINGS.defaultAppAssociations.length - 1,
+    );
   });
 
   it("releases native theme control for the system preference", () => {

@@ -23,7 +23,7 @@ export function isPristineUntitled(document: OpenDocument): boolean {
 export function sameDocumentPath(left: string, right: string): boolean {
   if (!left || !right) return false;
   const windowsPath = /^[a-z]:[\\/]/i.test(left) || /^[a-z]:[\\/]/i.test(right);
-  const normalize = (path: string) => path.replaceAll("\\", "/");
+  const normalize = (path: string) => path.replace(/\\/g, "/");
   return windowsPath
     ? normalize(left).toLowerCase() === normalize(right).toLowerCase()
     : normalize(left) === normalize(right);

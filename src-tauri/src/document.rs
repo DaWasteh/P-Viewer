@@ -9,6 +9,7 @@ use std::{
     fs,
     io::Write,
     path::{Component, Path, PathBuf},
+    sync::Mutex,
 };
 
 const UTF8_BOM: &[u8] = &[0xEF, 0xBB, 0xBF];
@@ -56,13 +57,49 @@ struct DecodedText {
     lossy: bool,
 }
 
+#[derive(Default)]
+pub(crate) struct PendingDocumentPaths(Mutex<Vec<String>>);
+
+impl PendingDocumentPaths {
+    pub(crate) fn from_startup_arguments() -> Self {
+        Self(Mutex::new(
+            std::env::args_os()
+                .skip(1)
+                .map(PathBuf::from)
+                .filter(|path| path.is_file())
+                .map(|path| path.to_string_lossy().into_owned())
+                .collect(),
+        ))
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(crate) fn add_paths(&self, paths: Vec<String>) -> Result<(), String> {
+        let mut pending = self
+            .0
+            .lock()
+            .map_err(|_| "Die Liste zu öffnender Dokumente ist gesperrt.".to_string())?;
+        for path in paths {
+            if !pending.contains(&path) {
+                pending.push(path);
+            }
+        }
+        Ok(())
+    }
+
+    fn take(&self) -> Result<Vec<String>, String> {
+        let mut pending = self
+            .0
+            .lock()
+            .map_err(|_| "Die Liste zu öffnender Dokumente ist gesperrt.".to_string())?;
+        Ok(std::mem::take(&mut *pending))
+    }
+}
+
 #[tauri::command]
-pub fn initial_document_path() -> Option<String> {
-    std::env::args_os()
-        .skip(1)
-        .map(PathBuf::from)
-        .find(|path| path.is_file())
-        .map(|path| path.to_string_lossy().into_owned())
+pub fn take_pending_document_paths(
+    pending: tauri::State<'_, PendingDocumentPaths>,
+) -> Result<Vec<String>, String> {
+    pending.take()
 }
 
 #[tauri::command]

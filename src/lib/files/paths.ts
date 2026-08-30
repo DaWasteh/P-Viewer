@@ -42,5 +42,5 @@ function normalizePath(value: string, separator: "\\" | "/"): string {
   }
 
   const prefix = drive ? `${drive}/` : absolute ? "/" : "";
-  return `${prefix}${parts.join("/")}`.replaceAll("/", separator);
+  return `${prefix}${parts.join("/")}`.split("/").join(separator);
 }

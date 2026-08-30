@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import type { Window as TauriWindow } from "@tauri-apps/api/window";
   import {
     CircleArrowUp,
@@ -26,6 +27,7 @@
     openDocumentPath,
     saveDocument,
   } from "$lib/files/documents";
+  import { currentRuntimeInfo } from "$lib/debug/runtime";
   import { countLines, countWords, detectFileType } from "$lib/files/fileTypes";
   import {
     documentIsDirty,
@@ -69,6 +71,7 @@
   let updateOpen = $state(false);
   let settingsReady = $state(false);
   let systemDark = $state(true);
+  let runtimeInfo = $state(currentRuntimeInfo());
   let appWindow = $state.raw<TauriWindow | null>(null);
 
   const activeTab = $derived(tabs.find((tab) => tab.id === activeTabId) ?? tabs[0]);
@@ -118,7 +121,39 @@
   });
 
   $effect(() => {
-    const snapshot = { ...settings };
+    if (typeof window === "undefined") return;
+    if (settings.debugMode) {
+      window.document.documentElement.dataset.debug = "true";
+      const diagnostics = {
+        version: APP_VERSION,
+        platform: runtimeInfo.platform,
+        engine: runtimeInfo.engine,
+        document: document.name,
+        fileType: document.fileType,
+        characters: document.content.length,
+        tabs: tabs.length,
+        mode,
+        dirty,
+      };
+      const timer = window.setTimeout(() => {
+        console.debug("[P-Viewer Debug]", diagnostics);
+      }, 180);
+      return () => window.clearTimeout(timer);
+    }
+    delete window.document.documentElement.dataset.debug;
+  });
+
+  $effect(() => {
+    if (settings.debugMode && errorMessage) {
+      console.error("[P-Viewer Debug]", errorMessage);
+    }
+  });
+
+  $effect(() => {
+    const snapshot = {
+      ...settings,
+      defaultAppAssociations: [...settings.defaultAppAssociations],
+    };
     if (!settingsReady) return;
     const timer = window.setTimeout(() => {
       void saveSettings(snapshot).catch((error) => {
@@ -129,10 +164,15 @@
   });
 
   onMount(() => {
+    runtimeInfo = currentRuntimeInfo();
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const updateSystemTheme = () => (systemDark = media.matches);
     updateSystemTheme();
-    media.addEventListener("change", updateSystemTheme);
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", updateSystemTheme);
+    } else {
+      media.addListener(updateSystemTheme);
+    }
 
     void loadSettings()
       .then((loaded) => {
@@ -145,7 +185,13 @@
         settingsReady = true;
       });
 
-    return () => media.removeEventListener("change", updateSystemTheme);
+    return () => {
+      if (typeof media.removeEventListener === "function") {
+        media.removeEventListener("change", updateSystemTheme);
+      } else {
+        media.removeListener(updateSystemTheme);
+      }
+    };
   });
 
   onMount(() => {
@@ -178,15 +224,20 @@
         await getCurrentWebview().onDragDropEvent((event) => {
           const payload = event.payload;
           dragActive = payload.type === "enter" || payload.type === "over";
-          if (payload.type === "drop" && payload.paths[0]) {
+          if (payload.type === "drop" && payload.paths.length > 0) {
             dragActive = false;
-            void openDroppedDocument(payload.paths[0]);
+            void openExternalDocuments(payload.paths);
           }
         }),
       );
+      cleanups.push(
+        await listen<string[]>("open-documents", (event) => {
+          void openExternalDocuments(event.payload);
+        }),
+      );
 
-      const initialPath = await invoke<string | null>("initial_document_path");
-      if (initialPath) await openDroppedDocument(initialPath, true);
+      const initialPaths = await invoke<string[]>("take_pending_document_paths");
+      await openExternalDocuments(initialPaths, true);
     })().catch((error) => {
       errorMessage = messageFrom(error);
     });
@@ -241,6 +292,15 @@
       errorMessage = messageFrom(error);
     } finally {
       busy = false;
+    }
+  }
+
+  async function openExternalDocuments(
+    paths: readonly string[],
+    replacePristine = true,
+  ): Promise<void> {
+    for (let index = 0; index < paths.length; index += 1) {
+      await openDroppedDocument(paths[index], replacePristine && index === 0);
     }
   }
 
@@ -627,6 +687,11 @@
     <span>{document.encoding}{document.hasBom ? " BOM" : ""}</span>
     <span>{lineEndingLabel(document.lineEnding)}</span>
     {#if document.lossy}<span class="warning">Kodierung mit Ersatzzeichen</span>{/if}
+    {#if settings.debugMode}
+      <span class="debug-badge" title={runtimeInfo.userAgent}>DEBUG v{APP_VERSION}</span>
+      <span title={runtimeInfo.userAgent}>{runtimeInfo.platform} · {runtimeInfo.engine}</span>
+      <span>{document.fileType.kind} · {document.content.length.toLocaleString("de-DE")} Zeichen · {tabs.length} Tabs</span>
+    {/if}
     <span class="path" title={document.path}>{document.path || "Noch nicht gespeichert"}</span>
   </footer>
 
@@ -668,7 +733,7 @@
     --accent: #7183e7;
     --accent-strong: #8796ed;
     --danger: #ef8b91;
-    --mono: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    --mono: var(--font-mono);
   }
 
   .app-shell {
@@ -698,8 +763,9 @@
   }
 
   .app-shell :global(svg) {
-    scale: var(--icon-scale);
-    transition: scale 120ms ease;
+    transform: scale(var(--icon-scale));
+    transform-origin: center;
+    transition: transform 120ms ease;
   }
 
   .app-shell.has-error {
@@ -939,6 +1005,22 @@
 
   .warning {
     color: #e6bd72;
+  }
+
+  .debug-badge {
+    padding: 2px 5px;
+    border: 1px solid #5367d2;
+    border-radius: 4px;
+    color: #c6ceff;
+    background: #26305f;
+    font-weight: 750;
+    letter-spacing: 0.04em;
+  }
+
+  .light .debug-badge {
+    border-color: #8290d8;
+    color: #33428c;
+    background: #e5e9ff;
   }
 
   .sr-only {

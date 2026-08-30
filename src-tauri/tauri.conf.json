@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "P-Viewer",
-  "version": "0.0.9",
+  "version": "0.1.0",
   "identifier": "io.github.dawasteh.pviewer",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -42,6 +42,685 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installerHooks": "windows/file-associations.nsh"
+      }
+    },
+    "resources": [
+      "../THIRD_PARTY_NOTICES.md"
+    ],
+    "fileAssociations": [
+      {
+        "ext": [
+          "md",
+          "markdown",
+          "mdown",
+          "mkd"
+        ],
+        "name": "PViewer.Markdown",
+        "description": "Markdown-Dokument",
+        "role": "Editor",
+        "mimeType": "text/markdown",
+        "rank": "Alternate",
+        "contentTypes": [
+          "net.daringfireball.markdown"
+        ]
+      },
+      {
+        "ext": [
+          "mdx"
+        ],
+        "name": "PViewer.Mdx",
+        "description": "MDX-Dokument",
+        "role": "Editor",
+        "mimeType": "text/mdx",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "json",
+          "jsonc",
+          "json5"
+        ],
+        "name": "PViewer.Json",
+        "description": "JSON-Dokument",
+        "role": "Editor",
+        "mimeType": "application/json",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.json"
+        ]
+      },
+      {
+        "ext": [
+          "ipynb"
+        ],
+        "name": "PViewer.Notebook",
+        "description": "Jupyter-Notebook",
+        "role": "Editor",
+        "mimeType": "application/x-ipynb+json",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.json"
+        ]
+      },
+      {
+        "ext": [
+          "tex",
+          "latex",
+          "ltx"
+        ],
+        "name": "PViewer.LaTeX",
+        "description": "LaTeX-Dokument",
+        "role": "Editor",
+        "mimeType": "application/x-tex",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.tex"
+        ]
+      },
+      {
+        "ext": [
+          "sty",
+          "cls"
+        ],
+        "name": "PViewer.LaTeXSupport",
+        "description": "LaTeX-Klasse oder -Stil",
+        "role": "Editor",
+        "mimeType": "text/x-tex",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "bib"
+        ],
+        "name": "PViewer.BibTeX",
+        "description": "BibTeX-Datenbank",
+        "role": "Editor",
+        "mimeType": "text/x-bibtex",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "js",
+          "mjs",
+          "cjs"
+        ],
+        "name": "PViewer.JavaScript",
+        "description": "JavaScript-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/javascript",
+        "rank": "Alternate",
+        "contentTypes": [
+          "com.netscape.javascript-source"
+        ]
+      },
+      {
+        "ext": [
+          "jsx"
+        ],
+        "name": "PViewer.Jsx",
+        "description": "JSX-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/jsx",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "ts",
+          "mts",
+          "cts"
+        ],
+        "name": "PViewer.TypeScript",
+        "description": "TypeScript-Quelltext",
+        "role": "Editor",
+        "mimeType": "application/typescript",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "tsx"
+        ],
+        "name": "PViewer.Tsx",
+        "description": "TSX-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/tsx",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "py",
+          "pyw"
+        ],
+        "name": "PViewer.Python",
+        "description": "Python-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-python",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.python-script"
+        ]
+      },
+      {
+        "ext": [
+          "rs"
+        ],
+        "name": "PViewer.Rust",
+        "description": "Rust-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/rust",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "go"
+        ],
+        "name": "PViewer.Go",
+        "description": "Go-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-go",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "java"
+        ],
+        "name": "PViewer.Java",
+        "description": "Java-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-java",
+        "rank": "Alternate",
+        "contentTypes": [
+          "com.sun.java-source"
+        ]
+      },
+      {
+        "ext": [
+          "kt",
+          "kts"
+        ],
+        "name": "PViewer.Kotlin",
+        "description": "Kotlin-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-kotlin",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "cs"
+        ],
+        "name": "PViewer.CSharp",
+        "description": "C#-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-csharp",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "c",
+          "h"
+        ],
+        "name": "PViewer.C",
+        "description": "C-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-c",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.c-source"
+        ]
+      },
+      {
+        "ext": [
+          "cc",
+          "cpp",
+          "cxx",
+          "hpp"
+        ],
+        "name": "PViewer.Cpp",
+        "description": "C++-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-c++",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.c-plus-plus-source"
+        ]
+      },
+      {
+        "ext": [
+          "swift"
+        ],
+        "name": "PViewer.Swift",
+        "description": "Swift-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-swift",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.swift-source"
+        ]
+      },
+      {
+        "ext": [
+          "rb"
+        ],
+        "name": "PViewer.Ruby",
+        "description": "Ruby-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-ruby",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.ruby-script"
+        ]
+      },
+      {
+        "ext": [
+          "php"
+        ],
+        "name": "PViewer.Php",
+        "description": "PHP-Quelltext",
+        "role": "Editor",
+        "mimeType": "application/x-httpd-php",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "lua"
+        ],
+        "name": "PViewer.Lua",
+        "description": "Lua-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-lua",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "r"
+        ],
+        "name": "PViewer.R",
+        "description": "R-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-r",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "scala"
+        ],
+        "name": "PViewer.Scala",
+        "description": "Scala-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-scala",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "dart"
+        ],
+        "name": "PViewer.Dart",
+        "description": "Dart-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-dart",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "ex",
+          "exs"
+        ],
+        "name": "PViewer.Elixir",
+        "description": "Elixir-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-elixir",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "sh",
+          "bash",
+          "zsh",
+          "fish"
+        ],
+        "name": "PViewer.Shell",
+        "description": "Shell-Skript",
+        "role": "Editor",
+        "mimeType": "application/x-shellscript",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.shell-script"
+        ]
+      },
+      {
+        "ext": [
+          "bat",
+          "cmd"
+        ],
+        "name": "PViewer.Batch",
+        "description": "Windows-Batchdatei",
+        "role": "Editor",
+        "mimeType": "application/x-bat",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "ps1"
+        ],
+        "name": "PViewer.PowerShell",
+        "description": "PowerShell-Skript",
+        "role": "Editor",
+        "mimeType": "text/x-powershell",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "html",
+          "htm"
+        ],
+        "name": "PViewer.Html",
+        "description": "HTML-Dokument",
+        "role": "Editor",
+        "mimeType": "text/html",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.html"
+        ]
+      },
+      {
+        "ext": [
+          "xhtml"
+        ],
+        "name": "PViewer.Xhtml",
+        "description": "XHTML-Dokument",
+        "role": "Editor",
+        "mimeType": "application/xhtml+xml",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.xhtml"
+        ]
+      },
+      {
+        "ext": [
+          "astro"
+        ],
+        "name": "PViewer.Astro",
+        "description": "Astro-Komponente",
+        "role": "Editor",
+        "mimeType": "text/x-astro",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "css"
+        ],
+        "name": "PViewer.Css",
+        "description": "CSS-Stylesheet",
+        "role": "Editor",
+        "mimeType": "text/css",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.css"
+        ]
+      },
+      {
+        "ext": [
+          "scss",
+          "sass"
+        ],
+        "name": "PViewer.Sass",
+        "description": "Sass-Stylesheet",
+        "role": "Editor",
+        "mimeType": "text/x-scss",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "less"
+        ],
+        "name": "PViewer.Less",
+        "description": "Less-Stylesheet",
+        "role": "Editor",
+        "mimeType": "text/x-less",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "vue"
+        ],
+        "name": "PViewer.Vue",
+        "description": "Vue-Komponente",
+        "role": "Editor",
+        "mimeType": "text/x-vue",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "svelte"
+        ],
+        "name": "PViewer.Svelte",
+        "description": "Svelte-Komponente",
+        "role": "Editor",
+        "mimeType": "text/x-svelte",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "xml"
+        ],
+        "name": "PViewer.Xml",
+        "description": "XML-Dokument",
+        "role": "Editor",
+        "mimeType": "application/xml",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.xml"
+        ]
+      },
+      {
+        "ext": [
+          "svg"
+        ],
+        "name": "PViewer.Svg",
+        "description": "SVG-Dokument",
+        "role": "Editor",
+        "mimeType": "image/svg+xml",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.svg-image"
+        ]
+      },
+      {
+        "ext": [
+          "yaml",
+          "yml"
+        ],
+        "name": "PViewer.Yaml",
+        "description": "YAML-Dokument",
+        "role": "Editor",
+        "mimeType": "application/yaml",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.yaml"
+        ]
+      },
+      {
+        "ext": [
+          "toml"
+        ],
+        "name": "PViewer.Toml",
+        "description": "TOML-Dokument",
+        "role": "Editor",
+        "mimeType": "application/toml",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "ini",
+          "cfg",
+          "conf"
+        ],
+        "name": "PViewer.Configuration",
+        "description": "Konfigurationsdatei",
+        "role": "Editor",
+        "mimeType": "text/x-ini",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.plain-text"
+        ]
+      },
+      {
+        "ext": [
+          "env",
+          "properties"
+        ],
+        "name": "PViewer.Properties",
+        "description": "Properties-Datei",
+        "role": "Editor",
+        "mimeType": "text/x-java-properties",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.plain-text"
+        ]
+      },
+      {
+        "ext": [
+          "sql"
+        ],
+        "name": "PViewer.Sql",
+        "description": "SQL-Dokument",
+        "role": "Editor",
+        "mimeType": "application/sql",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "graphql",
+          "gql"
+        ],
+        "name": "PViewer.GraphQL",
+        "description": "GraphQL-Dokument",
+        "role": "Editor",
+        "mimeType": "application/graphql",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "txt",
+          "text",
+          "log"
+        ],
+        "name": "PViewer.Text",
+        "description": "Textdokument",
+        "role": "Editor",
+        "mimeType": "text/plain",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.plain-text"
+        ]
+      },
+      {
+        "ext": [
+          "csv"
+        ],
+        "name": "PViewer.Csv",
+        "description": "CSV-Tabelle",
+        "role": "Editor",
+        "mimeType": "text/csv",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.comma-separated-values-text"
+        ]
+      },
+      {
+        "ext": [
+          "tsv"
+        ],
+        "name": "PViewer.Tsv",
+        "description": "TSV-Tabelle",
+        "role": "Editor",
+        "mimeType": "text/tab-separated-values",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.tab-separated-values-text"
+        ]
+      }
     ]
   }
 }

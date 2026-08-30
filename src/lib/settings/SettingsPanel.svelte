@@ -1,6 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import {
+    Bug,
+    FileCog,
+    LoaderCircle,
     Monitor,
     Moon,
     RotateCcw,
@@ -10,7 +14,19 @@
     WrapText,
     X,
   } from "@lucide/svelte";
+  import {
+    FILE_ASSOCIATION_GROUPS,
+    FILE_ASSOCIATION_IDS,
+  } from "$lib/files/associations";
   import type { AppSettings, ThemePreference } from "./settings";
+
+  interface AssociationApplyResult {
+    platform: string;
+    selectedGroups: number;
+    appliedTypes: number;
+    requiresUserConfirmation: boolean;
+    message: string;
+  }
 
   interface Props {
     settings: AppSettings;
@@ -22,6 +38,12 @@
 
   let { settings, activeTheme, onChange, onClose, onReset }: Props = $props();
   let settingsPath = $state("Systemüblicher App-Datenordner");
+  let associationSelectorOpen = $state(false);
+  let applyingAssociations = $state(false);
+  let associationMessage = $state("");
+  let associationError = $state(false);
+
+  const selectedAssociationCount = $derived(settings.defaultAppAssociations.length);
 
   onMount(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
@@ -40,6 +62,44 @@
 
   function rangeValue(event: Event): number {
     return Number((event.currentTarget as HTMLInputElement).value);
+  }
+
+  function updateAssociation(id: string, selected: boolean): void {
+    const next = new Set(settings.defaultAppAssociations);
+    if (selected) next.add(id);
+    else next.delete(id);
+    update(
+      "defaultAppAssociations",
+      FILE_ASSOCIATION_IDS.filter((associationId) => next.has(associationId)),
+    );
+    associationMessage = "";
+  }
+
+  function selectAllAssociations(selected: boolean): void {
+    update("defaultAppAssociations", selected ? [...FILE_ASSOCIATION_IDS] : []);
+    associationMessage = "";
+  }
+
+  async function applyAssociations(): Promise<void> {
+    if (applyingAssociations || settings.defaultAppAssociations.length === 0) return;
+    associationMessage = "";
+    associationError = false;
+    applyingAssociations = true;
+    try {
+      if (!("__TAURI_INTERNALS__" in window)) {
+        throw new Error("Systemzuordnungen sind nur in der installierten Desktop-App verfügbar.");
+      }
+      const result = await invoke<AssociationApplyResult>(
+        "apply_default_file_associations",
+        { associationIds: settings.defaultAppAssociations },
+      );
+      associationMessage = result.message;
+    } catch (error) {
+      associationError = true;
+      associationMessage = error instanceof Error ? error.message : String(error);
+    } finally {
+      applyingAssociations = false;
+    }
   }
 
   function handleBackdrop(event: MouseEvent): void {
@@ -165,6 +225,89 @@
         </label>
       </fieldset>
 
+      <fieldset>
+        <legend>Diagnose</legend>
+        <label class="toggle-setting">
+          <span class="toggle-copy">
+            <span class="setting-label"><Bug size={16} aria-hidden="true" /> Debug-Modus</span>
+            <small>Persistente Laufzeitdetails einblenden und Zustandsänderungen in der WebView-Konsole protokollieren.</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={settings.debugMode}
+            onchange={(event) => update("debugMode", event.currentTarget.checked)}
+          />
+          <span class="switch" aria-hidden="true"></span>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Standardprogramme</legend>
+        <p class="group-description">
+          P-Viewer wird bei der Installation für alle unterstützten Endungen als mögliche App registriert.
+          Wähle hier, welche Formatgruppen du als Systemstandard übernehmen möchtest.
+        </p>
+        <button
+          class="association-toggle"
+          aria-expanded={associationSelectorOpen}
+          aria-controls="association-selector"
+          onclick={() => (associationSelectorOpen = !associationSelectorOpen)}
+        >
+          <FileCog size={16} aria-hidden="true" />
+          <span>Formate auswählen</span>
+          <small>{selectedAssociationCount} von {FILE_ASSOCIATION_GROUPS.length}</small>
+        </button>
+
+        {#if associationSelectorOpen}
+          <div id="association-selector" class="association-selector">
+            <div class="association-actions">
+              <strong>Unterstützte Formatgruppen</strong>
+              <span>
+                <button onclick={() => selectAllAssociations(true)}>Alle</button>
+                <button onclick={() => selectAllAssociations(false)}>Keine</button>
+              </span>
+            </div>
+            <div class="association-list" role="group" aria-label="Dateiformate für P-Viewer">
+              {#each FILE_ASSOCIATION_GROUPS as association}
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={settings.defaultAppAssociations.includes(association.id)}
+                    onchange={(event) => updateAssociation(association.id, event.currentTarget.checked)}
+                  />
+                  <span>
+                    <strong>{association.label}</strong>
+                    <small>{association.extensions.map((extension) => `.${extension}`).join(", ")}</small>
+                  </span>
+                </label>
+              {/each}
+            </div>
+            <button
+              class="apply-associations"
+              onclick={() => void applyAssociations()}
+              disabled={applyingAssociations || selectedAssociationCount === 0}
+            >
+              {#if applyingAssociations}
+                <LoaderCircle class="spinning" size={15} aria-hidden="true" />
+              {:else}
+                <FileCog size={15} aria-hidden="true" />
+              {/if}
+              {applyingAssociations ? "System wird geöffnet …" : "Ausgewählte als Standard festlegen"}
+            </button>
+            <small class="system-choice-note">
+              Windows lässt die endgültige Auswahl aus Sicherheitsgründen im Systemdialog bestätigen.
+              Linux und macOS übernehmen die ausgewählten Formatgruppen direkt.
+            </small>
+          </div>
+        {/if}
+
+        {#if associationMessage}
+          <p class:error={associationError} class="association-message" role={associationError ? "alert" : "status"}>
+            {associationMessage}
+          </p>
+        {/if}
+      </fieldset>
+
       <div class="storage-note">
         <strong>Automatisch gespeichert</strong>
         <span title={settingsPath}>{settingsPath}</span>
@@ -189,6 +332,7 @@
     display: flex;
     justify-content: flex-end;
     background: rgb(4 6 10 / 52%);
+    -webkit-backdrop-filter: blur(2px);
     backdrop-filter: blur(2px);
   }
 
@@ -345,7 +489,7 @@
 
   output {
     color: #818a9a;
-    font-family: "Cascadia Code", Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 9px;
     text-align: right;
   }
@@ -415,6 +559,179 @@
     outline-offset: 2px;
   }
 
+  .association-toggle {
+    display: grid;
+    width: 100%;
+    min-height: 40px;
+    align-items: center;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 0 10px;
+    border: 1px solid #343a47;
+    border-radius: 7px;
+    color: #c8cdd7;
+    background: #13161b;
+    text-align: left;
+  }
+
+  .association-toggle:hover {
+    border-color: #4c566d;
+    background: #191d24;
+  }
+
+  .association-toggle small {
+    color: #778092;
+    font-size: 9px;
+  }
+
+  .association-selector {
+    margin-top: 8px;
+    padding: 9px;
+    border: 1px solid #303641;
+    border-radius: 7px;
+    background: #111419;
+  }
+
+  .association-actions {
+    display: flex;
+    min-height: 28px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    color: #aeb5c2;
+    font-size: 9px;
+  }
+
+  .association-actions span {
+    display: flex;
+    gap: 3px;
+  }
+
+  .association-actions button {
+    padding: 4px 6px;
+    border-radius: 4px;
+    color: #8e98aa;
+    background: transparent;
+    font-size: 9px;
+  }
+
+  .association-actions button:hover {
+    color: #e5e8ef;
+    background: #252a34;
+  }
+
+  .association-list {
+    max-height: 235px;
+    overflow: auto;
+    border-block: 1px solid #292e38;
+  }
+
+  .association-list label {
+    display: grid;
+    min-height: 38px;
+    align-items: center;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+    padding: 5px 4px;
+    border-bottom: 1px solid #242932;
+    cursor: pointer;
+  }
+
+  .association-list label:last-child {
+    border-bottom: 0;
+  }
+
+  .association-list label:hover {
+    background: #181c23;
+  }
+
+  .association-list input {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: #7183e7;
+  }
+
+  .association-list label > span {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .association-list strong {
+    color: #bdc3cf;
+    font-size: 9px;
+    font-weight: 650;
+  }
+
+  .association-list small {
+    overflow: hidden;
+    color: #6f7889;
+    font-family: var(--font-mono);
+    font-size: 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .apply-associations {
+    display: flex;
+    width: 100%;
+    height: 32px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 9px;
+    border-radius: 6px;
+    color: #fff;
+    background: #5c6fd7;
+    font-size: 9px;
+  }
+
+  .apply-associations:hover:not(:disabled) {
+    background: #6b7edf;
+  }
+
+  .apply-associations:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+
+  .system-choice-note {
+    display: block;
+    margin-top: 7px;
+    color: #697283;
+    font-size: 8px;
+    line-height: 1.45;
+  }
+
+  .association-message {
+    margin: 8px 0 0;
+    padding: 7px 8px;
+    border: 1px solid #315c51;
+    border-radius: 5px;
+    color: #8ed1b8;
+    background: #14231f;
+    font-size: 9px;
+    line-height: 1.45;
+  }
+
+  .association-message.error {
+    border-color: #6f4047;
+    color: #e6a2a8;
+    background: #291a1e;
+  }
+
+  :global(.spinning) {
+    animation: spin 700ms linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
   .storage-note {
     display: flex;
     flex-direction: column;
@@ -434,7 +751,7 @@
 
   .storage-note span {
     overflow: hidden;
-    font-family: "Cascadia Code", Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 9px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -495,6 +812,8 @@
   }
 
   .light .theme-options button,
+  .light .association-toggle,
+  .light .association-selector,
   .light .storage-note {
     border-color: #d9dce4;
     color: #646c7a;
@@ -508,7 +827,20 @@
   }
 
   .light .setting-label,
+  .light .association-actions,
+  .light .association-list strong,
   .light .storage-note strong {
     color: #434a58;
+  }
+
+  .light .association-list,
+  .light .association-list label {
+    border-color: #dfe2e8;
+  }
+
+  .light .association-list label:hover,
+  .light .association-actions button:hover {
+    color: #242935;
+    background: #e8eaf0;
   }
 </style>

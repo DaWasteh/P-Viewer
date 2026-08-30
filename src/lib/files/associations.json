@@ -1,0 +1,443 @@
+[
+  {
+    "id": "markdown",
+    "label": "Markdown",
+    "progId": "PViewer.Markdown",
+    "description": "Markdown-Dokument",
+    "extensions": ["md", "markdown", "mdown", "mkd"],
+    "mimeType": "text/markdown",
+    "contentTypes": ["net.daringfireball.markdown"]
+  },
+  {
+    "id": "mdx",
+    "label": "MDX",
+    "progId": "PViewer.Mdx",
+    "description": "MDX-Dokument",
+    "extensions": ["mdx"],
+    "mimeType": "text/mdx",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "json",
+    "label": "JSON, JSONC und JSON5",
+    "progId": "PViewer.Json",
+    "description": "JSON-Dokument",
+    "extensions": ["json", "jsonc", "json5"],
+    "mimeType": "application/json",
+    "contentTypes": ["public.json"]
+  },
+  {
+    "id": "notebook",
+    "label": "Jupyter Notebook",
+    "progId": "PViewer.Notebook",
+    "description": "Jupyter-Notebook",
+    "extensions": ["ipynb"],
+    "mimeType": "application/x-ipynb+json",
+    "contentTypes": ["public.json"]
+  },
+  {
+    "id": "latex",
+    "label": "LaTeX",
+    "progId": "PViewer.LaTeX",
+    "description": "LaTeX-Dokument",
+    "extensions": ["tex", "latex", "ltx"],
+    "mimeType": "application/x-tex",
+    "contentTypes": ["public.tex"]
+  },
+  {
+    "id": "latex-support",
+    "label": "LaTeX-Klassen und -Stile",
+    "progId": "PViewer.LaTeXSupport",
+    "description": "LaTeX-Klasse oder -Stil",
+    "extensions": ["sty", "cls"],
+    "mimeType": "text/x-tex",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "bibtex",
+    "label": "BibTeX",
+    "progId": "PViewer.BibTeX",
+    "description": "BibTeX-Datenbank",
+    "extensions": ["bib"],
+    "mimeType": "text/x-bibtex",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "javascript",
+    "label": "JavaScript",
+    "progId": "PViewer.JavaScript",
+    "description": "JavaScript-Quelltext",
+    "extensions": ["js", "mjs", "cjs"],
+    "mimeType": "text/javascript",
+    "contentTypes": ["com.netscape.javascript-source"]
+  },
+  {
+    "id": "jsx",
+    "label": "JavaScript JSX",
+    "progId": "PViewer.Jsx",
+    "description": "JSX-Quelltext",
+    "extensions": ["jsx"],
+    "mimeType": "text/jsx",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "typescript",
+    "label": "TypeScript",
+    "progId": "PViewer.TypeScript",
+    "description": "TypeScript-Quelltext",
+    "extensions": ["ts", "mts", "cts"],
+    "mimeType": "application/typescript",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "tsx",
+    "label": "TypeScript TSX",
+    "progId": "PViewer.Tsx",
+    "description": "TSX-Quelltext",
+    "extensions": ["tsx"],
+    "mimeType": "text/tsx",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "python",
+    "label": "Python",
+    "progId": "PViewer.Python",
+    "description": "Python-Quelltext",
+    "extensions": ["py", "pyw"],
+    "mimeType": "text/x-python",
+    "contentTypes": ["public.python-script"]
+  },
+  {
+    "id": "rust",
+    "label": "Rust",
+    "progId": "PViewer.Rust",
+    "description": "Rust-Quelltext",
+    "extensions": ["rs"],
+    "mimeType": "text/rust",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "go",
+    "label": "Go",
+    "progId": "PViewer.Go",
+    "description": "Go-Quelltext",
+    "extensions": ["go"],
+    "mimeType": "text/x-go",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "java",
+    "label": "Java",
+    "progId": "PViewer.Java",
+    "description": "Java-Quelltext",
+    "extensions": ["java"],
+    "mimeType": "text/x-java",
+    "contentTypes": ["com.sun.java-source"]
+  },
+  {
+    "id": "kotlin",
+    "label": "Kotlin",
+    "progId": "PViewer.Kotlin",
+    "description": "Kotlin-Quelltext",
+    "extensions": ["kt", "kts"],
+    "mimeType": "text/x-kotlin",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "csharp",
+    "label": "C#",
+    "progId": "PViewer.CSharp",
+    "description": "C#-Quelltext",
+    "extensions": ["cs"],
+    "mimeType": "text/x-csharp",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "c",
+    "label": "C",
+    "progId": "PViewer.C",
+    "description": "C-Quelltext",
+    "extensions": ["c", "h"],
+    "mimeType": "text/x-c",
+    "contentTypes": ["public.c-source"]
+  },
+  {
+    "id": "cpp",
+    "label": "C++",
+    "progId": "PViewer.Cpp",
+    "description": "C++-Quelltext",
+    "extensions": ["cc", "cpp", "cxx", "hpp"],
+    "mimeType": "text/x-c++",
+    "contentTypes": ["public.c-plus-plus-source"]
+  },
+  {
+    "id": "swift",
+    "label": "Swift",
+    "progId": "PViewer.Swift",
+    "description": "Swift-Quelltext",
+    "extensions": ["swift"],
+    "mimeType": "text/x-swift",
+    "contentTypes": ["public.swift-source"]
+  },
+  {
+    "id": "ruby",
+    "label": "Ruby",
+    "progId": "PViewer.Ruby",
+    "description": "Ruby-Quelltext",
+    "extensions": ["rb"],
+    "mimeType": "text/x-ruby",
+    "contentTypes": ["public.ruby-script"]
+  },
+  {
+    "id": "php",
+    "label": "PHP",
+    "progId": "PViewer.Php",
+    "description": "PHP-Quelltext",
+    "extensions": ["php"],
+    "mimeType": "application/x-httpd-php",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "lua",
+    "label": "Lua",
+    "progId": "PViewer.Lua",
+    "description": "Lua-Quelltext",
+    "extensions": ["lua"],
+    "mimeType": "text/x-lua",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "r",
+    "label": "R",
+    "progId": "PViewer.R",
+    "description": "R-Quelltext",
+    "extensions": ["r"],
+    "mimeType": "text/x-r",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "scala",
+    "label": "Scala",
+    "progId": "PViewer.Scala",
+    "description": "Scala-Quelltext",
+    "extensions": ["scala"],
+    "mimeType": "text/x-scala",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "dart",
+    "label": "Dart",
+    "progId": "PViewer.Dart",
+    "description": "Dart-Quelltext",
+    "extensions": ["dart"],
+    "mimeType": "text/x-dart",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "elixir",
+    "label": "Elixir",
+    "progId": "PViewer.Elixir",
+    "description": "Elixir-Quelltext",
+    "extensions": ["ex", "exs"],
+    "mimeType": "text/x-elixir",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "shell",
+    "label": "Shell-Skripte",
+    "progId": "PViewer.Shell",
+    "description": "Shell-Skript",
+    "extensions": ["sh", "bash", "zsh", "fish"],
+    "mimeType": "application/x-shellscript",
+    "contentTypes": ["public.shell-script"]
+  },
+  {
+    "id": "batch",
+    "label": "Windows Batch und CMD",
+    "progId": "PViewer.Batch",
+    "description": "Windows-Batchdatei",
+    "extensions": ["bat", "cmd"],
+    "mimeType": "application/x-bat",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "powershell",
+    "label": "PowerShell",
+    "progId": "PViewer.PowerShell",
+    "description": "PowerShell-Skript",
+    "extensions": ["ps1"],
+    "mimeType": "text/x-powershell",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "html",
+    "label": "HTML",
+    "progId": "PViewer.Html",
+    "description": "HTML-Dokument",
+    "extensions": ["html", "htm"],
+    "mimeType": "text/html",
+    "contentTypes": ["public.html"]
+  },
+  {
+    "id": "xhtml",
+    "label": "XHTML",
+    "progId": "PViewer.Xhtml",
+    "description": "XHTML-Dokument",
+    "extensions": ["xhtml"],
+    "mimeType": "application/xhtml+xml",
+    "contentTypes": ["public.xhtml"]
+  },
+  {
+    "id": "astro",
+    "label": "Astro",
+    "progId": "PViewer.Astro",
+    "description": "Astro-Komponente",
+    "extensions": ["astro"],
+    "mimeType": "text/x-astro",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "css",
+    "label": "CSS",
+    "progId": "PViewer.Css",
+    "description": "CSS-Stylesheet",
+    "extensions": ["css"],
+    "mimeType": "text/css",
+    "contentTypes": ["public.css"]
+  },
+  {
+    "id": "sass",
+    "label": "Sass und SCSS",
+    "progId": "PViewer.Sass",
+    "description": "Sass-Stylesheet",
+    "extensions": ["scss", "sass"],
+    "mimeType": "text/x-scss",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "less",
+    "label": "Less",
+    "progId": "PViewer.Less",
+    "description": "Less-Stylesheet",
+    "extensions": ["less"],
+    "mimeType": "text/x-less",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "vue",
+    "label": "Vue",
+    "progId": "PViewer.Vue",
+    "description": "Vue-Komponente",
+    "extensions": ["vue"],
+    "mimeType": "text/x-vue",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "svelte",
+    "label": "Svelte",
+    "progId": "PViewer.Svelte",
+    "description": "Svelte-Komponente",
+    "extensions": ["svelte"],
+    "mimeType": "text/x-svelte",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "xml",
+    "label": "XML",
+    "progId": "PViewer.Xml",
+    "description": "XML-Dokument",
+    "extensions": ["xml"],
+    "mimeType": "application/xml",
+    "contentTypes": ["public.xml"]
+  },
+  {
+    "id": "svg",
+    "label": "SVG-Quelltext",
+    "progId": "PViewer.Svg",
+    "description": "SVG-Dokument",
+    "extensions": ["svg"],
+    "mimeType": "image/svg+xml",
+    "contentTypes": ["public.svg-image"]
+  },
+  {
+    "id": "yaml",
+    "label": "YAML",
+    "progId": "PViewer.Yaml",
+    "description": "YAML-Dokument",
+    "extensions": ["yaml", "yml"],
+    "mimeType": "application/yaml",
+    "contentTypes": ["public.yaml"]
+  },
+  {
+    "id": "toml",
+    "label": "TOML",
+    "progId": "PViewer.Toml",
+    "description": "TOML-Dokument",
+    "extensions": ["toml"],
+    "mimeType": "application/toml",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "configuration",
+    "label": "INI und Konfiguration",
+    "progId": "PViewer.Configuration",
+    "description": "Konfigurationsdatei",
+    "extensions": ["ini", "cfg", "conf"],
+    "mimeType": "text/x-ini",
+    "contentTypes": ["public.plain-text"]
+  },
+  {
+    "id": "properties",
+    "label": "Environment und Properties",
+    "progId": "PViewer.Properties",
+    "description": "Properties-Datei",
+    "extensions": ["env", "properties"],
+    "mimeType": "text/x-java-properties",
+    "contentTypes": ["public.plain-text"]
+  },
+  {
+    "id": "sql",
+    "label": "SQL",
+    "progId": "PViewer.Sql",
+    "description": "SQL-Dokument",
+    "extensions": ["sql"],
+    "mimeType": "application/sql",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "graphql",
+    "label": "GraphQL",
+    "progId": "PViewer.GraphQL",
+    "description": "GraphQL-Dokument",
+    "extensions": ["graphql", "gql"],
+    "mimeType": "application/graphql",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "text",
+    "label": "Text und Log",
+    "progId": "PViewer.Text",
+    "description": "Textdokument",
+    "extensions": ["txt", "text", "log"],
+    "mimeType": "text/plain",
+    "contentTypes": ["public.plain-text"]
+  },
+  {
+    "id": "csv",
+    "label": "CSV",
+    "progId": "PViewer.Csv",
+    "description": "CSV-Tabelle",
+    "extensions": ["csv"],
+    "mimeType": "text/csv",
+    "contentTypes": ["public.comma-separated-values-text"]
+  },
+  {
+    "id": "tsv",
+    "label": "TSV",
+    "progId": "PViewer.Tsv",
+    "description": "TSV-Tabelle",
+    "extensions": ["tsv"],
+    "mimeType": "text/tab-separated-values",
+    "contentTypes": ["public.tab-separated-values-text"]
+  }
+]

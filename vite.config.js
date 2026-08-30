@@ -10,6 +10,9 @@ export default defineConfig(async () => ({
   // Markdown and PDF renderers are lazy chunks; keep the startup bundle small
   // without warning for the intentionally isolated renderer payloads.
   build: {
+    // WebKit on supported macOS/Linux versions is the lowest common denominator.
+    // esbuild lowers syntax while feature code avoids newer unpolyfilled APIs.
+    target: "safari13",
     chunkSizeWarningLimit: 700,
   },
 

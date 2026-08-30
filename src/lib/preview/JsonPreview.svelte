@@ -176,7 +176,7 @@
     min-width: max-content;
     min-height: 100%;
     padding: 18px 24px 80px 10px;
-    font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: var(--json-font-size);
   }
 

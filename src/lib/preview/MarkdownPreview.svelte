@@ -158,7 +158,9 @@
   async function openHeading(id: string): Promise<void> {
     setAllCollapsed(false);
     await tick();
-    const target = article?.querySelector<HTMLElement>(`#${CSS.escape(id)}`);
+    const target = Array.from(article?.querySelectorAll<HTMLElement>("[id]") ?? []).find(
+      (element) => element.id === id,
+    );
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -554,7 +556,7 @@
     border-radius: 4px;
     color: #e4c58b;
     background: #1c2028;
-    font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 0.88em;
   }
 

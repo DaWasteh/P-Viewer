@@ -1,8 +1,18 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { AlertTriangle, CheckCircle2, Play, RefreshCw, Terminal } from "@lucide/svelte";
+  import {
+    AlertTriangle,
+    CheckCircle2,
+    Eye,
+    FileOutput,
+    Play,
+    RefreshCw,
+    Terminal,
+  } from "@lucide/svelte";
+  import "katex/dist/katex.min.css";
   import PdfViewer from "./PdfViewer.svelte";
+  import { renderLatexLive } from "./latex";
 
   interface LatexEngineInfo {
     id: string;
@@ -26,13 +36,19 @@
     path: string;
     fileName: string;
     theme?: "dark" | "light";
+    fontSize?: number;
   }
 
-  let { content, path, fileName, theme = "dark" }: Props = $props();
+  let { content, path, fileName, theme = "dark", fontSize = 16 }: Props = $props();
 
+  let viewMode = $state<"live" | "pdf">("live");
+  let liveHtml = $state("");
+  let liveWarnings = $state<string[]>([]);
+  let liveError = $state("");
   let engines = $state<LatexEngineInfo[]>([]);
   let selectedEngine = $state("auto");
-  let checking = $state(true);
+  let enginesChecked = $state(false);
+  let checking = $state(false);
   let compiling = $state(false);
   let result = $state<LatexCompileResult | null>(null);
   let errorMessage = $state("");
@@ -45,12 +61,33 @@
     result?.success === true && compiledContent !== null && compiledContent !== content,
   );
 
-  onMount(() => {
-    void detectEngines();
+  $effect(() => {
+    const source = content;
+    const timer = window.setTimeout(() => {
+      try {
+        const rendered = renderLatexLive(source);
+        liveHtml = rendered.html;
+        liveWarnings = rendered.warnings;
+        liveError = "";
+      } catch (error) {
+        liveError = error instanceof Error ? error.message : String(error);
+      }
+    }, 100);
+    return () => window.clearTimeout(timer);
   });
+
+  onMount(() => {
+    if (viewMode === "pdf") void detectEngines();
+  });
+
+  function selectView(next: "live" | "pdf"): void {
+    viewMode = next;
+    if (next === "pdf" && !enginesChecked && !checking) void detectEngines();
+  }
 
   async function detectEngines(): Promise<void> {
     checking = true;
+    enginesChecked = true;
     errorMessage = "";
     try {
       if (!desktop) {
@@ -98,67 +135,123 @@
 
 <div class:light={theme === "light"} class="latex-preview">
   <div class="latex-toolbar">
-    <label>
-      <span>Engine</span>
-      <select bind:value={selectedEngine} disabled={checking || compiling || availableEngines.length === 0}>
-        <option value="auto">Automatisch{availableEngines[0] ? ` · ${availableEngines[0].label}` : ""}</option>
-        {#each availableEngines as engine}
-          <option value={engine.id}>{engine.label}</option>
-        {/each}
-      </select>
-    </label>
-    <button class="compile-button" onclick={() => void compile()} disabled={checking || compiling || availableEngines.length === 0 || !content.trim()}>
-      {#if compiling}<span class="spinner"></span>{:else}<Play size={14} fill="currentColor" aria-hidden="true" />{/if}
-      <span>{compiling ? "Kompiliert …" : "PDF bauen"}</span>
-    </button>
-    <button class="refresh-button" title="LaTeX-Compiler erneut suchen" onclick={() => void detectEngines()} disabled={checking || compiling}>
-      <span class:spinning={checking}><RefreshCw size={14} aria-hidden="true" /></span>
-    </button>
-    {#if result?.success}
-      <span class="build-status success"><CheckCircle2 size={13} />{result.engineLabel} · {durationLabel(result.durationMs)}</span>
+    <div class="view-switch" aria-label="LaTeX-Vorschaumodus">
+      <button
+        class:active={viewMode === "live"}
+        aria-pressed={viewMode === "live"}
+        onclick={() => selectView("live")}
+      >
+        <Eye size={14} aria-hidden="true" /> Live
+      </button>
+      <button
+        class:active={viewMode === "pdf"}
+        aria-pressed={viewMode === "pdf"}
+        onclick={() => selectView("pdf")}
+      >
+        <FileOutput size={14} aria-hidden="true" /> PDF
+      </button>
+    </div>
+
+    {#if viewMode === "live"}
+      <span class="bundled-status"><CheckCircle2 size={13} aria-hidden="true" /> Offline integriert</span>
+      {#if liveWarnings.length > 0}
+        <span class="live-warning-count">{liveWarnings.length} Vereinfachung{liveWarnings.length === 1 ? "" : "en"}</span>
+      {/if}
+    {:else}
+      <label>
+        <span>Engine</span>
+        <select bind:value={selectedEngine} disabled={checking || compiling || availableEngines.length === 0}>
+          <option value="auto">Automatisch{availableEngines[0] ? ` · ${availableEngines[0].label}` : ""}</option>
+          {#each availableEngines as engine}
+            <option value={engine.id}>{engine.label}</option>
+          {/each}
+        </select>
+      </label>
+      <button class="compile-button" onclick={() => void compile()} disabled={checking || compiling || availableEngines.length === 0 || !content.trim()}>
+        {#if compiling}<span class="spinner"></span>{:else}<Play size={14} fill="currentColor" aria-hidden="true" />{/if}
+        <span>{compiling ? "Kompiliert …" : "PDF bauen"}</span>
+      </button>
+      <button class="refresh-button" title="LaTeX-Compiler erneut suchen" onclick={() => void detectEngines()} disabled={checking || compiling}>
+        <span class:spinning={checking}><RefreshCw size={14} aria-hidden="true" /></span>
+      </button>
+      {#if result?.success}
+        <span class="build-status success"><CheckCircle2 size={13} aria-hidden="true" />{result.engineLabel} · {durationLabel(result.durationMs)}</span>
+      {/if}
+      {#if previewStale}<span class="stale">PDF ist älter als der Text</span>{/if}
     {/if}
-    {#if previewStale}<span class="stale">Vorschau ist älter als der Text</span>{/if}
   </div>
 
   <div class="latex-content">
-    {#if result?.success && result.pdfBase64}
+    {#if viewMode === "live"}
+      <div class="live-scroll">
+        {#if liveError}
+          <div class="latex-state build-error" role="alert">
+            <AlertTriangle size={28} strokeWidth={1.5} aria-hidden="true" />
+            <strong>Live-Vorschau fehlgeschlagen</strong>
+            <p>{liveError}</p>
+          </div>
+        {:else if content.trim()}
+          <!-- Plain source is escaped by latex.ts; KaTeX runs with trust disabled. -->
+          <article class="latex-document" style={`--latex-font-size: ${fontSize}px`}>
+            {@html liveHtml}
+          </article>
+          {#if liveWarnings.length > 0}
+            <details class="live-warnings">
+              <summary><AlertTriangle size={13} aria-hidden="true" /> Vereinfachte LaTeX-Funktionen</summary>
+              <ul>
+                {#each liveWarnings as warning}<li>{warning}</li>{/each}
+              </ul>
+            </details>
+          {/if}
+        {:else}
+          <div class="latex-state">
+            <strong>Leeres LaTeX-Dokument</strong>
+            <p>Die gebündelte Live-Vorschau erscheint beim Schreiben automatisch.</p>
+          </div>
+        {/if}
+      </div>
+    {:else if result?.success && result.pdfBase64}
       <PdfViewer pdfBase64={result.pdfBase64} />
     {:else if checking}
       <div class="latex-state">
         <span class="spinner large"></span>
-        <strong>LaTeX-Umgebung wird geprüft</strong>
-      </div>
-    {:else if availableEngines.length === 0}
-      <div class="latex-state no-engine">
-        <AlertTriangle size={30} strokeWidth={1.5} aria-hidden="true" />
-        <strong>Kein LaTeX-Compiler gefunden</strong>
-        <p>
-          Installiere MiKTeX oder TeX Live unter Windows, MacTeX unter macOS oder
-          TeX Live unter Linux. P-Viewer bevorzugt <code>latexmk</code> und
-          unterstützt außerdem Tectonic, LuaLaTeX, XeLaTeX und pdfLaTeX.
-        </p>
-        <button onclick={() => void detectEngines()}>
-          <RefreshCw size={14} aria-hidden="true" /> Erneut suchen
-        </button>
-        <small>Aus Sicherheitsgründen bleibt Shell-Escape deaktiviert.</small>
+        <strong>Optionale LaTeX-Umgebung wird geprüft</strong>
       </div>
     {:else if errorMessage}
       <div class="latex-state build-error" role="alert">
         <AlertTriangle size={28} strokeWidth={1.5} aria-hidden="true" />
-        <strong>LaTeX-Build fehlgeschlagen</strong>
+        <strong>LaTeX-PDF-Build fehlgeschlagen</strong>
         <p>{errorMessage}</p>
-        <button onclick={() => void compile()}><Play size={13} /> Erneut bauen</button>
+        {#if availableEngines.length > 0}
+          <button onclick={() => void compile()}><Play size={13} aria-hidden="true" /> Erneut bauen</button>
+        {:else}
+          <button onclick={() => void detectEngines()}><RefreshCw size={13} aria-hidden="true" /> Erneut suchen</button>
+        {/if}
+      </div>
+    {:else if availableEngines.length === 0}
+      <div class="latex-state no-engine">
+        <AlertTriangle size={30} strokeWidth={1.5} aria-hidden="true" />
+        <strong>Kein externer LaTeX-Compiler gefunden</strong>
+        <p>
+          Die Live-Vorschau ist vollständig in P-Viewer gebündelt und benötigt keine Installation.
+          Nur für einen typografisch exakten PDF-Build kann optional MiKTeX, TeX Live, MacTeX oder
+          Tectonic verwendet werden.
+        </p>
+        <button onclick={() => void detectEngines()}>
+          <RefreshCw size={14} aria-hidden="true" /> Erneut suchen
+        </button>
+        <small>Shell-Escape bleibt aus Sicherheitsgründen deaktiviert.</small>
       </div>
     {:else}
       <div class="latex-state ready">
         <Play size={28} strokeWidth={1.4} aria-hidden="true" />
         <strong>{fileName} als PDF darstellen</strong>
-        <p>Der Build läuft lokal, ohne Shell-Escape, und schreibt seine Hilfsdateien in einen temporären Ordner.</p>
-        <button onclick={() => void compile()}><Play size={13} fill="currentColor" /> PDF bauen</button>
+        <p>Der optionale Build läuft lokal, ohne Shell-Escape, und schreibt Hilfsdateien nur in einen temporären Ordner.</p>
+        <button onclick={() => void compile()}><Play size={13} fill="currentColor" aria-hidden="true" /> PDF bauen</button>
       </div>
     {/if}
 
-    {#if result?.log}
+    {#if viewMode === "pdf" && result?.log}
       <details class="build-log" open={!result.success}>
         <summary><Terminal size={13} aria-hidden="true" /> Build-Log</summary>
         <pre>{result.log}</pre>
@@ -187,6 +280,26 @@
     padding: 0 8px;
     border-bottom: 1px solid #292d36;
     background: #171a20;
+  }
+
+  .view-switch {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid #303642;
+    border-radius: 6px;
+    background: #111419;
+  }
+
+  .view-switch button {
+    height: 25px;
+    padding: 0 8px;
+    background: transparent;
+  }
+
+  .view-switch button.active {
+    color: #f1f3ff;
+    background: #303a68;
   }
 
   .latex-toolbar label {
@@ -255,11 +368,11 @@
     background: transparent;
   }
 
+  .bundled-status,
   .build-status {
     display: flex;
     align-items: center;
     gap: 5px;
-    margin-left: auto;
     overflow: hidden;
     color: #70caa7;
     font-size: 9px;
@@ -267,6 +380,15 @@
     white-space: nowrap;
   }
 
+  .bundled-status {
+    margin-left: auto;
+  }
+
+  .build-status {
+    margin-left: auto;
+  }
+
+  .live-warning-count,
   .stale {
     padding: 3px 6px;
     border: 1px solid #675b36;
@@ -280,6 +402,212 @@
     position: relative;
     min-width: 0;
     min-height: 0;
+  }
+
+  .live-scroll {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background: #16191f;
+  }
+
+  .latex-document {
+    width: min(850px, calc(100% - 48px));
+    min-height: calc(100% - 44px);
+    margin: 22px auto;
+    padding: 52px clamp(28px, 7vw, 76px) 90px;
+    overflow-wrap: anywhere;
+    border: 1px solid #303541;
+    color: #d8dbe3;
+    background: #1b1e25;
+    box-shadow: 0 8px 32px rgb(0 0 0 / 24%);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: var(--latex-font-size);
+    line-height: 1.65;
+  }
+
+  .latex-document :global(.latex-title) {
+    margin: 0 0 3.2em;
+    text-align: center;
+  }
+
+  .latex-document :global(.latex-title h1) {
+    margin-bottom: 0.55em;
+    font-size: 2em;
+    line-height: 1.2;
+  }
+
+  .latex-document :global(.latex-author),
+  .latex-document :global(.latex-date) {
+    margin: 0.25em 0;
+    color: #aeb4c0;
+  }
+
+  .latex-document :global(h1),
+  .latex-document :global(h2),
+  .latex-document :global(h3),
+  .latex-document :global(h4),
+  .latex-document :global(h5),
+  .latex-document :global(h6) {
+    color: #f0f1f5;
+    line-height: 1.25;
+  }
+
+  .latex-document :global(h1) {
+    margin: 1.8em 0 0.75em;
+    font-size: 1.8em;
+  }
+
+  .latex-document :global(h2) {
+    margin: 1.7em 0 0.65em;
+    padding-bottom: 0.2em;
+    border-bottom: 1px solid #343945;
+    font-size: 1.45em;
+  }
+
+  .latex-document :global(h3) {
+    margin: 1.5em 0 0.55em;
+    font-size: 1.2em;
+  }
+
+  .latex-document :global(h4),
+  .latex-document :global(h5),
+  .latex-document :global(h6) {
+    margin: 1.3em 0 0.5em;
+    font-size: 1em;
+  }
+
+  .latex-document :global(p) {
+    margin: 0 0 1em;
+  }
+
+  .latex-document :global(ul),
+  .latex-document :global(ol) {
+    margin: 0 0 1.1em;
+    padding-left: 1.8em;
+  }
+
+  .latex-document :global(li + li) {
+    margin-top: 0.32em;
+  }
+
+  .latex-document :global(blockquote),
+  .latex-document :global(.latex-abstract) {
+    margin: 1.4em 0;
+    padding: 0.9em 1.1em;
+    border-left: 3px solid #6f7dc2;
+    color: #c6cad4;
+    background: #171a20;
+  }
+
+  .latex-document :global(.latex-center) {
+    text-align: center;
+  }
+
+  .latex-document :global(code) {
+    padding: 0.12em 0.3em;
+    border-radius: 3px;
+    color: #e0bf84;
+    background: #12151a;
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+  }
+
+  .latex-document :global(.latex-code) {
+    margin: 1.2em 0;
+    padding: 0.9em 1em;
+    overflow: auto;
+    border: 1px solid #303541;
+    border-radius: 6px;
+    background: #12151a;
+    line-height: 1.5;
+  }
+
+  .latex-document :global(.latex-code code) {
+    padding: 0;
+    background: transparent;
+  }
+
+  .latex-document :global(.latex-table-wrap) {
+    max-width: 100%;
+    margin: 1.35em 0;
+    overflow-x: auto;
+  }
+
+  .latex-document :global(table) {
+    width: max-content;
+    min-width: 45%;
+    border-spacing: 0;
+    border-collapse: collapse;
+  }
+
+  .latex-document :global(td) {
+    padding: 0.4em 0.65em;
+    border: 1px solid #3a404c;
+  }
+
+  .latex-document :global(.latex-caption) {
+    color: #aeb4c0;
+    text-align: center;
+    font-size: 0.9em;
+  }
+
+  .latex-document :global(.latex-link) {
+    color: #9ba9f4;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.18em;
+  }
+
+  .latex-document :global(.latex-reference) {
+    color: #9ba9f4;
+  }
+
+  .latex-document :global(.latex-smallcaps) {
+    font-variant: small-caps;
+  }
+
+  .latex-document :global(.latex-image-placeholder) {
+    display: inline-block;
+    padding: 0.45em 0.65em;
+    border: 1px dashed #596174;
+    border-radius: 4px;
+    color: #929aab;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.8em;
+  }
+
+  .latex-document :global(.katex-display) {
+    margin: 1.35em 0;
+    padding: 0.3em 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .live-warnings {
+    width: min(850px, calc(100% - 48px));
+    margin: -10px auto 28px;
+    border: 1px solid #5d5435;
+    border-radius: 6px;
+    color: #c8b979;
+    background: #262219;
+    font-size: 10px;
+  }
+
+  .live-warnings summary {
+    display: flex;
+    min-height: 32px;
+    align-items: center;
+    gap: 6px;
+    padding: 0 9px;
+    cursor: pointer;
+  }
+
+  .live-warnings ul {
+    margin: 0;
+    padding: 8px 12px 10px 28px;
+    border-top: 1px solid #4d462f;
+    line-height: 1.5;
   }
 
   .latex-state {
@@ -304,13 +632,6 @@
     margin: 0 0 5px;
     font-size: 11px;
     line-height: 1.65;
-  }
-
-  .latex-state code {
-    padding: 2px 4px;
-    border-radius: 3px;
-    color: #d7ba83;
-    background: #20242c;
   }
 
   .latex-state small {
@@ -366,7 +687,7 @@
     border-top: 1px solid #303540;
     color: #b7bdc8;
     background: #101216;
-    font-family: "Cascadia Code", Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 10px;
     line-height: 1.45;
     white-space: pre-wrap;
@@ -408,9 +729,88 @@
     background: #f6f7f9;
   }
 
+  .light .view-switch {
+    border-color: #d7dae2;
+    background: #e9ebf0;
+  }
+
+  .light .view-switch button.active {
+    color: #283878;
+    background: #dbe1ff;
+  }
+
   .light select {
     border-color: #d3d6de;
     color: #2e3440;
     background: #fff;
+  }
+
+  .light .live-scroll {
+    background: #e8eaef;
+  }
+
+  .light .latex-document {
+    border-color: #d4d7de;
+    color: #30343c;
+    background: #fff;
+    box-shadow: 0 8px 28px rgb(35 40 52 / 13%);
+  }
+
+  .light .latex-document :global(h1),
+  .light .latex-document :global(h2),
+  .light .latex-document :global(h3),
+  .light .latex-document :global(h4),
+  .light .latex-document :global(h5),
+  .light .latex-document :global(h6) {
+    color: #171a20;
+    border-color: #dfe2e8;
+  }
+
+  .light .latex-document :global(.latex-author),
+  .light .latex-document :global(.latex-date),
+  .light .latex-document :global(.latex-caption) {
+    color: #626976;
+  }
+
+  .light .latex-document :global(blockquote),
+  .light .latex-document :global(.latex-abstract),
+  .light .latex-document :global(.latex-code),
+  .light .latex-document :global(code) {
+    border-color: #d8dbe2;
+    color: #4b515d;
+    background: #f5f6f8;
+  }
+
+  .light .latex-document :global(td) {
+    border-color: #d2d6de;
+  }
+
+  .light .live-warnings {
+    border-color: #ded29e;
+    color: #756321;
+    background: #fffbea;
+  }
+
+  @media (max-width: 720px) {
+    .bundled-status,
+    .latex-toolbar label > span,
+    .compile-button > span,
+    .live-warning-count {
+      display: none;
+    }
+
+    select {
+      width: min(180px, 32vw);
+    }
+
+    .latex-document,
+    .live-warnings {
+      width: calc(100% - 24px);
+    }
+
+    .latex-document {
+      margin: 12px auto;
+      padding: 32px 22px 70px;
+    }
   }
 </style>

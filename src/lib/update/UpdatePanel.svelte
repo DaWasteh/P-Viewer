@@ -272,6 +272,7 @@
     place-items: center;
     padding: 20px;
     background: rgb(4 6 10 / 58%);
+    -webkit-backdrop-filter: blur(3px);
     backdrop-filter: blur(3px);
   }
 
@@ -369,7 +370,7 @@
 
   .version-card strong {
     color: #d4d8e1;
-    font-family: "Cascadia Code", Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
   }
 

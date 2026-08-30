@@ -5,7 +5,7 @@ P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter f
 [![Tests](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml/badge.svg)](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-blue.svg)](LICENSE)
 
-> **Status:** aktuelle Version `v0.0.9`.
+> **Status:** aktuelle Version `v0.1.0`.
 
 ## Aktueller Funktionsumfang
 
@@ -17,10 +17,11 @@ P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter f
 - isolierte HTML-/HTM-/XHTML-Vorschau mit Inline-CSS und begrenzten lokalen Rasterbildern
 - Markdown mit GFM, Gliederung, Folding, Tabellen, Aufgabenlisten, Callouts und KaTeX-Mathematik
 - einklappbare JSON-Strukturansicht
-- LaTeX-/TeX-Editor mit PDF-Build über eine lokale TeX-Distribution
+- gebündelte, automatisch aktualisierte LaTeX-Livevorschau mit KaTeX sowie optionaler PDF-Build über eine lokale TeX-Distribution
+- Registrierung aller unterstützten Endungen für „Öffnen mit“ und auswählbare Standardprogramm-Gruppen in den Einstellungen
 - Dark Mode als Standard, optionaler Light Mode
-- anpassbare Schrift- und Symbolgrößen
-- persistente Einstellungen im plattformüblichen Benutzer-Konfigurationsverzeichnis
+- anpassbare Schrift- und Symbolgrößen sowie gebündelte Inter-/JetBrains-Mono-Schriften für konsistente WebViews
+- persistente Einstellungen einschließlich eines Diagnose-/Debug-Modus im plattformüblichen Benutzer-Konfigurationsverzeichnis
 - vorbereiteter, fail-closed In-App-Updater für signierte GitHub-Releases, ohne Benutzereinstellungen zu überschreiben
 
 ## Technologie
@@ -47,7 +48,7 @@ npm run tauri dev
 
 ### Per Doppelklick starten
 
-Ein optimierter Root-Launcher wird mit einem Befehl gebaut und nach `P-Viewer.exe` im Projektstamm kopiert:
+Ein optimierter Root-Launcher wird mit einem Befehl gebaut und nach `P-Viewer.exe` im Projektstamm kopiert. Unter Windows kann dafür `build-exe.bat` doppelt angeklickt werden; im Terminal gilt plattformübergreifend:
 
 ```bash
 npm run build:launcher
@@ -60,6 +61,7 @@ Prüfungen:
 ```bash
 npm audit --audit-level=low
 npm run check:version
+npm run check:associations
 npm run check
 npm test
 npm run build
@@ -80,13 +82,19 @@ HTML, HTM und XHTML besitzen eine gerenderte **View**-Vorschau. Vor dem Rendern 
 
 ## LaTeX
 
-Eine vollständige TeX-Distribution ist bewusst nicht Teil des schlanken App-Pakets. P-Viewer steuert sicher eine lokal installierte Distribution an, bevorzugt `latexmk`; unterstützt werden außerdem Tectonic, `pdflatex`, `xelatex` und `lualatex`.
+Die voreingestellte **Live**-Ansicht ist vollständig gebündelt, funktioniert offline und benötigt nach der Installation keine weitere Abhängigkeit. Sie rendert Dokumentstruktur, verbreitete Textbefehle, Listen, Tabellen und Mathematik; nicht vollständig nachbildbare TeX-Makros werden transparent als Vereinfachungen gemeldet. Quelltext wird escaped und KaTeX läuft ohne vertrauenswürdige Eingaben.
+
+Für einen typografisch exakten **PDF**-Build kann P-Viewer zusätzlich eine lokal installierte Distribution ansteuern, bevorzugt `latexmk`; unterstützt werden außerdem Tectonic, `pdflatex`, `xelatex` und `lualatex`.
 
 - Windows: MiKTeX oder TeX Live
 - macOS: MacTeX
 - Linux: TeX Live
 
-Shell-Escape bleibt standardmäßig deaktiviert.
+Die externe Distribution ist optional; Shell-Escape bleibt deaktiviert.
+
+## Dateizuordnungen
+
+Installer registrieren alle 81 unterstützten Dateiendungen als mögliche P-Viewer-Formate. Unter **Einstellungen → Standardprogramme** lassen sich 49 sinnvolle Formatgruppen auswählen. Windows öffnet anschließend aus Sicherheitsgründen seine geschützte Standard-Apps-Seite zur Bestätigung; Linux aktualisiert die benutzerspezifische `mimeapps.list`, macOS verwendet LaunchServices. Eine vorhandene Standard-App wird bei der Windows-Installation nicht still überschrieben.
 
 ## Versionierung
 
@@ -94,4 +102,4 @@ Versionen folgen semantischer Vorabversionierung und werden als `vX.Y.Z` getaggt
 
 ## Lizenz
 
-[MIT](LICENSE)
+P-Viewer steht unter der [MIT-Lizenz](LICENSE). Hinweise zu den gebündelten OFL-Schriften stehen in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

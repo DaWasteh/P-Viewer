@@ -75,6 +75,6 @@ function offsetToPosition(
   const lines = before.split(/\r\n|\r|\n/);
   return {
     line: lines.length,
-    column: (lines.at(-1)?.length ?? 0) + 1,
+    column: (lines[lines.length - 1]?.length ?? 0) + 1,
   };
 }

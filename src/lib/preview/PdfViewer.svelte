@@ -25,17 +25,21 @@
   const renderTasks = new Set<RenderTask>();
 
   onMount(() => {
-    const observer = new ResizeObserver(() => {
+    const scheduleRender = () => {
       window.clearTimeout(resizeTimer);
       resizeTimer = window.setTimeout(() => {
         if (pdfDocument) void renderPages(pdfDocument);
       }, 180);
-    });
-    observer.observe(container);
+    };
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleRender);
+    if (observer) observer.observe(container);
+    else window.addEventListener("resize", scheduleRender);
 
     return () => {
       generation += 1;
-      observer.disconnect();
+      observer?.disconnect();
+      window.removeEventListener("resize", scheduleRender);
       window.clearTimeout(resizeTimer);
       for (const task of renderTasks) task.cancel();
       renderTasks.clear();
@@ -270,6 +274,7 @@
     gap: 9px;
     color: #a5acb9;
     background: rgb(34 37 43 / 72%);
+    -webkit-backdrop-filter: blur(2px);
     backdrop-filter: blur(2px);
     font-size: 11px;
   }

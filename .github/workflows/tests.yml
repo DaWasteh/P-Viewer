@@ -60,6 +60,9 @@ jobs:
       - name: Verify synchronized version metadata
         run: npm run check:version
 
+      - name: Verify file association metadata
+        run: npm run check:associations
+
       - name: Check Svelte and TypeScript
         run: npm run check
 

@@ -2,6 +2,19 @@
 
 Alle Entwicklungsstufen folgen semantischer Vorabversionierung.
 
+## 0.1.0
+
+- alle 81 unterstützten Dateiendungen in 49 synchronisierten Formatgruppen für Windows, Linux und macOS registriert
+- Windows-NSIS-Registrierung für „Öffnen mit“ und „Standard-Apps“ ergänzt, ohne bestehende Standardprogramme bei der Installation still zu überschreiben
+- benutzerausgelöste Formatwahl in den Einstellungen ergänzt; Windows bestätigt geschützt im Systemdialog, Linux über `mimeapps.list` und macOS über LaunchServices
+- mehrere Startargumente, Drag-and-drop-Dateien und macOS-Open-Events in einem gemeinsamen Dokumentfluss verarbeitet
+- vollständig gebündelte, sichere LaTeX-Livevorschau mit Dokumentstruktur, verbreiteten Textbefehlen, Listen, Tabellen und KaTeX-Mathematik ergänzt
+- exakten PDF-Build als weiterhin optionalen Modus mit lokaler TeX-Distribution beibehalten
+- persistenten Debug-Modus mit Plattform-/WebView-/Dokumentdiagnose und Konsolenprotokollierung ergänzt
+- Inter und JetBrains Mono lokal gebündelt, Safari-13-Buildziel, WebKit-Fallbacks sowie CSS-Präfixe für konsistentere WebViews ergänzt
+- `build-exe.bat` für einen geprüften optimierten Windows-Root-Build ergänzt
+- CI-Prüfung gegen Drift zwischen unterstützten Endungen, Tauri-Konfiguration und NSIS-Hooks ergänzt
+
 ## 0.0.9
 
 - VS-Code-ähnliche Dokument-Tabs zum parallelen Öffnen, Wechseln und Schließen mehrerer Dateien ergänzt

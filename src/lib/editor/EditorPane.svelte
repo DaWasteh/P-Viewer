@@ -64,7 +64,7 @@
         ".cm-scroller": {
           overflow: "auto",
           fontFamily:
-            '"Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace',
+            'var(--font-mono, "JetBrains Mono", "Cascadia Code", monospace)',
           lineHeight: "1.65",
         },
         ".cm-content": {

@@ -36,7 +36,8 @@ async function loadHtmlFallback(baseName: string): Promise<LanguageSupport | nul
 }
 
 async function loadWebComponentLanguage(baseName: string): Promise<LanguageSupport | null> {
-  const extension = baseName.split(".").at(-1)?.toLowerCase();
+  const nameParts = baseName.split(".");
+  const extension = nameParts[nameParts.length - 1]?.toLowerCase();
 
   try {
     if (extension === "astro") {
@@ -58,12 +59,14 @@ async function loadWebComponentLanguage(baseName: string): Promise<LanguageSuppo
 export async function loadLanguageForFile(
   fileName: string,
 ): Promise<LanguageSupport | null> {
-  const baseName = fileName.split(/[\\/]/).at(-1) ?? fileName;
+  const pathParts = fileName.split(/[\\/]/);
+  const baseName = pathParts[pathParts.length - 1] ?? fileName;
   const lowerName = baseName.toLowerCase();
   const webComponentLanguage = await loadWebComponentLanguage(baseName);
   if (webComponentLanguage) return webComponentLanguage;
 
-  const extension = lowerName.split(".").at(-1) ?? "";
+  const extensionParts = lowerName.split(".");
+  const extension = extensionParts[extensionParts.length - 1] ?? "";
   const alias = NAME_ALIASES[lowerName] ?? EXTENSION_ALIASES[extension];
   const description = alias
     ? languages.find((language) => language.name === alias) ?? null

@@ -2572,7 +2572,7 @@ dependencies = [
 
 [[package]]
 name = "p-viewer"
-version = "0.0.9"
+version = "0.1.0"
 dependencies = [
  "atomic-write-file",
  "base64 0.22.1",
@@ -2591,6 +2591,7 @@ dependencies = [
  "tempfile",
  "url",
  "wait-timeout",
+ "winreg",
 ]
 
 [[package]]

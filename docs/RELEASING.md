@@ -50,6 +50,7 @@ Standard-Builds benötigen deshalb keinen privaten Key.
    ```bash
    npm audit --audit-level=low
    npm run check:version
+   npm run check:associations
    npm run check
    npm test
    npm run build
@@ -58,16 +59,23 @@ Standard-Builds benötigen deshalb keinen privaten Key.
    cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
    ```
 
-3. Commit und exakt passendes Tag erstellen, zum Beispiel `v0.0.9`.
-4. Branch und Tag zu GitHub pushen. `.github/workflows/release.yml` wiederholt die
+   Wenn sich `src/lib/files/associations.json` ändert, vorher `npm run sync:associations`
+   ausführen. Die Synchronprüfung verhindert Drift zu Tauri und den NSIS-Hooks.
+
+3. Unter Windows den portablen Root-Build zusätzlich über `build-exe.bat` prüfen.
+4. Commit und exakt passendes Tag erstellen, zum Beispiel `v0.1.0`.
+5. Branch und Tag zu GitHub pushen. `.github/workflows/release.yml` wiederholt die
    Qualitätsprüfungen, baut Windows, Linux sowie macOS für Intel und Apple Silicon,
    signiert die Pakete und erzeugt `latest.json`.
-5. Der Workflow erstellt absichtlich einen **Draft Release**. Installer auf allen drei
+6. Der Workflow erstellt absichtlich einen **Draft Release**. Installer auf allen drei
    Plattformen testen, Signaturdateien und `latest.json` kontrollieren und erst danach
-   den Entwurf manuell veröffentlichen.
+   den Entwurf manuell veröffentlichen. Der Windows-Smoke-Test umfasst zusätzlich:
+   P-Viewer erscheint unter „Öffnen mit“, eine bestehende Standard-App bleibt nach der
+   Installation erhalten, die ausgewählten Formate erscheinen in „Standard-Apps“, und
+   die Deinstallation entfernt die P-Viewer-Einträge.
 
 Der Workflow bricht ab, wenn Tag und Metadaten nicht übereinstimmen oder Key-Variablen
-fehlen. Er bevorzugt unter Windows NSIS für das Updater-Manifest.
+fehlen. Windows-Builds sind bewusst auf NSIS begrenzt, damit Registrierung, Wiederherstellung vorhandener Standards und Deinstallation über dieselben geprüften Installer-Hooks laufen.
 
 ## Einstellungsbestand
 

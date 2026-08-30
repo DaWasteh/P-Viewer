@@ -90,7 +90,7 @@
       {path}
       {theme}
       {onOpenPath}
-      fontSize={fileType.kind === "markdown" ? previewFontSize : editorFontSize}
+      fontSize={fileType.kind === "markdown" || fileType.kind === "latex" ? previewFontSize : editorFontSize}
     />
   {:else if previewLoadError}
     <div class:light={theme === "light"} class="preview-state error" role="alert">
