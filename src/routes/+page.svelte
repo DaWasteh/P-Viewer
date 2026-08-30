@@ -16,14 +16,24 @@
   } from "@lucide/svelte";
   import EditorPane from "$lib/editor/EditorPane.svelte";
   import PreviewPane from "$lib/preview/PreviewPane.svelte";
+  import DocumentTabs from "$lib/files/DocumentTabs.svelte";
+  import FileTypeSelector from "$lib/files/FileTypeSelector.svelte";
   import {
     chooseAndOpenDocument,
     confirmDiscardChanges,
+    confirmDiscardDocuments,
     createUntitledDocument,
     openDocumentPath,
     saveDocument,
   } from "$lib/files/documents";
-  import { countLines, countWords } from "$lib/files/fileTypes";
+  import { countLines, countWords, detectFileType } from "$lib/files/fileTypes";
+  import {
+    documentIsDirty,
+    findTabByPath,
+    isPristineUntitled,
+    nextUntitledName,
+    type DocumentTab,
+  } from "$lib/files/tabs";
   import type { OpenDocument, ViewMode } from "$lib/files/types";
   import { APP_VERSION } from "$lib/version";
   import SettingsPanel from "$lib/settings/SettingsPanel.svelte";
@@ -37,12 +47,20 @@
     type AppSettings,
   } from "$lib/settings/settings";
 
-  let document = $state<OpenDocument>(createUntitledDocument());
+  let tabSequence = 0;
+
+  function createTab(document: OpenDocument): DocumentTab {
+    tabSequence += 1;
+    return { id: `tab-${tabSequence}`, document, revision: 0 };
+  }
+
+  const initialTab = createTab(createUntitledDocument());
+  let tabs = $state<DocumentTab[]>([initialTab]);
+  let activeTabId = $state(initialTab.id);
   let mode = $state<ViewMode>("edit");
   let busy = $state(false);
   let errorMessage = $state("");
   let dragActive = $state(false);
-  let documentRevision = $state(0);
   let cursorLine = $state(1);
   let cursorColumn = $state(1);
   let selectedCharacters = $state(0);
@@ -53,7 +71,18 @@
   let systemDark = $state(true);
   let appWindow = $state.raw<TauriWindow | null>(null);
 
-  const dirty = $derived(document.content !== document.savedContent);
+  const activeTab = $derived(tabs.find((tab) => tab.id === activeTabId) ?? tabs[0]);
+  const document = $derived(activeTab!.document);
+  const dirty = $derived(documentIsDirty(document));
+  const dirtyCount = $derived(tabs.filter((tab) => documentIsDirty(tab.document)).length);
+  const tabItems = $derived(
+    tabs.map((tab) => ({
+      id: tab.id,
+      name: tab.document.name,
+      path: tab.document.path,
+      dirty: documentIsDirty(tab.document),
+    })),
+  );
   const lineCount = $derived(countLines(document.content));
   const wordCount = $derived(countWords(document.content));
   const activeTheme = $derived(
@@ -135,9 +164,12 @@
       appWindow = getCurrentWindow();
       cleanups.push(
         await appWindow.onCloseRequested(async (event) => {
-          if (!dirty) return;
+          const dirtyNames = tabs
+            .filter((tab) => documentIsDirty(tab.document))
+            .map((tab) => tab.document.name);
+          if (dirtyNames.length === 0) return;
           event.preventDefault();
-          if (await confirmDiscardChanges(document.name)) {
+          if (await confirmDiscardDocuments(dirtyNames)) {
             await appWindow?.destroy();
           }
         }),
@@ -154,9 +186,7 @@
       );
 
       const initialPath = await invoke<string | null>("initial_document_path");
-      if (initialPath && document.untitled && !dirty) {
-        await openDroppedDocument(initialPath);
-      }
+      if (initialPath) await openDroppedDocument(initialPath, true);
     })().catch((error) => {
       errorMessage = messageFrom(error);
     });
@@ -171,28 +201,42 @@
     return error instanceof Error ? error.message : String(error);
   }
 
-  async function mayReplaceDocument(): Promise<boolean> {
-    return !dirty || (await confirmDiscardChanges(document.name));
+  function showDocument(opened: OpenDocument, replacePristine: boolean): void {
+    const existing = findTabByPath(tabs, opened.path);
+    if (existing) {
+      activeTabId = existing.id;
+      return;
+    }
+
+    const current = tabs.find((tab) => tab.id === activeTabId);
+    if (replacePristine && current && isPristineUntitled(current.document)) {
+      current.document = opened;
+      current.revision += 1;
+      return;
+    }
+
+    const tab = createTab(opened);
+    tabs.push(tab);
+    activeTabId = tab.id;
   }
 
-  async function newDocument(): Promise<void> {
-    if (!(await mayReplaceDocument())) return;
-    document = createUntitledDocument();
-    documentRevision += 1;
+  function newDocument(): void {
+    if (busy) return;
+    const name = nextUntitledName(tabs.map((tab) => tab.document));
+    const tab = createTab(createUntitledDocument(name));
+    tabs.push(tab);
+    activeTabId = tab.id;
     mode = "edit";
     errorMessage = "";
   }
 
   async function openDocument(): Promise<void> {
-    if (busy || !(await mayReplaceDocument())) return;
+    if (busy) return;
     busy = true;
     errorMessage = "";
     try {
       const opened = await chooseAndOpenDocument();
-      if (opened) {
-        document = opened;
-        documentRevision += 1;
-      }
+      if (opened) showDocument(opened, true);
     } catch (error) {
       errorMessage = messageFrom(error);
     } finally {
@@ -200,40 +244,164 @@
     }
   }
 
-  async function openDroppedDocument(path: string): Promise<void> {
-    if (busy || !(await mayReplaceDocument())) return;
+  async function openDroppedDocument(
+    path: string,
+    replacePristine = true,
+  ): Promise<void> {
+    if (busy) return;
+    const existing = findTabByPath(tabs, path);
+    if (existing) {
+      activeTabId = existing.id;
+      return;
+    }
+
     busy = true;
     errorMessage = "";
     try {
-      document = await openDocumentPath(path);
-      documentRevision += 1;
+      showDocument(await openDocumentPath(path), replacePristine);
     } catch (error) {
       errorMessage = messageFrom(error);
     } finally {
       busy = false;
     }
+  }
+
+  function focusDocumentTab(tabId: string): void {
+    requestAnimationFrame(() => {
+      window.document
+        .querySelector<HTMLButtonElement>(`[data-tab-id="${tabId}"]`)
+        ?.focus();
+    });
+  }
+
+  async function closeTab(tabId: string): Promise<string | null> {
+    if (busy) return null;
+    let index = tabs.findIndex((tab) => tab.id === tabId);
+    if (index < 0) return null;
+
+    const closing = tabs[index];
+    if (documentIsDirty(closing.document)) {
+      busy = true;
+      let accepted = false;
+      try {
+        accepted = await confirmDiscardChanges(closing.document.name);
+      } catch (error) {
+        errorMessage = messageFrom(error);
+      } finally {
+        busy = false;
+      }
+      if (!accepted) return null;
+      index = tabs.findIndex((tab) => tab.id === tabId);
+      if (index < 0) return null;
+    }
+
+    if (tabs.length === 1) {
+      const replacement = createTab(createUntitledDocument());
+      tabs.splice(0, 1, replacement);
+      activeTabId = replacement.id;
+    } else {
+      const nextActiveId = tabs[index + 1]?.id ?? tabs[index - 1]?.id;
+      tabs.splice(index, 1);
+      if (activeTabId === tabId) activeTabId = nextActiveId;
+    }
+
+    cursorLine = 1;
+    cursorColumn = 1;
+    selectedCharacters = 0;
+    errorMessage = "";
+    focusDocumentTab(activeTabId);
+    return activeTabId;
+  }
+
+  function activateTab(tabId: string): void {
+    if (busy || tabId === activeTabId || !tabs.some((tab) => tab.id === tabId)) return;
+    activeTabId = tabId;
+    cursorLine = 1;
+    cursorColumn = 1;
+    selectedCharacters = 0;
+  }
+
+  function cycleTab(direction: -1 | 1): void {
+    if (busy || tabs.length < 2) return;
+    const currentIndex = tabs.findIndex((tab) => tab.id === activeTabId);
+    const nextIndex = (currentIndex + direction + tabs.length) % tabs.length;
+    activateTab(tabs[nextIndex].id);
+  }
+
+  function validateSavePath(tabId: string, path: string): void {
+    const conflict = findTabByPath(tabs, path, tabId);
+    if (!conflict) return;
+    throw new Error(
+      `„${conflict.document.name}“ ist bereits in einem anderen Tab geöffnet. Wähle einen anderen Speicherort.`,
+    );
   }
 
   async function saveCurrent(forceDialog = false): Promise<boolean> {
     if (busy) return false;
+    const tabId = activeTab!.id;
+    const source = activeTab!.document;
     busy = true;
     errorMessage = "";
     try {
-      const saved = await saveDocument(document, forceDialog);
-      if (saved) {
-        document = saved;
-        return true;
-      }
+      const saved = await saveDocument(source, forceDialog, (path) =>
+        validateSavePath(tabId, path),
+      );
+      if (!saved) return false;
+
+      const target = tabs.find((tab) => tab.id === tabId);
+      if (target) target.document = saved;
+      return true;
     } catch (error) {
       errorMessage = messageFrom(error);
+      return false;
     } finally {
       busy = false;
     }
-    return false;
+  }
+
+  async function saveAllDirtyDocuments(): Promise<boolean> {
+    if (busy) return false;
+    const dirtyTabIds = tabs
+      .filter((tab) => documentIsDirty(tab.document))
+      .map((tab) => tab.id);
+    busy = true;
+    errorMessage = "";
+    try {
+      for (const tabId of dirtyTabIds) {
+        const tab = tabs.find((candidate) => candidate.id === tabId);
+        if (!tab) continue;
+        const saved = await saveDocument(tab.document, false, (path) =>
+          validateSavePath(tabId, path),
+        );
+        if (!saved) {
+          activeTabId = tabId;
+          return false;
+        }
+        tab.document = saved;
+      }
+      return true;
+    } catch (error) {
+      errorMessage = messageFrom(error);
+      return false;
+    } finally {
+      busy = false;
+    }
   }
 
   function updateContent(content: string): void {
     document.content = content;
+  }
+
+  function updateFileType(fileName: string): void {
+    if (fileName === document.name) return;
+    document.name = fileName;
+    document.fileType = detectFileType(fileName);
+    document.metadataDirty = true;
+    if (!document.untitled) {
+      document.path = "";
+      document.untitled = true;
+    }
+    errorMessage = "";
   }
 
   function updateCursor(position: { line: number; column: number; selected: number }): void {
@@ -255,9 +423,15 @@
     if (!primary) return;
 
     const key = event.key.toLowerCase();
-    if (key === "n") {
+    if (key === "tab") {
       event.preventDefault();
-      void newDocument();
+      cycleTab(event.shiftKey ? -1 : 1);
+    } else if (key === "w" && !event.shiftKey) {
+      event.preventDefault();
+      void closeTab(activeTabId);
+    } else if (key === "n") {
+      event.preventDefault();
+      newDocument();
     } else if (key === "o") {
       event.preventDefault();
       void openDocument();
@@ -285,7 +459,7 @@
   }
 
   function handleBeforeUnload(event: BeforeUnloadEvent): void {
-    if (!dirty) return;
+    if (dirtyCount === 0) return;
     event.preventDefault();
   }
 
@@ -322,7 +496,7 @@
 
   <nav class="toolbar" aria-label="Dokumentaktionen">
     <div class="tool-group">
-      <button class="icon-button" title="Neu (Strg/Cmd+N)" onclick={() => void newDocument()}>
+      <button class="icon-button" title="Neu (Strg/Cmd+N)" onclick={newDocument} disabled={busy}>
         <FilePlus2 size={17} aria-hidden="true" />
         <span class="sr-only">Neues Dokument</span>
       </button>
@@ -355,7 +529,11 @@
       </button>
     </div>
 
-    <div class="format-pill">{document.fileType.label}</div>
+    <FileTypeSelector
+      fileName={document.name}
+      disabled={busy}
+      onChange={updateFileType}
+    />
     <button
       class="icon-button settings-button"
       class:active={updateOpen}
@@ -377,6 +555,15 @@
     </button>
   </nav>
 
+  <DocumentTabs
+    tabs={tabItems}
+    activeId={activeTabId}
+    disabled={busy}
+    onActivate={activateTab}
+    onClose={(tabId) => void closeTab(tabId)}
+    onNew={newDocument}
+  />
+
   {#if errorMessage}
     <div class="error-banner" role="alert">
       <span>{errorMessage}</span>
@@ -384,9 +571,15 @@
     </div>
   {/if}
 
-  <section class:split={mode === "split"} class="workspace">
+  <div
+    id="document-workspace"
+    class:split={mode === "split"}
+    class="workspace"
+    role="tabpanel"
+    aria-label={document.name}
+  >
     <div class:hidden={mode === "view"} class="pane editor-pane" aria-label="Editor">
-      {#key documentRevision}
+      {#key `${activeTabId}:${activeTab!.revision}`}
         <EditorPane
           value={document.content}
           fileName={document.name}
@@ -417,7 +610,7 @@
         />
       </div>
     {/if}
-  </section>
+  </div>
 
   {#if dragActive}
     <div class="drop-overlay" aria-hidden="true">
@@ -450,8 +643,9 @@
   {#if updateOpen}
     <UpdatePanel
       {activeTheme}
-      hasUnsavedChanges={dirty}
-      onSave={() => saveCurrent()}
+      hasUnsavedChanges={dirtyCount > 0}
+      unsavedCount={dirtyCount}
+      onSave={saveAllDirtyDocuments}
       onClose={() => (updateOpen = false)}
     />
   {/if}
@@ -479,7 +673,7 @@
 
   .app-shell {
     display: grid;
-    grid-template-rows: 48px 46px minmax(0, 1fr) 28px;
+    grid-template-rows: 48px 46px 34px minmax(0, 1fr) 28px;
     width: 100vw;
     height: 100vh;
     color: var(--text);
@@ -509,7 +703,7 @@
   }
 
   .app-shell.has-error {
-    grid-template-rows: 48px 46px auto minmax(0, 1fr) 28px;
+    grid-template-rows: 48px 46px 34px auto minmax(0, 1fr) 28px;
   }
 
   .titlebar,
@@ -656,16 +850,6 @@
     box-shadow: 0 1px 4px rgb(0 0 0 / 24%);
   }
 
-  .format-pill {
-    margin-left: auto;
-    padding: 4px 8px;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    color: var(--text-muted);
-    font-family: var(--mono);
-    font-size: 10px;
-  }
-
   .error-banner {
     display: flex;
     align-items: center;
@@ -774,7 +958,6 @@
     }
 
     .mode-switch span,
-    .format-pill,
     .statusbar span:nth-child(2) {
       display: none;
     }

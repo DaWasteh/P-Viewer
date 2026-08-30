@@ -39,11 +39,18 @@
   interface Props {
     activeTheme: "dark" | "light";
     hasUnsavedChanges: boolean;
+    unsavedCount?: number;
     onSave: () => Promise<boolean>;
     onClose: () => void;
   }
 
-  let { activeTheme, hasUnsavedChanges, onSave, onClose }: Props = $props();
+  let {
+    activeTheme,
+    hasUnsavedChanges,
+    unsavedCount = hasUnsavedChanges ? 1 : 0,
+    onSave,
+    onClose,
+  }: Props = $props();
 
   let configuration = $state<UpdaterConfiguration | null>(null);
   let checkResult = $state<UpdateCheckResult | null>(null);
@@ -201,8 +208,14 @@
           {#if hasUnsavedChanges}
             <div class="unsaved-note">
               <Save size={14} aria-hidden="true" />
-              <span>Speichere das aktuelle Dokument vor dem Neustart.</span>
-              <button onclick={() => void saveBeforeUpdate()}>Jetzt speichern</button>
+              <span>
+                {unsavedCount === 1
+                  ? "Speichere das geänderte Dokument vor dem Neustart."
+                  : `Speichere alle ${unsavedCount} geänderten Dokumente vor dem Neustart.`}
+              </span>
+              <button onclick={() => void saveBeforeUpdate()}>
+                {unsavedCount === 1 ? "Jetzt speichern" : "Alle speichern"}
+              </button>
             </div>
           {/if}
           <button class="install-button" onclick={() => void installUpdate()} disabled={hasUnsavedChanges || installing}>

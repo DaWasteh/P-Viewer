@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  SUPPORTED_FILE_EXTENSIONS,
+  SUPPORTED_FILE_TYPE_CHOICES,
   countLines,
   countWords,
   detectFileType,
   extensionOf,
+  fileNameForFileTypeChoice,
   fileNameFromPath,
+  fileNameWithExtension,
+  fileTypeChoiceIdFor,
+  normalizeCustomExtension,
 } from "./fileTypes";
 
 describe("file type detection", () => {
@@ -32,6 +38,38 @@ describe("file type detection", () => {
       language: "plaintext",
     });
     expect(extensionOf(".gitignore")).toBe("");
+  });
+
+  it("offers every supported extension and special file name", () => {
+    const extensionChoices = SUPPORTED_FILE_TYPE_CHOICES.filter(
+      (choice) => choice.extension,
+    );
+    expect(extensionChoices.map((choice) => choice.extension)).toEqual(
+      expect.arrayContaining([...SUPPORTED_FILE_EXTENSIONS]),
+    );
+    expect(new Set(extensionChoices.map((choice) => choice.extension)).size).toBe(
+      SUPPORTED_FILE_EXTENSIONS.length,
+    );
+
+    for (const choice of SUPPORTED_FILE_TYPE_CHOICES) {
+      const fileName = fileNameForFileTypeChoice("Unbenannt.txt", choice);
+      expect(detectFileType(fileName), choice.label).toEqual(choice.fileType);
+      expect(fileTypeChoiceIdFor(fileName), choice.label).toBe(choice.id);
+    }
+  });
+
+  it("replaces known and custom extensions safely", () => {
+    expect(fileNameWithExtension("Unbenannt.txt", "md")).toBe("Unbenannt.md");
+    expect(fileNameWithExtension("archive.backup.txt", ".notes")).toBe(
+      "archive.backup.notes",
+    );
+    expect(normalizeCustomExtension("  .Eigene_Endung  ")).toBe("eigene_endung");
+    expect(fileTypeChoiceIdFor("draft.eigene_endung")).toBe(
+      "custom:eigene_endung",
+    );
+    expect(() => fileNameWithExtension("notes.txt", "../md")).toThrow(
+      "Ungültige Dateiendung",
+    );
   });
 });
 

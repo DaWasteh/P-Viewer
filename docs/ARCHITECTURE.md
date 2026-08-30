@@ -1,7 +1,7 @@
 # Architekturentscheidung
 
 **Status:** angenommen  
-**Version:** v0.0.8
+**Version:** v0.0.9
 
 ## Entscheidung
 
@@ -29,7 +29,7 @@ Diese Kombination liefert native, kleine Desktop-Pakete und direkten, kontrollie
 ## Produktprinzipien
 
 1. **Schnell öffnen:** unbekannte Textformate fallen auf Plaintext zurück; schwere Renderer werden erst bei Bedarf geladen.
-2. **Ein Dokument, wenig Ablenkung:** Edit-, View- und Split-Modus stehen im Mittelpunkt.
+2. **Mehrere Dokumente, wenig Ablenkung:** Eine kompakte Tab-Leiste hält mehrere Dateien parallel offen; Edit-, View- und Split-Modus bleiben im Mittelpunkt.
 3. **Keine Ausführung von Dokumentcode:** Markdown-HTML wird sanitisiert; HTML läuft nur als statischer, bereinigter Inhalt in einem Iframe ohne Sandbox-Rechte; Astro-/Svelte-/Vue-Projektcode bleibt Quelltext.
 4. **Minimale native Rechte:** Dateioperationen laufen über eng begrenzte Rust-Commands statt pauschaler Dateisystemfreigaben.
 5. **Einstellungen getrennt vom Programm:** Updates ersetzen nur Anwendungsartefakte. Einstellungen bleiben in `%APPDATA%`, `~/Library/Application Support` beziehungsweise `$XDG_DATA_HOME` erhalten.

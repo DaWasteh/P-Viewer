@@ -28,4 +28,5 @@ export interface OpenDocument extends DocumentPayload {
   savedContent: string;
   fileType: FileTypeInfo;
   untitled: boolean;
+  metadataDirty: boolean;
 }

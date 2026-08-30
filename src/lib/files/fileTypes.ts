@@ -101,6 +101,60 @@ const SPECIAL_NAMES: Record<string, FileTypeInfo> = {
   ".editorconfig": { kind: "code", language: "ini", label: "EditorConfig" },
 };
 
+const SPECIAL_NAME_CASE: Record<string, string> = {
+  dockerfile: "Dockerfile",
+  makefile: "Makefile",
+  rakefile: "Rakefile",
+  gemfile: "Gemfile",
+  ".gitignore": ".gitignore",
+  ".gitattributes": ".gitattributes",
+  ".editorconfig": ".editorconfig",
+};
+
+export type FileTypeChoiceGroup =
+  | "Text"
+  | "Dokumente"
+  | "Code und Konfiguration"
+  | "Spezielle Dateinamen";
+
+export interface FileTypeChoice {
+  id: string;
+  group: FileTypeChoiceGroup;
+  label: string;
+  fileType: FileTypeInfo;
+  extension?: string;
+  fileName?: string;
+}
+
+function groupFor(fileType: FileTypeInfo): FileTypeChoiceGroup {
+  if (fileType.kind === "text") return "Text";
+  if (fileType.kind === "code") return "Code und Konfiguration";
+  return "Dokumente";
+}
+
+export const SUPPORTED_FILE_EXTENSIONS = Object.freeze(Object.keys(TYPES));
+
+export const SUPPORTED_FILE_TYPE_CHOICES: readonly FileTypeChoice[] = Object.freeze(
+  [
+    ...Object.entries(TYPES).map(([extension, fileType]) => ({
+      id: `extension:${extension}`,
+      group: groupFor(fileType),
+      label: `${fileType.label} (.${extension})`,
+      fileType,
+      extension,
+    })),
+    ...Object.entries(SPECIAL_NAMES).map(([name, fileType]) => ({
+      id: `name:${name}`,
+      group: "Spezielle Dateinamen" as const,
+      label: `${fileType.label} (${SPECIAL_NAME_CASE[name]})`,
+      fileType,
+      fileName: SPECIAL_NAME_CASE[name],
+    })),
+  ].sort((left, right) =>
+    left.label.localeCompare(right.label, "de", { sensitivity: "base" }),
+  ),
+);
+
 const FALLBACK: FileTypeInfo = {
   kind: "text",
   language: "plaintext",
@@ -115,6 +169,38 @@ export function extensionOf(fileName: string): string {
   const baseName = fileNameFromPath(fileName);
   const dot = baseName.lastIndexOf(".");
   return dot > 0 ? baseName.slice(dot + 1).toLowerCase() : "";
+}
+
+export function normalizeCustomExtension(value: string): string | null {
+  const normalized = value.trim().replace(/^\.+/, "").toLowerCase();
+  return /^[\p{L}\p{N}][\p{L}\p{N}_-]{0,31}$/u.test(normalized)
+    ? normalized
+    : null;
+}
+
+export function fileNameWithExtension(fileName: string, extension: string): string {
+  const normalized = normalizeCustomExtension(extension);
+  if (!normalized) throw new Error("Ungültige Dateiendung.");
+
+  const baseName = fileNameFromPath(fileName);
+  const dot = baseName.lastIndexOf(".");
+  const stem = dot > 0 ? baseName.slice(0, dot) : baseName;
+  return `${stem || "Unbenannt"}.${normalized}`;
+}
+
+export function fileTypeChoiceIdFor(fileName: string): string {
+  const baseName = fileNameFromPath(fileName).toLowerCase();
+  if (SPECIAL_NAMES[baseName]) return `name:${baseName}`;
+
+  const extension = extensionOf(baseName);
+  return TYPES[extension] ? `extension:${extension}` : `custom:${extension}`;
+}
+
+export function fileNameForFileTypeChoice(
+  fileName: string,
+  choice: FileTypeChoice,
+): string {
+  return choice.fileName ?? fileNameWithExtension(fileName, choice.extension ?? "");
 }
 
 export function detectFileType(fileName: string): FileTypeInfo {

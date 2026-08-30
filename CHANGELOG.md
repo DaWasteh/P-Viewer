@@ -2,6 +2,16 @@
 
 Alle Entwicklungsstufen folgen semantischer Vorabversionierung.
 
+## 0.0.9
+
+- VS-Code-ähnliche Dokument-Tabs zum parallelen Öffnen, Wechseln und Schließen mehrerer Dateien ergänzt
+- Tab-Wechsel über Strg/Cmd+Tab, Schließen über Strg/Cmd+W sowie vollständige Tastaturbedienung der Tab-Leiste ergänzt
+- sichtbare Dateityp-Anzeige als natives Dropdown mit allen unterstützten Endungen und speziellen Dateinamen umgesetzt
+- validierte eigene Dateiendungen mit sicherem Plaintext-Fallback und sofortiger Anpassung von Syntaxmodus und Vorschau ergänzt
+- ungespeicherte Inhalte und Dateitypänderungen tabübergreifend vor Schließen und Updates geschützt
+- doppelte Tabs für denselben Speicherpfad sowie konkurrierende Save-As-Ziele abgefangen
+- Speichervorgänge gegen parallele Editoränderungen abgesichert, damit spätere Eingaben als ungespeichert erhalten bleiben
+
 ## 0.0.8
 
 - HTML-, HTM- und XHTML-Dateien in einer sanitisierten, vollständig sandboxed `srcdoc`-Vorschau gerendert

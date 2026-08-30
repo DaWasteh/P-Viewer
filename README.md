@@ -5,11 +5,13 @@ P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter f
 [![Tests](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml/badge.svg)](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-blue.svg)](LICENSE)
 
-> **Status:** aktuelle Version `v0.0.8`.
+> **Status:** aktuelle Version `v0.0.9`.
 
 ## Aktueller Funktionsumfang
 
 - Text- und Code-Dateien encoding-sicher lesen, atomar speichern, erstellen und bearbeiten
+- mehrere Dokumente parallel in einer VS-Code-ähnlichen Tab-Leiste öffnen und sicher schließen
+- Dateityp direkt in der Werkzeugleiste aus allen unterstützten Formaten oder über eine eigene Endung wählen
 - breite Syntaxhervorhebung mit sicherem Plaintext-Fallback, inklusive gemischter Astro-, Svelte- und Vue-Syntax
 - Edit-, View- und Split-Ansicht
 - isolierte HTML-/HTM-/XHTML-Vorschau mit Inline-CSS und begrenzten lokalen Rasterbildern

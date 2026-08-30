@@ -1,6 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { confirm, open, save } from "@tauri-apps/plugin-dialog";
-import { detectFileType, fileNameFromPath } from "./fileTypes";
+import {
+  SUPPORTED_FILE_EXTENSIONS,
+  detectFileType,
+  fileNameFromPath,
+} from "./fileTypes";
 import type {
   DocumentPayload,
   LineEnding,
@@ -11,68 +15,7 @@ import type {
 const DOCUMENT_FILTERS = [
   {
     name: "Text, Code und Dokumente",
-    extensions: [
-      "txt",
-      "text",
-      "log",
-      "md",
-      "markdown",
-      "mdown",
-      "mkd",
-      "mdx",
-      "json",
-      "jsonc",
-      "json5",
-      "ipynb",
-      "tex",
-      "latex",
-      "ltx",
-      "sty",
-      "cls",
-      "bib",
-      "py",
-      "pyw",
-      "js",
-      "mjs",
-      "cjs",
-      "jsx",
-      "ts",
-      "mts",
-      "cts",
-      "tsx",
-      "html",
-      "htm",
-      "xhtml",
-      "astro",
-      "css",
-      "scss",
-      "sass",
-      "less",
-      "vue",
-      "svelte",
-      "xml",
-      "svg",
-      "yaml",
-      "yml",
-      "toml",
-      "ini",
-      "cfg",
-      "sh",
-      "bat",
-      "cmd",
-      "ps1",
-      "rs",
-      "go",
-      "java",
-      "c",
-      "h",
-      "cpp",
-      "hpp",
-      "cs",
-      "sql",
-      "csv",
-      "tsv",
-    ],
+    extensions: [...SUPPORTED_FILE_EXTENSIONS],
   },
   { name: "Alle Dateien", extensions: ["*"] },
 ];
@@ -96,8 +39,7 @@ export function defaultLineEnding(): LineEnding {
   return "lf";
 }
 
-export function createUntitledDocument(): OpenDocument {
-  const name = "Unbenannt.txt";
+export function createUntitledDocument(name = "Unbenannt.txt"): OpenDocument {
   return {
     path: "",
     name,
@@ -109,6 +51,7 @@ export function createUntitledDocument(): OpenDocument {
     size: 0,
     lossy: false,
     untitled: true,
+    metadataDirty: false,
     fileType: detectFileType(name),
   };
 }
@@ -132,6 +75,7 @@ export async function openDocumentPath(path: string): Promise<OpenDocument> {
     ...payload,
     savedContent: payload.content,
     untitled: false,
+    metadataDirty: false,
     fileType: detectFileType(payload.name),
   };
 }
@@ -139,6 +83,7 @@ export async function openDocumentPath(path: string): Promise<OpenDocument> {
 export async function saveDocument(
   document: OpenDocument,
   forceDialog = false,
+  validatePath?: (path: string) => void,
 ): Promise<OpenDocument | null> {
   requireDesktop();
   let path = document.path;
@@ -152,9 +97,11 @@ export async function saveDocument(
     path = selected;
   }
 
+  validatePath?.(path);
+  const savedContent = document.content;
   const result = await invoke<SaveResult>("write_document", {
     path,
-    content: document.content,
+    content: savedContent,
     encoding: document.encoding,
     hasBom: document.hasBom,
     lineEnding: document.lineEnding,
@@ -165,10 +112,11 @@ export async function saveDocument(
     ...document,
     path: result.path,
     name,
-    savedContent: document.content,
+    savedContent,
     size: result.size,
     lossy: false,
     untitled: false,
+    metadataDirty: false,
     fileType: detectFileType(name),
   };
 }
@@ -182,6 +130,23 @@ export async function confirmDiscardChanges(name: string): Promise<boolean> {
     title: "Änderungen verwerfen?",
     kind: "warning",
     okLabel: "Verwerfen",
+    cancelLabel: "Abbrechen",
+  });
+}
+
+export async function confirmDiscardDocuments(names: string[]): Promise<boolean> {
+  if (names.length <= 1) return confirmDiscardChanges(names[0] ?? "dem Dokument");
+
+  const listedNames = names.slice(0, 5).map((name) => `• ${name}`).join("\n");
+  const remaining = names.length > 5 ? `\n• und ${names.length - 5} weitere` : "";
+  const message = `Ungespeicherte Änderungen an ${names.length} Dokumenten gehen verloren.\n\n${listedNames}${remaining}`;
+
+  if (!inTauri()) return window.confirm(message);
+
+  return confirm(message, {
+    title: "Alle Änderungen verwerfen?",
+    kind: "warning",
+    okLabel: "Alle verwerfen",
     cancelLabel: "Abbrechen",
   });
 }
