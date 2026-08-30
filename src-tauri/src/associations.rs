@@ -351,7 +351,7 @@ fn find_linux_desktop_id() -> Option<String> {
             if !metadata.is_file() || metadata.len() > 256 * 1024 {
                 continue;
             }
-            let Ok(content) = fs::read_to_string(path) else {
+            let Ok(content) = fs::read_to_string(&path) else {
                 continue;
             };
             if content.lines().any(|line| line.trim() == "Name=P-Viewer")
