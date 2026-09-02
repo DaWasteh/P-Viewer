@@ -2,6 +2,17 @@
 
 Alle Entwicklungsstufen folgen semantischer Vorabversionierung.
 
+## 0.1.1
+
+- vollständige HTML-/HTM-/XHTML-Vorschau nach einer expliziten Sicherheitsbestätigung ergänzt; Skripte, Stylesheets und lokale Ressourcen laufen in einem separaten WebView-Fenster ohne P-Viewer-Capabilities
+- aktive HTML-Vorschauen über einen tokenisierten Loopback-Ursprung mit eigenem Zufallsport, Dokumentordner-Grenze, Symlink-/Traversal-Schutz, MIME-Typen, Byte-Ranges sowie Quelltext- und Ressourcenlimits abgesichert
+- Windows-WebView2-Deadlock beim Öffnen der vollständigen Vorschau behoben; das zuvor weiße und unverschließbare Zusatzfenster lädt nun korrekt und wird über X vollständig bereinigt
+- sichere statische HTML-Vorschau weiterhin als Standard beibehalten; Popups, Downloads und Navigation aus dem isolierten aktiven Vorschaufenster blockiert
+- Windows-Dateizuordnungen auf reine Candidate-Registrierung umgestellt: keine Extension-Defaults und keine Manipulation von `UserChoice`; die endgültige Auswahl erfolgt auf der geschützten P-Viewer-Seite der Windows-Einstellungen
+- Laufzeitregistrierung und NSIS-Deinstallation entfernen nur P-Viewer-eigene Kandidaten, bereinigen veraltete ProgIDs und erhalten vorhandene Benutzerstandards
+- Dokumentverweise für UNC-, Extended-Windows- und relative Pfade gehärtet sowie percent-kodierte externe Schemes und unsichere Geräte-/Traversal-Pfade blockiert
+- Regressionstests für die native HTML-Isolationsgrenze, Fenster-Lifecycle, Loopback-Server, Pfadauflösung und Candidate-only-Installerregistrierung ergänzt
+
 ## 0.1.0
 
 - alle 81 unterstützten Dateiendungen in 49 synchronisierten Formatgruppen für Windows, Linux und macOS registriert

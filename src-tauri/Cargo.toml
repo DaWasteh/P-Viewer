@@ -1,6 +1,6 @@
 [package]
 name = "p-viewer"
-version = "0.1.0"
+version = "0.1.1"
 description = "A fast, focused cross-platform editor and document viewer"
 authors = ["P-Viewer contributors"]
 license = "MIT"
@@ -35,7 +35,11 @@ tauri-plugin-store = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 url = "2"
+mime_guess = "2"
+tiny_http = "0.12"
+uuid = { version = "1", features = ["v4"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_UI_Shell"] }
 winreg = "0.55"
 

@@ -1,6 +1,6 @@
 {
   "name": "p-viewer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A fast, focused cross-platform editor and document viewer.",
   "type": "module",
   "scripts": {

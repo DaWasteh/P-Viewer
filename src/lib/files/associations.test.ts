@@ -6,6 +6,13 @@ import {
   normalizeAssociationIds,
 } from "./associations";
 import { SUPPORTED_FILE_EXTENSIONS } from "./fileTypes";
+import runtimeSource from "../../../src-tauri/src/associations.rs?raw";
+import windowsConfigSource from "../../../src-tauri/tauri.windows.conf.json?raw";
+import nsisHooks from "../../../src-tauri/windows/file-associations.nsh?raw";
+
+const windowsConfig = JSON.parse(windowsConfigSource) as {
+  bundle: { fileAssociations: unknown[] };
+};
 
 describe("system file association groups", () => {
   it("covers every supported extension exactly once", () => {
@@ -28,5 +35,20 @@ describe("system file association groups", () => {
       expect.arrayContaining(["md", "markdown", "json", "jsonc", "json5"]),
     );
     expect(extensionsForAssociationIds([])).toEqual([]);
+  });
+
+  it("keeps Windows installer registration candidate-only", () => {
+    expect(windowsConfig.bundle.fileAssociations).toEqual([]);
+    expect(nsisHooks).toContain("Candidate-only registration");
+    expect(nsisHooks).not.toContain("APP_ASSOCIATE");
+    expect(nsisHooks).not.toMatch(
+      /WriteRegStr SHCTX "Software\\Classes\\\.\$\{EXT\}" ""/,
+    );
+    expect(nsisHooks).toContain(
+      'WriteRegStr SHCTX "Software\\Classes\\.${EXT}\\OpenWithProgids" "${PROGID}" ""',
+    );
+    expect(runtimeSource).not.toContain("UserChoice");
+    expect(runtimeSource).toContain("ms-settings:defaultapps?registeredAppUser=P-Viewer");
+    expect(runtimeSource).toContain("SHChangeNotify");
   });
 });

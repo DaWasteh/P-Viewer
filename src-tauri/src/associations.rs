@@ -105,34 +105,51 @@ fn select_associations(ids: &[String]) -> Result<Vec<AssociationGroup>, String> 
 
 #[cfg(target_os = "windows")]
 fn apply_on_windows(selected: &[AssociationGroup]) -> Result<AssociationApplyResult, String> {
-    use winreg::{enums::HKEY_CURRENT_USER, RegKey};
+    use std::ffi::{OsStr, OsString};
+    use windows_sys::Win32::UI::Shell::{
+        SHChangeNotify, SHCNE_ASSOCCHANGED, SHCNF_FLUSH, SHCNF_IDLIST,
+    };
+    use winreg::{
+        enums::{HKEY_CURRENT_USER, KEY_WRITE},
+        RegKey,
+    };
 
-    const DEFAULT_APPS_URI: &str = "ms-settings:defaultapps?registeredAppUser=P-Viewer";
+    const APP_REGISTRATION_NAME: &str = "P-Viewer";
     const CAPABILITIES_PATH: &str = "Software\\P-Viewer\\Capabilities";
+    const DEFAULT_APPS_URI: &str = "ms-settings:defaultapps?registeredAppUser=P-Viewer";
+    const DEFAULT_APPS_FALLBACK_URI: &str = "ms-settings:defaultapps";
+
+    fn child_key(parent: &OsStr, suffix: &str) -> OsString {
+        let mut path = parent.to_os_string();
+        path.push("\\");
+        path.push(suffix);
+        path
+    }
 
     let executable = std::env::current_exe()
         .map_err(|error| format!("Der P-Viewer-Programmpfad ist nicht verfügbar: {error}"))?;
-    let executable = executable.to_string_lossy();
-    let executable_name = std::path::Path::new(executable.as_ref())
+    let executable_name = executable
         .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("p-viewer.exe");
-    let command = format!("\"{executable}\" \"%1\"");
-    let icon = format!("{executable},0");
+        .unwrap_or_else(|| OsStr::new("p-viewer.exe"));
+    let mut command = OsString::from("\"");
+    command.push(executable.as_os_str());
+    command.push("\" \"%1\"");
+    let mut icon = executable.as_os_str().to_os_string();
+    icon.push(",0");
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
 
     let (capabilities, _) = hkcu
         .create_subkey(CAPABILITIES_PATH)
         .map_err(|error| format!("Windows-Capabilities konnten nicht erstellt werden: {error}"))?;
     capabilities
-        .set_value("ApplicationName", &"P-Viewer")
+        .set_value("ApplicationName", &APP_REGISTRATION_NAME)
         .and_then(|_| {
             capabilities.set_value(
                 "ApplicationDescription",
                 &"Schneller Editor und Dokumentbetrachter",
             )
         })
-        .and_then(|_| capabilities.set_value("ApplicationIcon", &icon.as_str()))
+        .and_then(|_| capabilities.set_value("ApplicationIcon", &icon.as_os_str()))
         .map_err(|error| {
             format!("Windows-Capabilities konnten nicht geschrieben werden: {error}")
         })?;
@@ -140,17 +157,18 @@ fn apply_on_windows(selected: &[AssociationGroup]) -> Result<AssociationApplyRes
     let (file_associations, _) = hkcu
         .create_subkey(format!("{CAPABILITIES_PATH}\\FileAssociations"))
         .map_err(|error| format!("Windows-Dateiformate konnten nicht geöffnet werden: {error}"))?;
-    let old_values: Vec<String> = file_associations
+    let old_capability_values: Vec<(String, String)> = file_associations
         .enum_values()
         .filter_map(Result::ok)
         .map(|(name, _)| name)
         .filter(|name| name.starts_with('.'))
+        .filter_map(|name| {
+            file_associations
+                .get_value::<String, _>(&name)
+                .ok()
+                .map(|prog_id| (name, prog_id))
+        })
         .collect();
-    for name in old_values {
-        file_associations.delete_value(name).map_err(|error| {
-            format!("Eine alte Windows-Dateizuordnung konnte nicht entfernt werden: {error}")
-        })?;
-    }
 
     let (registered, _) = hkcu
         .create_subkey("Software\\RegisteredApplications")
@@ -158,30 +176,46 @@ fn apply_on_windows(selected: &[AssociationGroup]) -> Result<AssociationApplyRes
             format!("Windows-Standardprogramme konnten nicht geöffnet werden: {error}")
         })?;
     registered
-        .set_value("P-Viewer", &CAPABILITIES_PATH)
+        .set_value(APP_REGISTRATION_NAME, &CAPABILITIES_PATH)
         .map_err(|error| {
             format!("P-Viewer konnte nicht als Standardprogramm registriert werden: {error}")
         })?;
 
-    let application_path = format!("Software\\Classes\\Applications\\{executable_name}");
+    let mut application_path = OsString::from("Software\\Classes\\Applications\\");
+    application_path.push(executable_name);
     let (application, _) = hkcu
         .create_subkey(&application_path)
         .map_err(|error| format!("Windows-Open-With-Registrierung ist fehlgeschlagen: {error}"))?;
     application
-        .set_value("FriendlyAppName", &"P-Viewer")
+        .set_value("FriendlyAppName", &APP_REGISTRATION_NAME)
         .and_then(|_| {
-            hkcu.create_subkey(format!("{application_path}\\DefaultIcon"))
-                .and_then(|(key, _)| key.set_value("", &icon.as_str()))
+            hkcu.create_subkey(child_key(&application_path, "DefaultIcon"))
+                .and_then(|(key, _)| key.set_value("", &icon.as_os_str()))
         })
         .map_err(|error| {
             format!("Windows-App-Metadaten konnten nicht geschrieben werden: {error}")
         })?;
-    hkcu.create_subkey(format!("{application_path}\\shell\\open\\command"))
-        .and_then(|(key, _)| key.set_value("", &command.as_str()))
+    hkcu.create_subkey(child_key(&application_path, "shell\\open\\command"))
+        .and_then(|(key, _)| key.set_value("", &command.as_os_str()))
         .map_err(|error| {
             format!("Der Windows-Öffnen-Befehl konnte nicht registriert werden: {error}")
         })?;
+    let (supported_types, _) = hkcu
+        .create_subkey(child_key(&application_path, "SupportedTypes"))
+        .map_err(|error| format!("Windows-Dateitypen konnten nicht registriert werden: {error}"))?;
+    let old_supported_types: Vec<String> = supported_types
+        .enum_values()
+        .filter_map(Result::ok)
+        .map(|(name, _)| name)
+        .filter(|name| name.starts_with('.'))
+        .collect();
 
+    let mut selected_extensions = HashSet::new();
+    let mut selected_mappings = HashMap::new();
+    let selected_prog_ids: HashSet<&str> = selected
+        .iter()
+        .map(|association| association.prog_id.as_str())
+        .collect();
     for association in selected {
         let prog_id_path = format!("Software\\Classes\\{}", association.prog_id);
         let (prog_id, _) = hkcu.create_subkey(&prog_id_path).map_err(|error| {
@@ -194,11 +228,11 @@ fn apply_on_windows(selected: &[AssociationGroup]) -> Result<AssociationApplyRes
             .set_value("", &association.description.as_str())
             .and_then(|_| {
                 hkcu.create_subkey(format!("{prog_id_path}\\DefaultIcon"))
-                    .and_then(|(key, _)| key.set_value("", &icon.as_str()))
+                    .and_then(|(key, _)| key.set_value("", &icon.as_os_str()))
             })
             .and_then(|_| {
                 hkcu.create_subkey(format!("{prog_id_path}\\shell\\open\\command"))
-                    .and_then(|(key, _)| key.set_value("", &command.as_str()))
+                    .and_then(|(key, _)| key.set_value("", &command.as_os_str()))
             })
             .map_err(|error| {
                 format!("ProgID {} ist unvollständig: {error}", association.prog_id)
@@ -206,8 +240,11 @@ fn apply_on_windows(selected: &[AssociationGroup]) -> Result<AssociationApplyRes
 
         for extension in &association.extensions {
             let dotted = format!(".{extension}");
+            selected_extensions.insert(dotted.clone());
+            selected_mappings.insert(dotted.clone(), association.prog_id.clone());
             file_associations
                 .set_value(&dotted, &association.prog_id.as_str())
+                .and_then(|_| supported_types.set_value(&dotted, &""))
                 .map_err(|error| format!("{dotted} konnte nicht ausgewählt werden: {error}"))?;
             hkcu.create_subkey(format!("Software\\Classes\\{dotted}\\OpenWithProgids"))
                 .and_then(|(key, _)| key.set_value(&association.prog_id, &""))
@@ -217,10 +254,86 @@ fn apply_on_windows(selected: &[AssociationGroup]) -> Result<AssociationApplyRes
         }
     }
 
-    std::process::Command::new("explorer.exe")
-        .arg(DEFAULT_APPS_URI)
-        .spawn()
-        .map_err(|error| format!("Windows-Einstellungen konnten nicht geöffnet werden: {error}"))?;
+    // Remove stale values only after every selected mapping has been written. A
+    // mid-operation registry error therefore retains old entries instead of first
+    // deleting the complete offer set and exposing only a partial new selection.
+    let mut stale_prog_ids = HashSet::new();
+    for (name, old_prog_id) in old_capability_values {
+        if selected_mappings.get(&name) == Some(&old_prog_id) {
+            continue;
+        }
+        if !selected_extensions.contains(&name) {
+            file_associations.delete_value(&name).map_err(|error| {
+                format!("Eine alte Windows-Dateizuordnung konnte nicht entfernt werden: {error}")
+            })?;
+        }
+        if old_prog_id.starts_with("PViewer.") {
+            let open_with_path = format!("Software\\Classes\\{name}\\OpenWithProgids");
+            match hkcu.open_subkey_with_flags(&open_with_path, KEY_WRITE) {
+                Ok(key) => match key.delete_value(&old_prog_id) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => {
+                        return Err(format!(
+                            "Eine alte Öffnen-mit-Zuordnung für {name} konnte nicht entfernt werden: {error}"
+                        ));
+                    }
+                },
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(format!(
+                        "Die alte Öffnen-mit-Zuordnung für {name} konnte nicht geöffnet werden: {error}"
+                    ));
+                }
+            }
+            stale_prog_ids.insert(old_prog_id);
+        }
+    }
+    for prog_id in stale_prog_ids {
+        if !selected_prog_ids.contains(prog_id.as_str()) {
+            match hkcu.delete_subkey_all(format!("Software\\Classes\\{prog_id}")) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(format!(
+                        "Die alte Windows-ProgID {prog_id} konnte nicht entfernt werden: {error}"
+                    ));
+                }
+            }
+        }
+    }
+    for name in old_supported_types {
+        if !selected_extensions.contains(&name) {
+            supported_types.delete_value(&name).map_err(|error| {
+                format!("Ein alter Windows-Dateityp konnte nicht entfernt werden: {error}")
+            })?;
+        }
+    }
+
+    // Flush the Shell association cache before opening Settings so the app-specific
+    // confirmation page sees registrations made by a portable build immediately.
+    unsafe {
+        SHChangeNotify(
+            SHCNE_ASSOCCHANGED as i32,
+            SHCNF_IDLIST | SHCNF_FLUSH,
+            std::ptr::null(),
+            std::ptr::null(),
+        );
+    }
+
+    let settings_message = match tauri_plugin_opener::open_url(DEFAULT_APPS_URI, None::<&str>) {
+        Ok(()) => "Die Windows-Bestätigung für P-Viewer wurde geöffnet. Wähle dort bei den angebotenen Dateitypen P-Viewer aus; Windows erlaubt diese letzte Bestätigung ausschließlich in den Systemeinstellungen.".to_string(),
+        Err(targeted_error) => {
+            tauri_plugin_opener::open_url(DEFAULT_APPS_FALLBACK_URI, None::<&str>).map_err(
+                |fallback_error| {
+                    format!(
+                        "P-Viewer wurde als mögliche Standard-App registriert, aber die Windows-Einstellungen konnten nicht geöffnet werden ({targeted_error}; Fallback: {fallback_error}). Öffne Einstellungen → Apps → Standard-Apps und suche nach P-Viewer."
+                    )
+                },
+            )?;
+            "Die allgemeine Windows-Seite „Standard-Apps“ wurde geöffnet. Suche dort nach P-Viewer und bestätige die gewünschten Dateitypen.".to_string()
+        }
+    };
 
     Ok(AssociationApplyResult {
         platform: "windows".into(),
@@ -230,7 +343,7 @@ fn apply_on_windows(selected: &[AssociationGroup]) -> Result<AssociationApplyRes
             .map(|association| association.extensions.len())
             .sum(),
         requires_user_confirmation: true,
-        message: "Windows schützt die Standard-App-Auswahl. Nur die ausgewählten P-Viewer-Formate wurden im Systemdialog angeboten; bestätige sie dort.".into(),
+        message: settings_message,
     })
 }
 

@@ -63,19 +63,19 @@ Standard-Builds benötigen deshalb keinen privaten Key.
    ausführen. Die Synchronprüfung verhindert Drift zu Tauri und den NSIS-Hooks.
 
 3. Unter Windows den portablen Root-Build zusätzlich über `build-exe.bat` prüfen.
-4. Commit und exakt passendes Tag erstellen, zum Beispiel `v0.1.0`.
+4. Commit und exakt passendes Tag erstellen, zum Beispiel `v0.1.1`.
 5. Branch und Tag zu GitHub pushen. `.github/workflows/release.yml` wiederholt die
    Qualitätsprüfungen, baut Windows, Linux sowie macOS für Intel und Apple Silicon,
    signiert die Pakete und erzeugt `latest.json`.
 6. Der Workflow erstellt absichtlich einen **Draft Release**. Installer auf allen drei
    Plattformen testen, Signaturdateien und `latest.json` kontrollieren und erst danach
    den Entwurf manuell veröffentlichen. Der Windows-Smoke-Test umfasst zusätzlich:
-   P-Viewer erscheint unter „Öffnen mit“, eine bestehende Standard-App bleibt nach der
-   Installation erhalten, die ausgewählten Formate erscheinen in „Standard-Apps“, und
-   die Deinstallation entfernt die P-Viewer-Einträge.
+   P-Viewer erscheint unter „Öffnen mit“, Installation und Deinstallation verändern
+   weder Extension-Defaults noch `UserChoice`, die geschützte P-Viewer-Seite unter
+   „Standard-Apps“ öffnet sich, und die Deinstallation entfernt nur P-Viewer-Einträge.
 
 Der Workflow bricht ab, wenn Tag und Metadaten nicht übereinstimmen oder Key-Variablen
-fehlen. Windows-Builds sind bewusst auf NSIS begrenzt, damit Registrierung, Wiederherstellung vorhandener Standards und Deinstallation über dieselben geprüften Installer-Hooks laufen.
+fehlen. Windows-Builds sind bewusst auf NSIS begrenzt, damit Candidate-Registrierung und Deinstallation über dieselben geprüften Installer-Hooks laufen, ohne vorhandene Benutzerstandards zu schreiben oder wiederherzustellen.
 
 ## Einstellungsbestand
 

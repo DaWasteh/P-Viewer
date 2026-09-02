@@ -5,7 +5,7 @@ P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter f
 [![Tests](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml/badge.svg)](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-blue.svg)](LICENSE)
 
-> **Status:** aktuelle Version `v0.1.0`.
+> **Status:** aktuelle Version `v0.1.1`.
 
 ## Aktueller Funktionsumfang
 
@@ -14,7 +14,7 @@ P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter f
 - Dateityp direkt in der Werkzeugleiste aus allen unterstützten Formaten oder über eine eigene Endung wählen
 - breite Syntaxhervorhebung mit sicherem Plaintext-Fallback, inklusive gemischter Astro-, Svelte- und Vue-Syntax
 - Edit-, View- und Split-Ansicht
-- isolierte HTML-/HTM-/XHTML-Vorschau mit Inline-CSS und begrenzten lokalen Rasterbildern
+- sichere statische HTML-/HTM-/XHTML-Vorschau sowie eine explizit bestätigte vollständige Vorschau mit Skripten, Stylesheets und lokalen Ressourcen
 - Markdown mit GFM, Gliederung, Folding, Tabellen, Aufgabenlisten, Callouts und KaTeX-Mathematik
 - einklappbare JSON-Strukturansicht
 - gebündelte, automatisch aktualisierte LaTeX-Livevorschau mit KaTeX sowie optionaler PDF-Build über eine lokale TeX-Distribution
@@ -29,7 +29,7 @@ P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter f
 - **Desktop:** Tauri 2 / Rust
 - **UI:** Svelte 5 / TypeScript / Vite
 - **Editor:** CodeMirror 6
-- **Dokument-Rendering:** unified/remark/rehype, sandboxed HTML `srcdoc`, KaTeX und PDF.js
+- **Dokument-Rendering:** unified/remark/rehype, sandboxed HTML `srcdoc`, isolierter nativer HTML-WebView, KaTeX und PDF.js
 
 Die Entscheidung ist in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) dokumentiert. Änderungen je Version stehen im [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -72,13 +72,12 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
 ## HTML und Webkomponenten
 
-HTML, HTM und XHTML besitzen eine gerenderte **View**-Vorschau. Vor dem Rendern wird das Dokument ohne Browser-Ressourcenabruf geparst und auf einen statischen HTML-Teil reduziert. Die Vorschau läuft in einem Iframe mit undurchsichtiger Herkunft, leerem Sandbox-Rechtesatz und eigener deny-by-default-CSP.
+HTML, HTM und XHTML besitzen zwei klar getrennte Vorschauarten:
 
-- Skripte, Event-Handler, Navigation, Formulare, eingebettete Frames und externe Netzwerkressourcen werden entfernt beziehungsweise blockiert.
-- Inline-CSS bleibt für eine realistische Darstellung erhalten; CSP verhindert dessen Netzwerkzugriffe.
-- Relative PNG-, JPEG-, GIF-, WebP-, BMP- und ICO-Dateien werden nur innerhalb des Dokumentordners, anhand ihrer Dateisignatur und mit Anzahl-/Größenlimits geladen.
-- HTML-Vorschauen sind auf 1 MiB Quelltext begrenzt; größere Dateien bleiben vollständig im Editor nutzbar.
-- Astro, Svelte und Vue werden als hervorgehobener Quelltext angezeigt. Insbesondere Astro wird nicht ausgeführt oder ohne Projekt-Build unzuverlässig nachgebildet.
+- **Sicher (Standard):** Das Dokument wird ohne Browser-Ressourcenabruf geparst, sanitisiert und in einem Iframe mit undurchsichtiger Herkunft, leerem Sandbox-Rechtesatz und eigener deny-by-default-CSP angezeigt. Skripte, Event-Handler, Navigation, Formulare, Frames und externe Netzwerkressourcen werden entfernt oder blockiert. Inline-CSS sowie geprüfte relative Rasterbilder innerhalb des Dokumentordners bleiben erhalten. Diese Vorschau ist auf 1 MiB Quelltext begrenzt; größere Dateien bleiben vollständig im Editor nutzbar.
+- **Vollständig (nach Warnung):** Nach expliziter Bestätigung öffnet P-Viewer ein separates Inkognito-WebView-Fenster. Dort funktionieren Skripte, Stylesheets, Medien und weitere relative lokale Ressourcen. Jede Vorschau verwendet einen eigenen tokenisierten Loopback-Ursprung und besitzt keine P-Viewer-/Tauri-Capabilities. Lokale Dateien bleiben auf den kanonischen Dokumentordner begrenzt; Traversals, Symlink-Ausbrüche, Popups, Downloads und Navigation zu anderen Ursprüngen werden blockiert. Quelltext und einzelne Ressourcen sind jeweils auf 64 MiB begrenzt. Dokumentcode kann in diesem Modus wie in einem Browser auf das Netzwerk zugreifen und sollte deshalb nur bei vertrauenswürdigen Dateien aktiviert werden.
+
+Astro, Svelte und Vue werden als hervorgehobener Quelltext angezeigt. Projektkomponenten werden nicht ohne ihren Build-Prozess ausgeführt oder unzuverlässig nachgebildet.
 
 ## LaTeX
 

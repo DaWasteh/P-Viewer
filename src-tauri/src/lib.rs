@@ -1,5 +1,6 @@
 mod associations;
 mod document;
+mod html_preview;
 mod latex;
 mod updater;
 
@@ -10,6 +11,7 @@ use tauri::{Emitter, Manager};
 pub fn run() {
     let app = tauri::Builder::default()
         .manage(document::PendingDocumentPaths::from_startup_arguments())
+        .manage(html_preview::FullHtmlPreviewState::default())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -21,6 +23,10 @@ pub fn run() {
             document::read_document,
             document::read_local_images,
             document::write_document,
+            html_preview::open_full_html_preview,
+            html_preview::update_full_html_preview,
+            html_preview::focus_full_html_preview,
+            html_preview::close_full_html_preview,
             latex::compile_latex,
             latex::detect_latex_engines,
             updater::check_for_update,

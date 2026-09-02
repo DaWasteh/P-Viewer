@@ -1,7 +1,7 @@
 # Architekturentscheidung
 
 **Status:** angenommen  
-**Version:** v0.1.0
+**Version:** v0.1.1
 
 ## Entscheidung
 
@@ -18,7 +18,7 @@ Diese Kombination liefert native, kleine Desktop-Pakete und direkten, kontrollie
 | Oberfläche | Svelte 5, TypeScript, Vite |
 | Editor | CodeMirror 6, Sprachen bei Bedarf geladen |
 | Markdown | unified, remark-gfm, remark-math, rehype-katex, rehype-sanitize |
-| HTML | nicht ladender HAST-Parser, Allowlist-Sanitizer, leeres Iframe-Sandbox und innere CSP |
+| HTML | sichere HAST-/Iframe-Vorschau als Standard; explizit bestätigter separater WebView über tokenisierten Loopback-Ursprung für vollständige aktive Inhalte |
 | Webkomponenten | lazy Astro-/Svelte-/Vue-Mischsyntax; keine Ausführung von Projektcode |
 | JSON | CodeMirror plus eigene einklappbare Baumansicht |
 | LaTeX | gebündelter sicherer HTML-/KaTeX-Live-Renderer; optionale lokale Compilersteuerung in Rust und PDF.js |
@@ -31,12 +31,12 @@ Diese Kombination liefert native, kleine Desktop-Pakete und direkten, kontrollie
 
 1. **Schnell öffnen:** unbekannte Textformate fallen auf Plaintext zurück; schwere Renderer werden erst bei Bedarf geladen.
 2. **Mehrere Dokumente, wenig Ablenkung:** Eine kompakte Tab-Leiste hält mehrere Dateien parallel offen; Edit-, View- und Split-Modus bleiben im Mittelpunkt.
-3. **Keine Ausführung von Dokumentcode:** Markdown-HTML wird sanitisiert; HTML läuft nur als statischer, bereinigter Inhalt in einem Iframe ohne Sandbox-Rechte; Astro-/Svelte-/Vue-Projektcode bleibt Quelltext.
+3. **Keine implizite Ausführung von Dokumentcode:** Markdown-HTML wird sanitisiert und HTML läuft standardmäßig nur statisch in einem Iframe ohne Sandbox-Rechte. Aktives HTML erfordert eine ausdrückliche Warnungsbestätigung und öffnet ausschließlich in einem getrennten WebView ohne App-Capabilities; Astro-/Svelte-/Vue-Projektcode bleibt Quelltext.
 4. **Minimale native Rechte:** Dateioperationen laufen über eng begrenzte Rust-Commands statt pauschaler Dateisystemfreigaben.
 5. **Einstellungen getrennt vom Programm:** Updates ersetzen nur Anwendungsartefakte. Einstellungen bleiben in `%APPDATA%`, `~/Library/Application Support` beziehungsweise `$XDG_DATA_HOME` erhalten.
 6. **Sichere TeX-Vorgaben:** Die gebündelte Live-Ansicht escaped Text und verwendet KaTeX mit `trust: false`. Externe Compiler werden über absolute Programme aus bereinigten PATH-Ordnern ohne Benutzershell gestartet. Arbeitsausgaben bleiben temporär, Projektdateien werden nur als Inputs gesucht, und `shell-escape` bleibt aus.
-7. **Benutzer kontrollieren Standardprogramme:** Installer registrieren P-Viewer als Kandidaten, stellen unter Windows aber die vorherige Klassen-Zuordnung wieder her. Das eigentliche Setzen geschieht nur nach expliziter Formatauswahl und, wo vom OS verlangt, in dessen geschützter Oberfläche.
-8. **Defense in depth:** App- und HTML-Vorschau besitzen getrennte restriktive Content Security Policies. Allowlist-Sanitizing, opaque Iframe-Origin, Größen-/Ressourcenlimits und eng zugeschnittene Tauri-Capabilities begrenzen Dokument- und WebView-Inhalte.
+7. **Benutzer kontrollieren Standardprogramme:** Installer und Laufzeitcode registrieren P-Viewer unter Windows ausschließlich als Kandidaten und schreiben weder Extension-Defaults noch `UserChoice`. Das eigentliche Setzen geschieht nur nach expliziter Formatauswahl und, wo vom OS verlangt, in dessen geschützter Oberfläche.
+8. **Defense in depth:** App, statische HTML-Vorschau und aktive HTML-Vorschau haben getrennte Sicherheitsgrenzen. Allowlist-Sanitizing, opaque Iframe-Origin, zufällige Loopback-Tokens und -Ports, kanonische Dokumentwurzeln, Größen-/Ressourcenlimits sowie fensterspezifische Tauri-Capabilities begrenzen Dokument- und WebView-Inhalte.
 9. **Fail-closed Updates:** Lokale Builds laden nichts. Release-Builds benötigen HTTPS-Endpunkt, Public Key und signierte Pakete; unvollständige Konfiguration wird abgelehnt.
 
 ## LaTeX-Grenze
@@ -67,6 +67,7 @@ src/lib/
 src-tauri/src/
   associations.rs  OS-konforme Standardprogramm-Auswahl
   document.rs      Encoding-sichere und atomare Datei-E/A sowie Open-Events
+  html_preview.rs  isolierter Loopback-Server und Fenster-Lifecycle für aktives HTML
   latex.rs         isolierte Compilersteuerung mit Timeouts
   updater.rs       HTTPS-, Signatur- und Installationsgrenze
 ```

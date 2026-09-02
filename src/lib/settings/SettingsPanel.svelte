@@ -295,8 +295,9 @@
               {applyingAssociations ? "System wird geöffnet …" : "Ausgewählte als Standard festlegen"}
             </button>
             <small class="system-choice-note">
-              Windows lässt die endgültige Auswahl aus Sicherheitsgründen im Systemdialog bestätigen.
-              Linux und macOS übernehmen die ausgewählten Formatgruppen direkt.
+              Unter Windows öffnet P-Viewer direkt die geschützte Bestätigungsseite der App.
+              Wähle dort P-Viewer bei den gewünschten Dateitypen aus; Windows erlaubt diese letzte
+              Auswahl nicht in einem app-eigenen Dialog. Linux und macOS übernehmen die Gruppen direkt.
             </small>
           </div>
         {/if}
