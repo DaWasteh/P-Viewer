@@ -762,7 +762,8 @@
     --accent-strong: #435bce;
   }
 
-  .app-shell :global(svg) {
+  /* Only UI icons scale with the icon size; KaTeX and document SVGs must stay untouched. */
+  .app-shell :global(svg.lucide) {
     transform: scale(var(--icon-scale));
     transform-origin: center;
     transition: transform 120ms ease;

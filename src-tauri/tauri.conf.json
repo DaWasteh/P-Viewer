@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "P-Viewer",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "identifier": "io.github.dawasteh.pviewer",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -57,7 +57,9 @@
           "md",
           "markdown",
           "mdown",
-          "mkd"
+          "mkd",
+          "mkdn",
+          "mdwn"
         ],
         "name": "PViewer.Markdown",
         "description": "Markdown-Dokument",
@@ -83,6 +85,20 @@
       },
       {
         "ext": [
+          "rmd",
+          "qmd"
+        ],
+        "name": "PViewer.RMarkdown",
+        "description": "R-Markdown- oder Quarto-Dokument",
+        "role": "Editor",
+        "mimeType": "text/x-rmarkdown",
+        "rank": "Alternate",
+        "contentTypes": [
+          "net.daringfireball.markdown"
+        ]
+      },
+      {
+        "ext": [
           "json",
           "jsonc",
           "json5"
@@ -91,6 +107,21 @@
         "description": "JSON-Dokument",
         "role": "Editor",
         "mimeType": "application/json",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.json"
+        ]
+      },
+      {
+        "ext": [
+          "jsonld",
+          "geojson",
+          "webmanifest"
+        ],
+        "name": "PViewer.JsonWeb",
+        "description": "JSON-Webdokument",
+        "role": "Editor",
+        "mimeType": "application/ld+json",
         "rank": "Alternate",
         "contentTypes": [
           "public.json"
@@ -209,8 +240,22 @@
       },
       {
         "ext": [
+          "coffee"
+        ],
+        "name": "PViewer.CoffeeScript",
+        "description": "CoffeeScript-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/coffeescript",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
           "py",
-          "pyw"
+          "pyw",
+          "pyi"
         ],
         "name": "PViewer.Python",
         "description": "Python-Quelltext",
@@ -276,12 +321,67 @@
       },
       {
         "ext": [
+          "groovy",
+          "gradle"
+        ],
+        "name": "PViewer.Groovy",
+        "description": "Groovy-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-groovy",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "scala"
+        ],
+        "name": "PViewer.Scala",
+        "description": "Scala-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-scala",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
           "cs"
         ],
         "name": "PViewer.CSharp",
         "description": "C#-Quelltext",
         "role": "Editor",
         "mimeType": "text/x-csharp",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "fs",
+          "fsx"
+        ],
+        "name": "PViewer.FSharp",
+        "description": "F#-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-fsharp",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "vb",
+          "vbs"
+        ],
+        "name": "PViewer.VisualBasic",
+        "description": "Visual-Basic-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-vb",
         "rank": "Alternate",
         "contentTypes": [
           "public.source-code"
@@ -306,7 +406,10 @@
           "cc",
           "cpp",
           "cxx",
-          "hpp"
+          "hpp",
+          "hh",
+          "hxx",
+          "ino"
         ],
         "name": "PViewer.Cpp",
         "description": "C++-Quelltext",
@@ -315,6 +418,19 @@
         "rank": "Alternate",
         "contentTypes": [
           "public.c-plus-plus-source"
+        ]
+      },
+      {
+        "ext": [
+          "mm"
+        ],
+        "name": "PViewer.ObjectiveCpp",
+        "description": "Objective-C++-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-objective-c++",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.objective-c-plus-plus-source"
         ]
       },
       {
@@ -358,6 +474,20 @@
       },
       {
         "ext": [
+          "pl",
+          "pm"
+        ],
+        "name": "PViewer.Perl",
+        "description": "Perl-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-perl",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.perl-script"
+        ]
+      },
+      {
+        "ext": [
           "lua"
         ],
         "name": "PViewer.Lua",
@@ -384,12 +514,12 @@
       },
       {
         "ext": [
-          "scala"
+          "jl"
         ],
-        "name": "PViewer.Scala",
-        "description": "Scala-Quelltext",
+        "name": "PViewer.Julia",
+        "description": "Julia-Quelltext",
         "role": "Editor",
-        "mimeType": "text/x-scala",
+        "mimeType": "text/x-julia",
         "rank": "Alternate",
         "contentTypes": [
           "public.source-code"
@@ -424,10 +554,231 @@
       },
       {
         "ext": [
+          "erl",
+          "hrl"
+        ],
+        "name": "PViewer.Erlang",
+        "description": "Erlang-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-erlang",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "hs"
+        ],
+        "name": "PViewer.Haskell",
+        "description": "Haskell-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-haskell",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "elm"
+        ],
+        "name": "PViewer.Elm",
+        "description": "Elm-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-elm",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "ml",
+          "mli"
+        ],
+        "name": "PViewer.OCaml",
+        "description": "OCaml-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-ocaml",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "clj",
+          "cljs",
+          "cljc",
+          "edn"
+        ],
+        "name": "PViewer.Clojure",
+        "description": "Clojure-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-clojure",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "lisp",
+          "el",
+          "scm"
+        ],
+        "name": "PViewer.Lisp",
+        "description": "Lisp-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-lisp",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "cr"
+        ],
+        "name": "PViewer.Crystal",
+        "description": "Crystal-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-crystal",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "d"
+        ],
+        "name": "PViewer.DLang",
+        "description": "D-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-d",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "pas"
+        ],
+        "name": "PViewer.Pascal",
+        "description": "Pascal-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-pascal",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "f90",
+          "f95",
+          "f"
+        ],
+        "name": "PViewer.Fortran",
+        "description": "Fortran-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-fortran",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "tcl"
+        ],
+        "name": "PViewer.Tcl",
+        "description": "Tcl-Skript",
+        "role": "Editor",
+        "mimeType": "text/x-tcl",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "asm",
+          "s"
+        ],
+        "name": "PViewer.Assembler",
+        "description": "Assembler-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-asm",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.assembly-source"
+        ]
+      },
+      {
+        "ext": [
+          "vhd",
+          "vhdl"
+        ],
+        "name": "PViewer.Vhdl",
+        "description": "VHDL-Quelltext",
+        "role": "Editor",
+        "mimeType": "text/x-vhdl",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "wat",
+          "wast"
+        ],
+        "name": "PViewer.WasmText",
+        "description": "WebAssembly-Textformat",
+        "role": "Editor",
+        "mimeType": "text/x-wat",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "proto"
+        ],
+        "name": "PViewer.Protobuf",
+        "description": "Protocol-Buffers-Definition",
+        "role": "Editor",
+        "mimeType": "text/x-protobuf",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "feature"
+        ],
+        "name": "PViewer.Gherkin",
+        "description": "Gherkin-Feature",
+        "role": "Editor",
+        "mimeType": "text/x-gherkin",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.plain-text"
+        ]
+      },
+      {
+        "ext": [
           "sh",
           "bash",
           "zsh",
-          "fish"
+          "fish",
+          "ksh"
         ],
         "name": "PViewer.Shell",
         "description": "Shell-Skript",
@@ -454,7 +805,9 @@
       },
       {
         "ext": [
-          "ps1"
+          "ps1",
+          "psm1",
+          "psd1"
         ],
         "name": "PViewer.PowerShell",
         "description": "PowerShell-Skript",
@@ -463,6 +816,87 @@
         "rank": "Alternate",
         "contentTypes": [
           "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "dockerfile"
+        ],
+        "name": "PViewer.Dockerfile",
+        "description": "Dockerfile",
+        "role": "Editor",
+        "mimeType": "text/x-dockerfile",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "mk"
+        ],
+        "name": "PViewer.Makefile",
+        "description": "Makefile",
+        "role": "Editor",
+        "mimeType": "text/x-makefile",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.make-source"
+        ]
+      },
+      {
+        "ext": [
+          "cmake"
+        ],
+        "name": "PViewer.CMake",
+        "description": "CMake-Skript",
+        "role": "Editor",
+        "mimeType": "text/x-cmake",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "nsi",
+          "nsh"
+        ],
+        "name": "PViewer.Nsis",
+        "description": "NSIS-Installerskript",
+        "role": "Editor",
+        "mimeType": "text/x-nsis",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "diff",
+          "patch"
+        ],
+        "name": "PViewer.Diff",
+        "description": "Diff-Datei",
+        "role": "Editor",
+        "mimeType": "text/x-diff",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.patch-file"
+        ]
+      },
+      {
+        "ext": [
+          "http",
+          "rest"
+        ],
+        "name": "PViewer.Http",
+        "description": "HTTP-Anfragedatei",
+        "role": "Editor",
+        "mimeType": "text/x-http",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.plain-text"
         ]
       },
       {
@@ -500,6 +934,87 @@
         "description": "Astro-Komponente",
         "role": "Editor",
         "mimeType": "text/x-astro",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "vue"
+        ],
+        "name": "PViewer.Vue",
+        "description": "Vue-Komponente",
+        "role": "Editor",
+        "mimeType": "text/x-vue",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "svelte"
+        ],
+        "name": "PViewer.Svelte",
+        "description": "Svelte-Komponente",
+        "role": "Editor",
+        "mimeType": "text/x-svelte",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "hbs",
+          "handlebars"
+        ],
+        "name": "PViewer.Handlebars",
+        "description": "Handlebars-Vorlage",
+        "role": "Editor",
+        "mimeType": "text/x-handlebars-template",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "pug"
+        ],
+        "name": "PViewer.Pug",
+        "description": "Pug-Vorlage",
+        "role": "Editor",
+        "mimeType": "text/x-pug",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "j2",
+          "jinja",
+          "jinja2"
+        ],
+        "name": "PViewer.Jinja",
+        "description": "Jinja-Vorlage",
+        "role": "Editor",
+        "mimeType": "text/x-jinja",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.source-code"
+        ]
+      },
+      {
+        "ext": [
+          "liquid"
+        ],
+        "name": "PViewer.Liquid",
+        "description": "Liquid-Vorlage",
+        "role": "Editor",
+        "mimeType": "text/x-liquid",
         "rank": "Alternate",
         "contentTypes": [
           "public.source-code"
@@ -547,12 +1062,12 @@
       },
       {
         "ext": [
-          "vue"
+          "styl"
         ],
-        "name": "PViewer.Vue",
-        "description": "Vue-Komponente",
+        "name": "PViewer.Stylus",
+        "description": "Stylus-Stylesheet",
         "role": "Editor",
-        "mimeType": "text/x-vue",
+        "mimeType": "text/x-stylus",
         "rank": "Alternate",
         "contentTypes": [
           "public.source-code"
@@ -560,20 +1075,14 @@
       },
       {
         "ext": [
-          "svelte"
-        ],
-        "name": "PViewer.Svelte",
-        "description": "Svelte-Komponente",
-        "role": "Editor",
-        "mimeType": "text/x-svelte",
-        "rank": "Alternate",
-        "contentTypes": [
-          "public.source-code"
-        ]
-      },
-      {
-        "ext": [
-          "xml"
+          "xml",
+          "xsl",
+          "xsd",
+          "dtd",
+          "plist",
+          "xaml",
+          "rss",
+          "atom"
         ],
         "name": "PViewer.Xml",
         "description": "XML-Dokument",
@@ -589,7 +1098,7 @@
           "svg"
         ],
         "name": "PViewer.Svg",
-        "description": "SVG-Dokument",
+        "description": "SVG-Grafik",
         "role": "Editor",
         "mimeType": "image/svg+xml",
         "rank": "Alternate",
@@ -628,7 +1137,9 @@
         "ext": [
           "ini",
           "cfg",
-          "conf"
+          "conf",
+          "desktop",
+          "reg"
         ],
         "name": "PViewer.Configuration",
         "description": "Konfigurationsdatei",
@@ -658,7 +1169,7 @@
           "sql"
         ],
         "name": "PViewer.Sql",
-        "description": "SQL-Dokument",
+        "description": "SQL-Skript",
         "role": "Editor",
         "mimeType": "application/sql",
         "rank": "Alternate",
@@ -690,6 +1201,49 @@
         "description": "Textdokument",
         "role": "Editor",
         "mimeType": "text/plain",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.plain-text"
+        ]
+      },
+      {
+        "ext": [
+          "rst",
+          "adoc",
+          "asciidoc",
+          "org"
+        ],
+        "name": "PViewer.Prose",
+        "description": "Textdokument mit leichter Auszeichnung",
+        "role": "Editor",
+        "mimeType": "text/x-rst",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.plain-text"
+        ]
+      },
+      {
+        "ext": [
+          "textile"
+        ],
+        "name": "PViewer.Textile",
+        "description": "Textile-Dokument",
+        "role": "Editor",
+        "mimeType": "text/x-textile",
+        "rank": "Alternate",
+        "contentTypes": [
+          "public.plain-text"
+        ]
+      },
+      {
+        "ext": [
+          "srt",
+          "vtt"
+        ],
+        "name": "PViewer.Subtitles",
+        "description": "Untertiteldatei",
+        "role": "Editor",
+        "mimeType": "text/vtt",
         "rank": "Alternate",
         "contentTypes": [
           "public.plain-text"

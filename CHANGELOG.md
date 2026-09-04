@@ -2,6 +2,18 @@
 
 Alle Entwicklungsstufen folgen semantischer Vorabversionierung.
 
+## 0.1.2
+
+- neue Vorschauen ergänzt: CSV/TSV als Tabelle mit Trennzeichenerkennung, Kopfzeile und Zeilennummern, Jupyter-Notebooks mit Markdown-, Code- und sicheren Ausgabezellen sowie SVG als sandboxed Bildvorschau mit Zoom, Transparenzraster und Quelltextumschaltung
+- unterstützte Formate von 81 auf 167 Dateiendungen in 88 Formatgruppen erweitert, darunter Perl, Haskell, Erlang, Clojure, OCaml, F#, Julia, Groovy, Fortran, Assembler, Protobuf, Diff, CMake, NSIS, Handlebars, Jinja, Liquid, Stylus, Pug, HTTP-Anfragen, R Markdown, Quarto, JSON-LD, GeoJSON, XSLT, XAML, Feeds, reStructuredText, AsciiDoc, Org und Untertitel
+- 36 spezielle Dateinamen wie `Makefile`, `CMakeLists.txt`, `Jenkinsfile`, `.gitignore`, `.editorconfig`, `.env.*`, `LICENSE` oder `Cargo.lock` werden jetzt automatisch erkannt
+- eigene Syntaxmodi für Windows-Batch, Makefile, GraphQL, Elixir, BibTeX, Ignore-Dateien und CSV ergänzt; falsche Zuordnungen für `.cfg`, `.text`, `.editorconfig`, `Gemfile` und `Makefile` behoben
+- LaTeX-Livevorschau überarbeitet: verschachtelte Listen, `description`-Umgebungen, Fußnoten, nummerierte Überschriften mit Inhaltsverzeichnis und Anhang, Theorem-/Beweisumgebungen, Beamer-Frames, Tabellen mit Kopfzeile, Ausrichtung, `multicolumn` und booktabs, `\newcommand`-Makros mit Argumenten und verschachtelten Klammern, Akzente ohne Klammern, Sonderzeichen, siunitx-Größen, `\textcolor`, Gruppen-Deklarationen wie `{\bfseries …}` sowie babel-abhängige Beschriftungen
+- LaTeX-Darstellungsfehler behoben: `\\[2mm]` wurde als Formel gelesen, `\vspace`, `\label` und ähnliche Befehle erschienen als Text, Anführungszeichen wurden deutsch statt typografisch gesetzt und Text nach `\section{}` ging verloren
+- Markdown-Fußnoten verlinken wieder korrekt (doppeltes ID-Präfix entfernt), Aufgabenlisten zeigen keine doppelten Aufzählungszeichen mehr, Codeblöcke erhalten im hellen Design lesbare Farben und zusätzliche Grammatiken wie Dockerfile, PowerShell, LaTeX, Elixir oder Haskell
+- Symbolgröße skalierte versehentlich auch KaTeX-Formeln und Dokumentgrafiken; Strg/Cmd+B und Strg/Cmd+I wirken nur noch in Markdown-Dateien; JSON „Einklappen“ lässt die Wurzel geöffnet; dunkle HTML-Vorschau blitzt nicht mehr weiß auf; Log- und Untertiteldateien nutzen eine Monospace-Leseansicht
+- UTF-16-Dateien ohne BOM (etwa Registry-Exporte) werden erkannt statt als Binärdatei abgelehnt; Windows-Pfade verlieren nach dem Speichern über Verknüpfungen das `\\?\`-Präfix
+
 ## 0.1.1
 
 - vollständige HTML-/HTM-/XHTML-Vorschau nach einer expliziten Sicherheitsbestätigung ergänzt; Skripte, Stylesheets und lokale Ressourcen laufen in einem separaten WebView-Fenster ohne P-Viewer-Capabilities

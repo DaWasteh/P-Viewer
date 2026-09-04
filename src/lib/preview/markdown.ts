@@ -13,6 +13,44 @@ import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { unified } from "unified";
 import { visit } from "unist-util-visit";
+import { common } from "lowlight";
+import dockerfile from "highlight.js/lib/languages/dockerfile";
+import latex from "highlight.js/lib/languages/latex";
+import elixir from "highlight.js/lib/languages/elixir";
+import dart from "highlight.js/lib/languages/dart";
+import scala from "highlight.js/lib/languages/scala";
+import powershell from "highlight.js/lib/languages/powershell";
+import dos from "highlight.js/lib/languages/dos";
+import haskell from "highlight.js/lib/languages/haskell";
+import julia from "highlight.js/lib/languages/julia";
+import erlang from "highlight.js/lib/languages/erlang";
+import clojure from "highlight.js/lib/languages/clojure";
+import nginx from "highlight.js/lib/languages/nginx";
+import protobuf from "highlight.js/lib/languages/protobuf";
+import groovy from "highlight.js/lib/languages/groovy";
+import gradle from "highlight.js/lib/languages/gradle";
+import fortran from "highlight.js/lib/languages/fortran";
+import ocaml from "highlight.js/lib/languages/ocaml";
+import fsharp from "highlight.js/lib/languages/fsharp";
+import crystal from "highlight.js/lib/languages/crystal";
+import elm from "highlight.js/lib/languages/elm";
+import coffeescript from "highlight.js/lib/languages/coffeescript";
+import tcl from "highlight.js/lib/languages/tcl";
+import cmake from "highlight.js/lib/languages/cmake";
+import handlebars from "highlight.js/lib/languages/handlebars";
+import http from "highlight.js/lib/languages/http";
+import django from "highlight.js/lib/languages/django";
+import x86asm from "highlight.js/lib/languages/x86asm";
+import armasm from "highlight.js/lib/languages/armasm";
+import matlab from "highlight.js/lib/languages/matlab";
+import scheme from "highlight.js/lib/languages/scheme";
+import lisp from "highlight.js/lib/languages/lisp";
+import properties from "highlight.js/lib/languages/properties";
+import gherkin from "highlight.js/lib/languages/gherkin";
+import vhdl from "highlight.js/lib/languages/vhdl";
+import verilog from "highlight.js/lib/languages/verilog";
+import stylus from "highlight.js/lib/languages/stylus";
+import svelteLike from "highlight.js/lib/languages/xml";
 
 export interface MarkdownHeading {
   id: string;
@@ -52,8 +90,13 @@ function remarkCallouts() {
   };
 }
 
+// Raw HTML never reaches this pipeline (remark-rehype drops it), so element ids
+// only originate from headings and GFM footnotes. Both already carry the
+// `user-content-` prefix from remark-rehype; a second sanitizer prefix would
+// break the footnote links, therefore clobbering is left to remark-rehype.
 const sanitizeSchema: Schema = {
   ...defaultSchema,
+  clobberPrefix: "",
   tagNames: [...(defaultSchema.tagNames ?? []), "aside", "input"],
   attributes: {
     ...defaultSchema.attributes,
@@ -62,7 +105,7 @@ const sanitizeSchema: Schema = {
       ...(defaultSchema.attributes?.code ?? []),
       ["className", /^language-[\w-]+$/],
     ],
-    input: ["type", "checked", "disabled"],
+    input: [["type", "checkbox"], ["checked", true], ["disabled", true]],
     li: [...(defaultSchema.attributes?.li ?? []), "className"],
     ol: [...(defaultSchema.attributes?.ol ?? []), "className"],
     ul: [...(defaultSchema.attributes?.ul ?? []), "className"],
@@ -74,16 +117,69 @@ const katexOptions: KatexOptions = {
   trust: false,
 };
 
+// highlight.js grammars beyond lowlight's `common` set that documents in this
+// app frequently embed. Aliases such as `sh`, `yml` or `ts` are built in.
+const highlightLanguages = {
+  ...common,
+  dockerfile,
+  latex,
+  elixir,
+  dart,
+  scala,
+  powershell,
+  dos,
+  haskell,
+  julia,
+  erlang,
+  clojure,
+  nginx,
+  protobuf,
+  groovy,
+  gradle,
+  fortran,
+  ocaml,
+  fsharp,
+  crystal,
+  elm,
+  coffeescript,
+  tcl,
+  cmake,
+  handlebars,
+  http,
+  django,
+  x86asm,
+  armasm,
+  matlab,
+  scheme,
+  lisp,
+  properties,
+  gherkin,
+  vhdl,
+  verilog,
+  stylus,
+  svelte: svelteLike,
+  vue: svelteLike,
+  astro: svelteLike,
+};
+
 const renderer = unified()
   .use(remarkParse)
   .use(remarkGfm)
   .use(remarkMath)
   .use(remarkCallouts)
-  .use(remarkRehype)
+  .use(remarkRehype, {
+    footnoteLabel: "Fußnoten",
+    footnoteBackLabel: (referenceIndex, rereferenceIndex) =>
+      `Zurück zu Verweis ${referenceIndex + 1}${rereferenceIndex > 1 ? `-${rereferenceIndex}` : ""}`,
+  })
   .use(rehypeSanitize, sanitizeSchema)
   .use(rehypeSlug)
   .use(rehypeKatex, katexOptions)
-  .use(rehypeHighlight, { detect: false, plainText: ["txt", "text"] })
+  .use(rehypeHighlight, {
+    detect: false,
+    languages: highlightLanguages,
+    plainText: ["txt", "text", "plain", "plaintext", "nohighlight"],
+  })
   .use(rehypeStringify);
 
 const outlineParser = unified().use(remarkParse).use(remarkGfm).use(remarkMath);

@@ -1,7 +1,7 @@
 # Architekturentscheidung
 
 **Status:** angenommen  
-**Version:** v0.1.1
+**Version:** v0.1.2
 
 ## Entscheidung
 
@@ -16,11 +16,14 @@ Diese Kombination liefert native, kleine Desktop-Pakete und direkten, kontrollie
 | Desktop-Shell | Tauri 2 |
 | Native Logik | Rust |
 | Oberfläche | Svelte 5, TypeScript, Vite |
-| Editor | CodeMirror 6, Sprachen bei Bedarf geladen |
-| Markdown | unified, remark-gfm, remark-math, rehype-katex, rehype-sanitize |
+| Editor | CodeMirror 6, Sprachen bei Bedarf geladen; eigene Stream-Modi für Formate ohne Paketunterstützung |
+| Markdown | unified, remark-gfm, remark-math, rehype-katex, rehype-sanitize, rehype-highlight |
 | HTML | sichere HAST-/Iframe-Vorschau als Standard; explizit bestätigter separater WebView über tokenisierten Loopback-Ursprung für vollständige aktive Inhalte |
+| SVG | Bild-Data-URL in einem Iframe ohne Sandbox-Rechte mit deny-by-default-CSP; kein Skript- oder Ressourcenzugriff |
 | Webkomponenten | lazy Astro-/Svelte-/Vue-Mischsyntax; keine Ausführung von Projektcode |
 | JSON | CodeMirror plus eigene einklappbare Baumansicht |
+| Notebooks | eigener nbformat-Parser; Markdown- und Code-Zellen über die sanitisierte Markdown-Pipeline, Ausgaben nur als Text, Bilddaten oder Fehler |
+| CSV/TSV | eigener RFC-4180-Parser mit Trennzeichenerkennung und Zeilenlimit |
 | LaTeX | gebündelter sicherer HTML-/KaTeX-Live-Renderer; optionale lokale Compilersteuerung in Rust und PDF.js |
 | Dateizuordnungen | Tauri-Bundle-Metadaten plus OS-konforme Auswahl über Windows Default Apps, Linux MIME Apps und macOS LaunchServices |
 | Einstellungen | Tauri Store im plattformüblichen App-Konfigurationspfad, inklusive persistentem Debug-Modus |
@@ -31,7 +34,7 @@ Diese Kombination liefert native, kleine Desktop-Pakete und direkten, kontrollie
 
 1. **Schnell öffnen:** unbekannte Textformate fallen auf Plaintext zurück; schwere Renderer werden erst bei Bedarf geladen.
 2. **Mehrere Dokumente, wenig Ablenkung:** Eine kompakte Tab-Leiste hält mehrere Dateien parallel offen; Edit-, View- und Split-Modus bleiben im Mittelpunkt.
-3. **Keine implizite Ausführung von Dokumentcode:** Markdown-HTML wird sanitisiert und HTML läuft standardmäßig nur statisch in einem Iframe ohne Sandbox-Rechte. Aktives HTML erfordert eine ausdrückliche Warnungsbestätigung und öffnet ausschließlich in einem getrennten WebView ohne App-Capabilities; Astro-/Svelte-/Vue-Projektcode bleibt Quelltext.
+3. **Keine implizite Ausführung von Dokumentcode:** Markdown-HTML wird sanitisiert, HTML läuft standardmäßig nur statisch in einem Iframe ohne Sandbox-Rechte und SVG wird ausschließlich als Bild dargestellt. Notebook-Ausgaben vom Typ `text/html` bleiben deaktiviert. Aktives HTML erfordert eine ausdrückliche Warnungsbestätigung und öffnet ausschließlich in einem getrennten WebView ohne App-Capabilities; Astro-/Svelte-/Vue-Projektcode bleibt Quelltext.
 4. **Minimale native Rechte:** Dateioperationen laufen über eng begrenzte Rust-Commands statt pauschaler Dateisystemfreigaben.
 5. **Einstellungen getrennt vom Programm:** Updates ersetzen nur Anwendungsartefakte. Einstellungen bleiben in `%APPDATA%`, `~/Library/Application Support` beziehungsweise `$XDG_DATA_HOME` erhalten.
 6. **Sichere TeX-Vorgaben:** Die gebündelte Live-Ansicht escaped Text und verwendet KaTeX mit `trust: false`. Externe Compiler werden über absolute Programme aus bereinigten PATH-Ordnern ohne Benutzershell gestartet. Arbeitsausgaben bleiben temporär, Projektdateien werden nur als Inputs gesucht, und `shell-escape` bleibt aus.
@@ -59,9 +62,9 @@ Tectonic wird als optionale Engine im `--untrusted`-Modus unterstützt, ersetzt 
 ```text
 src/lib/
   debug/        WebView-/Plattformdiagnose für den expliziten Debug-Modus
-  editor/       CodeMirror-Integration und lazy Sprachauflösung
+  editor/       CodeMirror-Integration, lazy Sprachauflösung und eigene Stream-Modi
   files/        Dateitypen, Zuordnungsgruppen, Dokumentzustand, Pfade und Dialoge
-  preview/      isolierte HTML-, Markdown-, JSON-, Text-, LaTeX- und PDF-Ansichten
+  preview/      isolierte HTML-, SVG-, Markdown-, Notebook-, JSON-, CSV-, Text-, LaTeX- und PDF-Ansichten
   settings/     persistente UI-/Editor-/Zuordnungseinstellungen
   update/       Oberfläche des signierten Release-Updaters
 src-tauri/src/

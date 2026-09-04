@@ -54,7 +54,8 @@
   });
 
   $effect(() => {
-    if (expansionVersion > 0) expanded = expandAll;
+    // "Einklappen" keeps the root node open so the top-level keys stay visible.
+    if (expansionVersion > 0) expanded = expandAll || depth === 0;
   });
 
   $effect(() => {

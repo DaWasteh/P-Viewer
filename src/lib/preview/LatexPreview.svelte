@@ -432,9 +432,13 @@
   }
 
   .latex-document :global(.latex-title h1) {
-    margin-bottom: 0.55em;
+    margin: 0 0 0.55em;
     font-size: 2em;
     line-height: 1.2;
+  }
+
+  .latex-document :global(.latex-body > :first-child) {
+    margin-top: 0;
   }
 
   .latex-document :global(.latex-author),
@@ -541,10 +545,268 @@
     border-collapse: collapse;
   }
 
-  .latex-document :global(td) {
+  .latex-document :global(td),
+  .latex-document :global(th) {
     padding: 0.4em 0.65em;
     border: 1px solid #3a404c;
   }
+
+  .latex-document :global(th) {
+    color: #eef0f5;
+    background: #20242c;
+    font-weight: 650;
+  }
+
+  .latex-document :global(.latex-number) {
+    margin-right: 0.55em;
+    color: #aeb4c0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .latex-document :global(.latex-part) {
+    margin-top: 2.4em;
+    text-align: center;
+  }
+
+  .latex-document :global(.latex-part .latex-number) {
+    display: block;
+    margin: 0 0 0.3em;
+    font-size: 0.6em;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .latex-document :global(.latex-toc) {
+    margin: 0 0 2.2em;
+    padding: 1em 1.2em;
+    border: 1px solid #303541;
+    border-radius: 6px;
+    background: #171a20;
+  }
+
+  .latex-document :global(.latex-toc-title),
+  .latex-document :global(.latex-abstract-title),
+  .latex-document :global(.latex-bibliography-title) {
+    margin: 0 0 0.6em;
+    border: 0;
+    font-size: 1.15em;
+  }
+
+  .latex-document :global(.latex-toc ul) {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .latex-document :global(.latex-toc li) {
+    margin: 0.2em 0;
+    padding-left: calc((var(--toc-depth, 2) - 2) * 1.4em);
+  }
+
+  .latex-document :global(.latex-toc-level-1) {
+    --toc-depth: 1;
+    margin-top: 0.6em;
+    font-weight: 700;
+  }
+
+  .latex-document :global(.latex-toc-level-3) {
+    --toc-depth: 3;
+    font-size: 0.95em;
+  }
+
+  .latex-document :global(.latex-toc-level-4) {
+    --toc-depth: 4;
+    color: #aeb4c0;
+    font-size: 0.9em;
+  }
+
+  .latex-document :global(dl) {
+    margin: 0 0 1.1em;
+  }
+
+  .latex-document :global(dt) {
+    font-weight: 700;
+  }
+
+  .latex-document :global(dd) {
+    margin: 0.15em 0 0.6em 1.6em;
+  }
+
+  .latex-document :global(.latex-labeled) {
+    list-style: none;
+    margin-left: -1.4em;
+  }
+
+  .latex-document :global(.latex-item-label) {
+    display: inline-block;
+    min-width: 1.4em;
+    margin-right: 0.35em;
+    font-weight: 600;
+  }
+
+  .latex-document :global(.latex-bibliography) {
+    padding-left: 2.6em;
+  }
+
+  .latex-document :global(.latex-bibliography li) {
+    margin-bottom: 0.55em;
+  }
+
+  .latex-document :global(.latex-footnote) {
+    margin-left: 0.08em;
+    color: #9ba9f4;
+    font-size: 0.7em;
+    font-weight: 700;
+  }
+
+  .latex-document :global(.latex-footnotes) {
+    margin-top: 2.4em;
+    padding-top: 0.8em;
+    border-top: 1px solid #3a404c;
+    color: #aeb4c0;
+    font-size: 0.85em;
+  }
+
+  .latex-document :global(.latex-footnotes ol) {
+    margin: 0;
+    padding-left: 1.6em;
+  }
+
+  .latex-document :global(.latex-theorem),
+  .latex-document :global(.latex-proof) {
+    margin: 1.2em 0;
+  }
+
+  .latex-document :global(.latex-theorem) {
+    font-style: italic;
+  }
+
+  .latex-document :global(.latex-theorem-definition),
+  .latex-document :global(.latex-theorem-example),
+  .latex-document :global(.latex-theorem-remark),
+  .latex-document :global(.latex-theorem-note),
+  .latex-document :global(.latex-theorem-exercise),
+  .latex-document :global(.latex-theorem-solution) {
+    font-style: normal;
+  }
+
+  .latex-document :global(.latex-theorem-title) {
+    font-style: normal;
+  }
+
+  .latex-document :global(.latex-theorem p),
+  .latex-document :global(.latex-proof p) {
+    display: inline;
+  }
+
+  .latex-document :global(.latex-theorem p + p),
+  .latex-document :global(.latex-proof p + p) {
+    display: block;
+    margin-top: 0.6em;
+  }
+
+  .latex-document :global(.latex-qed) {
+    float: right;
+    margin-left: 0.5em;
+  }
+
+  .latex-document :global(.latex-note) {
+    padding: 0.6em 0.9em;
+    border: 1px dashed #596174;
+    border-radius: 5px;
+    color: #aeb4c0;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.85em;
+  }
+
+  .latex-document :global(.latex-pagebreak) {
+    height: 0;
+    margin: 2.2em 0;
+    border: 0;
+    border-top: 1px dashed #4a5060;
+  }
+
+  .latex-document :global(.latex-flushleft) {
+    text-align: left;
+  }
+
+  .latex-document :global(.latex-flushright) {
+    text-align: right;
+  }
+
+  .latex-document :global(.latex-verse) {
+    font-style: italic;
+  }
+
+  .latex-document :global(.latex-frame) {
+    margin: 1.4em 0;
+    padding: 1em 1.2em 0.6em;
+    border: 1px solid #303541;
+    border-radius: 6px;
+    background: #171a20;
+  }
+
+  .latex-document :global(.latex-frametitle) {
+    margin: 0 0 0.6em;
+    font-size: 1.25em;
+  }
+
+  .latex-document :global(.latex-block) {
+    margin: 1em 0;
+    padding: 0.7em 0.9em;
+    border-left: 3px solid #6f7dc2;
+    background: #1f2330;
+  }
+
+  .latex-document :global(.latex-alertblock) {
+    border-left-color: #df7c82;
+  }
+
+  .latex-document :global(.latex-exampleblock) {
+    border-left-color: #56c49e;
+  }
+
+  .latex-document :global(.latex-block-title) {
+    display: block;
+    margin-bottom: 0.3em;
+  }
+
+  .latex-document :global(.latex-alert) {
+    color: #f09499;
+  }
+
+  .latex-document :global(.latex-structure) {
+    color: #9ba9f4;
+  }
+
+  .latex-document :global(.latex-todo) {
+    padding: 0 0.25em;
+    background: #6d5a34;
+    color: #fff3d6;
+  }
+
+  .latex-document :global(.latex-marginpar) {
+    color: #929aab;
+    font-size: 0.85em;
+  }
+
+  .latex-document :global(.latex-uppercase) {
+    text-transform: uppercase;
+  }
+
+  .latex-document :global(.latex-sans) {
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  }
+
+  .latex-document :global(.latex-size-small) { font-size: 0.9em; }
+  .latex-document :global(.latex-size-footnote) { font-size: 0.8em; }
+  .latex-document :global(.latex-size-script) { font-size: 0.7em; }
+  .latex-document :global(.latex-size-tiny) { font-size: 0.6em; }
+  .latex-document :global(.latex-size-large) { font-size: 1.2em; }
+  .latex-document :global(.latex-size-Large) { font-size: 1.44em; }
+  .latex-document :global(.latex-size-LARGE) { font-size: 1.73em; }
+  .latex-document :global(.latex-size-huge) { font-size: 2.07em; }
+  .latex-document :global(.latex-size-Huge) { font-size: 2.49em; }
 
   .latex-document :global(.latex-caption) {
     color: #aeb4c0;
@@ -781,8 +1043,46 @@
     background: #f5f6f8;
   }
 
-  .light .latex-document :global(td) {
+  .light .latex-document :global(td),
+  .light .latex-document :global(th) {
     border-color: #d2d6de;
+  }
+
+  .light .latex-document :global(th) {
+    color: #202530;
+    background: #eef0f4;
+  }
+
+  .light .latex-document :global(.latex-number),
+  .light .latex-document :global(.latex-footnotes),
+  .light .latex-document :global(.latex-note),
+  .light .latex-document :global(.latex-marginpar) {
+    color: #626976;
+  }
+
+  .light .latex-document :global(.latex-toc),
+  .light .latex-document :global(.latex-frame),
+  .light .latex-document :global(.latex-note) {
+    border-color: #d8dbe2;
+    background: #f5f6f8;
+  }
+
+  .light .latex-document :global(.latex-block) {
+    background: #eef0f6;
+  }
+
+  .light .latex-document :global(.latex-footnote),
+  .light .latex-document :global(.latex-structure) {
+    color: #4358bd;
+  }
+
+  .light .latex-document :global(.latex-alert) {
+    color: #a83a41;
+  }
+
+  .light .latex-document :global(.latex-todo) {
+    color: #4b3a00;
+    background: #ffe9a8;
   }
 
   .light .live-warnings {

@@ -182,8 +182,9 @@
         basicSetup,
         keymap.of([
           indentWithTab,
-          { key: "Mod-b", run: () => wrapSelection("**") },
-          { key: "Mod-i", run: () => wrapSelection("*") },
+          // Markdown formatting shortcuts must not rewrite code files.
+          { key: "Mod-b", run: () => markdownTools && wrapSelection("**") },
+          { key: "Mod-i", run: () => markdownTools && wrapSelection("*") },
         ]),
         languageCompartment.of([]),
         readOnlyCompartment.of(EditorState.readOnly.of(readOnly)),

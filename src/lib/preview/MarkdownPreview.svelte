@@ -5,6 +5,7 @@
   import { resolveDocumentReference } from "$lib/files/paths";
   import "katex/dist/katex.min.css";
   import "highlight.js/styles/github-dark-dimmed.css";
+  import "./markdown-body.css";
   import {
     extractMarkdownHeadings,
     renderMarkdown,
@@ -66,7 +67,7 @@
   function decorateDocument(): void {
     if (!article) return;
     article.onclick = handleArticleClick;
-    for (const heading of article.querySelectorAll<HTMLHeadingElement>("h1, h2, h3, h4, h5, h6")) {
+    for (const heading of article.querySelectorAll<HTMLHeadingElement>(":scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6")) {
       if (heading.querySelector(":scope > .heading-fold")) continue;
       const button = document.createElement("button");
       button.type = "button";
@@ -148,7 +149,7 @@
 
   function setAllCollapsed(collapsed: boolean): void {
     if (!article) return;
-    for (const heading of article.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")) {
+    for (const heading of article.querySelectorAll<HTMLElement>(":scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6")) {
       if (collapsed) heading.dataset.collapsed = "true";
       else delete heading.dataset.collapsed;
     }
@@ -182,7 +183,7 @@
     const href = anchor.getAttribute("href") ?? "";
     if (href.startsWith("#")) {
       event.preventDefault();
-      void openHeading(href.slice(1));
+      void openHeading(decodeURIComponent(href.slice(1)));
       return;
     }
 
@@ -249,7 +250,7 @@
         </div>
       {:else if content.trim()}
         <!-- The unified pipeline removes raw HTML and sanitizes the HAST before this point. -->
-        <article class="markdown-body" bind:this={article}>{@html rendered}</article>
+        <article class:light={theme === "light"} class="markdown-body" bind:this={article}>{@html rendered}</article>
       {:else}
         <div class="empty-preview">
           <strong>Leeres Markdown-Dokument</strong>
@@ -374,268 +375,7 @@
     min-height: 100%;
     margin: 0 auto;
     padding: 38px 0 110px;
-    color: #d5d8e1;
     font-size: var(--preview-font-size);
-    line-height: 1.72;
-    overflow-wrap: anywhere;
-  }
-
-  /* Author display rules (notably table { display: block }) must not defeat folding. */
-  .markdown-body :global([hidden]) {
-    display: none !important;
-  }
-
-  .markdown-body :global(h1),
-  .markdown-body :global(h2),
-  .markdown-body :global(h3),
-  .markdown-body :global(h4),
-  .markdown-body :global(h5),
-  .markdown-body :global(h6) {
-    position: relative;
-    scroll-margin-top: 22px;
-    color: #f0f1f5;
-    font-weight: 700;
-    letter-spacing: -0.025em;
-    line-height: 1.28;
-  }
-
-  .markdown-body :global(h1) {
-    margin: 0 0 0.65em;
-    padding-bottom: 0.35em;
-    border-bottom: 1px solid #303540;
-    font-size: 2.15em;
-  }
-
-  .markdown-body :global(h2) {
-    margin: 1.8em 0 0.65em;
-    padding-bottom: 0.3em;
-    border-bottom: 1px solid #292e38;
-    font-size: 1.55em;
-  }
-
-  .markdown-body :global(h3) {
-    margin: 1.55em 0 0.55em;
-    font-size: 1.25em;
-  }
-
-  .markdown-body :global(h4),
-  .markdown-body :global(h5),
-  .markdown-body :global(h6) {
-    margin: 1.35em 0 0.5em;
-    font-size: 1.05em;
-  }
-
-  .markdown-body :global(.heading-fold) {
-    position: absolute;
-    right: 100%;
-    top: 0.15em;
-    display: grid;
-    width: 24px;
-    height: 24px;
-    place-items: center;
-    border: 0;
-    border-radius: 5px;
-    color: #697283;
-    background: transparent;
-    cursor: pointer;
-    font-size: 16px;
-    transform: rotate(0deg);
-  }
-
-  .markdown-body :global(.heading-fold:hover) {
-    color: #cbd0dc;
-    background: #222630;
-  }
-
-  .markdown-body :global(.heading-fold[aria-expanded="false"] span) {
-    display: inline-block;
-    transform: rotate(-90deg);
-  }
-
-  .markdown-body :global(p) {
-    margin: 0 0 1em;
-  }
-
-  .markdown-body :global(a) {
-    color: #91a2ff;
-    text-decoration-thickness: 1px;
-    text-underline-offset: 0.2em;
-  }
-
-  .markdown-body :global(a:hover) {
-    color: #bac4ff;
-  }
-
-  .markdown-body :global(ul),
-  .markdown-body :global(ol) {
-    margin: 0 0 1em;
-    padding-left: 1.65em;
-  }
-
-  .markdown-body :global(li + li) {
-    margin-top: 0.3em;
-  }
-
-  .markdown-body :global(input[type="checkbox"]) {
-    width: 1em;
-    height: 1em;
-    margin: 0 0.45em 0 -1.4em;
-    accent-color: #7183e7;
-    vertical-align: -0.1em;
-  }
-
-  .markdown-body :global(blockquote) {
-    margin: 1.2em 0;
-    padding: 0.8em 1em;
-    border-left: 3px solid #6876bd;
-    border-radius: 0 6px 6px 0;
-    color: #bbc0cd;
-    background: #181c25;
-  }
-
-  .markdown-body :global(blockquote > :last-child),
-  .markdown-body :global(.callout > :last-child) {
-    margin-bottom: 0;
-  }
-
-  .markdown-body :global(.callout) {
-    margin: 1.2em 0;
-    padding: 0.9em 1em;
-    border: 1px solid #34405f;
-    border-left: 4px solid #7183e7;
-    border-radius: 7px;
-    background: #171c29;
-  }
-
-  .markdown-body :global(.callout::before) {
-    display: block;
-    margin-bottom: 0.35em;
-    color: #9aa9fa;
-    content: "Hinweis";
-    font-size: 0.78em;
-    font-weight: 800;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  .markdown-body :global(.callout-tip) {
-    border-color: #2f695a;
-    border-left-color: #56c49e;
-    background: #14231f;
-  }
-
-  .markdown-body :global(.callout-tip::before) {
-    color: #69d1af;
-    content: "Tipp";
-  }
-
-  .markdown-body :global(.callout-important::before) {
-    content: "Wichtig";
-  }
-
-  .markdown-body :global(.callout-warning),
-  .markdown-body :global(.callout-caution) {
-    border-color: #71464a;
-    border-left-color: #df7c82;
-    background: #291a1e;
-  }
-
-  .markdown-body :global(.callout-warning::before) {
-    color: #f09499;
-    content: "Warnung";
-  }
-
-  .markdown-body :global(.callout-caution::before) {
-    color: #f09499;
-    content: "Achtung";
-  }
-
-  .markdown-body :global(code) {
-    padding: 0.14em 0.35em;
-    border: 1px solid #303540;
-    border-radius: 4px;
-    color: #e4c58b;
-    background: #1c2028;
-    font-family: var(--font-mono);
-    font-size: 0.88em;
-  }
-
-  .markdown-body :global(pre) {
-    margin: 1.2em 0;
-    padding: 1em 1.1em;
-    overflow: auto;
-    border: 1px solid #2b303a;
-    border-radius: 7px;
-    background: #16191f;
-    line-height: 1.55;
-  }
-
-  .markdown-body :global(pre code) {
-    padding: 0;
-    border: 0;
-    color: inherit;
-    background: transparent;
-    font-size: 0.85em;
-  }
-
-  .markdown-body :global(table) {
-    display: block;
-    width: max-content;
-    max-width: 100%;
-    margin: 1.25em 0;
-    overflow-x: auto;
-    border-spacing: 0;
-    border-collapse: collapse;
-  }
-
-  .markdown-body :global(th),
-  .markdown-body :global(td) {
-    padding: 0.45em 0.75em;
-    border: 1px solid #353a45;
-    text-align: left;
-  }
-
-  .markdown-body :global(th) {
-    color: #eef0f5;
-    background: #20242c;
-    font-weight: 650;
-  }
-
-  .markdown-body :global(tr:nth-child(2n)) {
-    background: #171a20;
-  }
-
-  .markdown-body :global(hr) {
-    height: 1px;
-    margin: 2em 0;
-    border: 0;
-    background: #343943;
-  }
-
-  .markdown-body :global(img) {
-    max-width: 100%;
-    border-radius: 6px;
-  }
-
-  .markdown-body :global(img.local-image-loading) {
-    min-width: 120px;
-    min-height: 54px;
-    opacity: 0.45;
-    background: #20242c;
-  }
-
-  .markdown-body :global(img.local-image-error) {
-    min-width: 120px;
-    min-height: 42px;
-    border: 1px dashed #74444a;
-    background: #281b1e;
-  }
-
-  .markdown-body :global(.katex-display) {
-    margin: 1.4em 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 0.35em 0;
   }
 
   .render-error,
@@ -684,48 +424,7 @@
     background: #e8eaf0;
   }
 
-  .light .markdown-body {
-    color: #303641;
-  }
-
-  .light .markdown-body :global(h1),
-  .light .markdown-body :global(h2),
-  .light .markdown-body :global(h3),
-  .light .markdown-body :global(h4),
-  .light .markdown-body :global(h5),
-  .light .markdown-body :global(h6) {
-    color: #161a22;
-    border-color: #dfe2e8;
-  }
-
-  .light .markdown-body :global(code) {
-    border-color: #d8dbe2;
-    color: #865d1f;
-    background: #f1f2f5;
-  }
-
-  .light .markdown-body :global(pre),
-  .light .markdown-body :global(blockquote),
-  .light .markdown-body :global(.callout) {
-    border-color: #d9dce5;
-    background: #f5f6f8;
-  }
-
-  .light .markdown-body :global(th),
-  .light .markdown-body :global(td) {
-    border-color: #d7dae2;
-  }
-
-  .light .markdown-body :global(th) {
-    color: #202530;
-    background: #eef0f4;
-  }
-
-  .light .markdown-body :global(tr:nth-child(2n)) {
-    background: #f7f8fa;
-  }
-
-  .light .markdown-body :global(hr) {
+  .light .separator {
     background: #d8dbe2;
   }
 

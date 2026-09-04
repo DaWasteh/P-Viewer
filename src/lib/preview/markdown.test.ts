@@ -16,7 +16,7 @@ $E = mc^2$
 `);
 
     expect(html).toContain('id="paper"');
-    expect(html).toContain('type="checkbox"');
+    expect(html).toContain('<li class="task-list-item"><input type="checkbox" checked disabled>');
     expect(html).toContain("<table>");
     expect(html).toContain('class="katex"');
   });
@@ -35,6 +35,27 @@ $E = mc^2$
     );
     expect(html).not.toContain("<script");
     expect(html).not.toContain("javascript:");
+  });
+
+  it("links footnotes to matching ids with German labels", () => {
+    const html = renderMarkdown("Text[^1]\n\n[^1]: Anmerkung");
+    expect(html).toContain('href="#user-content-fn-1"');
+    expect(html).toContain('id="user-content-fn-1"');
+    expect(html).toContain('id="user-content-fnref-1"');
+    expect(html).not.toContain("user-content-user-content");
+    expect(html).toContain(">Fußnoten</h2>");
+    expect(html).toContain('aria-label="Zurück zu Verweis 1"');
+  });
+
+  it("highlights common and additional fenced code languages without failing on unknown ones", () => {
+    const html = renderMarkdown(
+      "```dockerfile\nFROM node:22\n```\n\n```powershell\nGet-Process\n```\n\n```unknownlang\nx\n```\n\n```txt\nplain\n```",
+    );
+    expect(html).toContain('class="hljs language-dockerfile"');
+    expect(html).toContain("hljs-keyword");
+    expect(html).toContain('class="hljs language-powershell"');
+    expect(html).toContain("language-unknownlang");
+    expect(html).toContain("plain");
   });
 });
 

@@ -123,7 +123,7 @@ pub fn read_document(path: String) -> Result<DocumentPayload, String> {
     let decoded = decode_text(&bytes)?;
 
     Ok(DocumentPayload {
-        path: path.to_string_lossy().into_owned(),
+        path: display_path(&path),
         name: display_name(&path),
         line_ending: detect_line_ending(&decoded.content).to_string(),
         content: decoded.content,
@@ -183,7 +183,7 @@ pub fn write_document(
         .map_err(|error| format!("Datei kann nicht atomar ersetzt werden: {error}"))?;
 
     Ok(SaveResult {
-        path: path.to_string_lossy().into_owned(),
+        path: display_path(&path),
         size,
     })
 }
@@ -304,7 +304,7 @@ fn resolve_local_image(
 
     Ok((
         format!("data:{mime};base64,{}", BASE64.encode(bytes)),
-        canonical.to_string_lossy().into_owned(),
+        display_path(&canonical),
     ))
 }
 
@@ -337,7 +337,27 @@ fn display_name(path: &Path) -> String {
     path.file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|| display_path(path))
+}
+
+/// Canonicalized Windows paths carry the `\\?\` extended-length prefix, which is
+/// confusing in the UI and rejected by some third-party tools. Regular paths are
+/// returned unchanged; other platforms never produce the prefix.
+fn display_path(path: &Path) -> String {
+    simplify_extended_path(&path.to_string_lossy())
+}
+
+fn simplify_extended_path(value: &str) -> String {
+    if let Some(rest) = value.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{rest}");
+    }
+    if let Some(rest) = value.strip_prefix(r"\\?\") {
+        let bytes = rest.as_bytes();
+        if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+            return rest.to_string();
+        }
+    }
+    value.to_string()
 }
 
 fn decode_text(bytes: &[u8]) -> Result<DecodedText, String> {
@@ -358,6 +378,14 @@ fn decode_text(bytes: &[u8]) -> Result<DecodedText, String> {
 
     if bytes.starts_with(UTF16_BE_BOM) {
         return decode_utf16(&bytes[UTF16_BE_BOM.len()..], false, true);
+    }
+
+    // Registry exports, some PowerShell files and Windows tools write UTF-16
+    // without a BOM. Their interleaved NUL bytes must not be mistaken for binary.
+    if let Some(little_endian) = detect_utf16_without_bom(bytes) {
+        if let Ok(decoded) = decode_utf16(bytes, little_endian, false) {
+            return Ok(decoded);
+        }
     }
 
     if looks_binary(bytes) {
@@ -422,6 +450,40 @@ fn decode_utf16(bytes: &[u8], little_endian: bool, has_bom: bool) -> Result<Deco
 
 fn looks_binary(bytes: &[u8]) -> bool {
     bytes.iter().take(8_192).any(|byte| *byte == 0)
+}
+
+/// Returns `Some(little_endian)` when the sample looks like BOM-less UTF-16 text:
+/// almost every code unit is a printable ASCII character paired with a NUL byte
+/// in a consistent byte order.
+fn detect_utf16_without_bom(bytes: &[u8]) -> Option<bool> {
+    if bytes.len() < 4 || !bytes.len().is_multiple_of(2) {
+        return None;
+    }
+    let sample = &bytes[..bytes.len().min(8_192)];
+    let pairs = sample.len() / 2;
+    let mut little_endian_text = 0usize;
+    let mut big_endian_text = 0usize;
+    for pair in sample.chunks_exact(2) {
+        if pair[1] == 0 && is_text_byte(pair[0]) {
+            little_endian_text += 1;
+        }
+        if pair[0] == 0 && is_text_byte(pair[1]) {
+            big_endian_text += 1;
+        }
+    }
+
+    let threshold = pairs.saturating_mul(9) / 10;
+    if little_endian_text >= threshold && little_endian_text > big_endian_text {
+        Some(true)
+    } else if big_endian_text >= threshold && big_endian_text > little_endian_text {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+fn is_text_byte(byte: u8) -> bool {
+    matches!(byte, b'\t' | b'\n' | b'\r' | 0x20..=0x7E)
 }
 
 fn detect_line_ending(content: &str) -> &'static str {
@@ -551,6 +613,46 @@ mod tests {
     fn rejects_binary_input() {
         let error = decode_text(&[0x41, 0x00, 0x42]).err().unwrap();
         assert!(error.contains("Binärdateien"));
+        let mixed = decode_text(&[0x41, 0x00, 0x42, 0x00, 0x00, 0x00, 0xFF, 0xFE])
+            .err()
+            .unwrap();
+        assert!(mixed.contains("Binärdateien"));
+    }
+
+    #[test]
+    fn decodes_utf16_without_bom_in_both_byte_orders() {
+        let little_endian =
+            encode_text("Windows Registry Editor\r\n[HKEY]\r\n", "UTF-16LE", false).unwrap();
+        let decoded = decode_text(&little_endian).unwrap();
+        assert_eq!(decoded.content, "Windows Registry Editor\r\n[HKEY]\r\n");
+        assert_eq!(decoded.encoding, "UTF-16LE");
+        assert!(!decoded.has_bom);
+
+        let big_endian = encode_text("Alpha Beta Gamma", "UTF-16BE", false).unwrap();
+        let decoded = decode_text(&big_endian).unwrap();
+        assert_eq!(decoded.content, "Alpha Beta Gamma");
+        assert_eq!(decoded.encoding, "UTF-16BE");
+    }
+
+    #[test]
+    fn simplifies_extended_windows_paths_for_display() {
+        assert_eq!(
+            simplify_extended_path(r"\\?\C:\Users\me\notes.md"),
+            r"C:\Users\me\notes.md"
+        );
+        assert_eq!(
+            simplify_extended_path(r"\\?\UNC\server\share\doc.txt"),
+            r"\\server\share\doc.txt"
+        );
+        assert_eq!(simplify_extended_path(r"C:\plain.txt"), r"C:\plain.txt");
+        assert_eq!(
+            simplify_extended_path("/home/me/plain.txt"),
+            "/home/me/plain.txt"
+        );
+        assert_eq!(
+            simplify_extended_path(r"\\?\Volume{guid}\x"),
+            r"\\?\Volume{guid}\x"
+        );
     }
 
     #[test]

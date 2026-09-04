@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Component } from "svelte";
   import EditorPane from "$lib/editor/EditorPane.svelte";
-  import type { FileTypeInfo } from "$lib/files/types";
+  import type { DocumentKind, FileTypeInfo } from "$lib/files/types";
 
   interface Props {
     content: string;
@@ -32,12 +32,18 @@
   let previewLoadError = $state("");
   let previewRequest = 0;
 
-  const specialized = $derived(
-    fileType.kind === "markdown" ||
-      fileType.kind === "json" ||
-      fileType.kind === "latex" ||
-      fileType.kind === "html",
-  );
+  const PREVIEW_LOADERS: Partial<Record<DocumentKind, () => Promise<{ default: Component<any> }>>> = {
+    markdown: () => import("./MarkdownPreview.svelte"),
+    json: () => import("./JsonPreview.svelte"),
+    notebook: () => import("./NotebookPreview.svelte"),
+    latex: () => import("./LatexPreview.svelte"),
+    html: () => import("./HtmlPreview.svelte"),
+    svg: () => import("./SvgPreview.svelte"),
+    csv: () => import("./CsvPreview.svelte"),
+  };
+  const PROSE_KINDS = new Set<DocumentKind>(["markdown", "latex", "notebook"]);
+
+  const specialized = $derived(fileType.kind in PREVIEW_LOADERS);
   const sourceNotice = $derived(
     fileType.language === "astro"
       ? "Astro-Quelltextansicht – Frontmatter und Projektcode werden nicht ausgeführt."
@@ -52,22 +58,14 @@
     SpecializedPreview = null;
     previewLoadError = "";
 
-    if (kind !== "markdown" && kind !== "json" && kind !== "latex" && kind !== "html") {
+    const loader = PREVIEW_LOADERS[kind];
+    if (!loader) {
       previewLoading = false;
       return;
     }
 
     previewLoading = true;
-    const modulePromise =
-      kind === "markdown"
-        ? import("./MarkdownPreview.svelte")
-        : kind === "json"
-          ? import("./JsonPreview.svelte")
-          : kind === "latex"
-            ? import("./LatexPreview.svelte")
-            : import("./HtmlPreview.svelte");
-
-    void modulePromise
+    void loader()
       .then((module) => {
         if (request !== previewRequest) return;
         SpecializedPreview = module.default as Component<any>;
@@ -90,7 +88,7 @@
       {path}
       {theme}
       {onOpenPath}
-      fontSize={fileType.kind === "markdown" || fileType.kind === "latex" ? previewFontSize : editorFontSize}
+      fontSize={PROSE_KINDS.has(fileType.kind) ? previewFontSize : editorFontSize}
     />
   {:else if previewLoadError}
     <div class:light={theme === "light"} class="preview-state error" role="alert">
@@ -118,7 +116,7 @@
     />
   </div>
 {:else}
-  <div class:light={theme === "light"} class="text-preview">
+  <div class:light={theme === "light"} class:monospace={/\.(?:log|srt|vtt)$/i.test(fileName)} class="text-preview">
     {#if content}
       <pre style={`font-size: ${previewFontSize}px`}>{content}</pre>
     {:else}
@@ -219,6 +217,14 @@
     line-height: 1.75;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+
+  /* Logs and subtitles are column oriented and read better in a monospace face. */
+  .text-preview.monospace pre {
+    width: calc(100% - 48px);
+    font-family: var(--font-mono);
+    font-size: 0.92em;
+    line-height: 1.6;
   }
 
   .empty-text strong {
