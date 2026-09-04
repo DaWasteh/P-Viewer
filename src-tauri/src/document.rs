@@ -463,7 +463,7 @@ fn detect_utf16_without_bom(bytes: &[u8]) -> Option<bool> {
     let pairs = sample.len() / 2;
     let mut little_endian_text = 0usize;
     let mut big_endian_text = 0usize;
-    for pair in sample.chunks_exact(2) {
+    for pair in sample.as_chunks::<2>().0 {
         if pair[1] == 0 && is_text_byte(pair[0]) {
             little_endian_text += 1;
         }
