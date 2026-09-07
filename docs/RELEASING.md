@@ -53,6 +53,7 @@ Standard-Builds benötigen deshalb keinen privaten Key.
    npm run check:associations
    npm run check
    npm test
+   npm run test:browser
    npm run build
    cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
    cargo test --manifest-path src-tauri/Cargo.toml
@@ -62,9 +63,9 @@ Standard-Builds benötigen deshalb keinen privaten Key.
    Wenn sich `src/lib/files/associations.json` ändert, vorher `npm run sync:associations`
    ausführen. Die Synchronprüfung verhindert Drift zu Tauri und den NSIS-Hooks.
 
-3. Unter Windows den portablen Root-Build zusätzlich über `build-exe.bat` prüfen.
-4. Commit und exakt passendes Tag erstellen, zum Beispiel `v0.1.1`.
-5. Branch und Tag zu GitHub pushen. `.github/workflows/release.yml` wiederholt die
+3. Unter Windows den portablen Root-Build über `npm run build:launcher` bauen und mit `node scripts/smoke-local-launcher.mjs` gegen WebView2 prüfen. Das Smoke-Skript verwendet ausschließlich eigene temporäre Dokumente und einen testprozesslokalen Debug-Port; es ist kein Installer-Test.
+4. Commit und Branch zu GitHub pushen; den erfolgreichen `Tests`-Workflow für exakt diesen Commit abwarten. Erst danach das passende Tag erstellen, zum Beispiel `v0.1.3`.
+5. Das geprüfte Tag zu GitHub pushen. `.github/workflows/release.yml` wiederholt die
    Qualitätsprüfungen, baut Windows, Linux sowie macOS für Intel und Apple Silicon,
    signiert die Pakete und erzeugt `latest.json`.
 6. Der Workflow erstellt absichtlich einen **Draft Release**. Installer auf allen drei
@@ -73,6 +74,8 @@ Standard-Builds benötigen deshalb keinen privaten Key.
    P-Viewer erscheint unter „Öffnen mit“, Installation und Deinstallation verändern
    weder Extension-Defaults noch `UserChoice`, die geschützte P-Viewer-Seite unter
    „Standard-Apps“ öffnet sich, und die Deinstallation entfernt nur P-Viewer-Einträge.
+
+Die Browserregressionen bauen und testen den Produktionsbuild. Unter Linux benötigen sie `npx playwright install --with-deps chromium`; Windows verwendet vorhandenes Edge. Gemockte IPC-Lifecycle-Tests ersetzen weder einen echten TeX-Compiler noch einen signierten Update-Installationslauf. Der versionsbezogene Prüfbericht `docs/QUALITY-v0.1.3.md` trennt diese Nachweise.
 
 Der Workflow bricht ab, wenn Tag und Metadaten nicht übereinstimmen oder Key-Variablen
 fehlen. Windows-Builds sind bewusst auf NSIS begrenzt, damit Candidate-Registrierung und Deinstallation über dieselben geprüften Installer-Hooks laufen, ohne vorhandene Benutzerstandards zu schreiben oder wiederherzustellen.

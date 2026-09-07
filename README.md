@@ -5,18 +5,19 @@ P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter f
 [![Tests](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml/badge.svg)](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-blue.svg)](LICENSE)
 
-> **Status:** aktuelle Version `v0.1.2`.
+> **Status:** aktueller Entwicklungsstand `v0.1.3`.
 
 ## Aktueller Funktionsumfang
 
 - Text- und Code-Dateien encoding-sicher lesen (UTF-8, UTF-16 mit und ohne BOM, Legacy-Kodierungen), atomar speichern, erstellen und bearbeiten
-- mehrere Dokumente parallel in einer VS-Code-ähnlichen Tab-Leiste öffnen und sicher schließen
+- mehrere Dokumente parallel in einer kompakten Tab-Leiste öffnen und sicher schließen, mit eigener Undo-Historie, Auswahl und Scrollposition pro Tab
+- Speicherkonflikte bei externen Änderungen erkennen; bei mehrdeutigen Dateien die Kodierung in der Statusleiste explizit neu wählen
 - Dateityp direkt in der Werkzeugleiste aus allen unterstützten Formaten, speziellen Dateinamen oder über eine eigene Endung wählen
-- breite Syntaxhervorhebung für 167 Dateiendungen und 36 spezielle Dateinamen mit sicherem Plaintext-Fallback, inklusive gemischter Astro-, Svelte- und Vue-Syntax sowie eigener Modi für Batch, Makefile, GraphQL, Elixir, BibTeX, Ignore-Dateien und CSV
+- breite Syntaxhervorhebung für 169 Dateiendungen und 36 spezielle Dateinamen mit sicherem Plaintext-Fallback, inklusive gemischter Astro-, Svelte- und Vue-Syntax sowie eigener Modi für Batch, Makefile, GraphQL, Elixir, BibTeX, Ignore-Dateien und CSV
 - Edit-, View- und Split-Ansicht
 - sichere statische HTML-/HTM-/XHTML-Vorschau sowie eine explizit bestätigte vollständige Vorschau mit Skripten, Stylesheets und lokalen Ressourcen
 - Markdown mit GFM, Gliederung, Folding, Tabellen, Aufgabenlisten, Fußnoten, Callouts, Syntaxhervorhebung in Codeblöcken und KaTeX-Mathematik
-- einklappbare JSON-Strukturansicht für JSON, JSONC, JSON5, JSON-LD, GeoJSON und Web-Manifeste
+- einklappbare JSON-Strukturansicht für JSON, JSONC, JSON5, JSON-LD, GeoJSON und Web-Manifeste sowie zeilenweise JSONL-/NDJSON-Datensätze
 - Jupyter-Notebook-Ansicht mit Markdown-, Code- und Ausgabezellen (Text, Bilder, Fehler); HTML-Ausgaben werden bewusst nicht ausgeführt
 - CSV-/TSV-Tabellenansicht mit automatischer Trennzeichenerkennung, Kopfzeile, Zeilennummern und Zahlenausrichtung
 - sandboxed SVG-Bildvorschau mit Zoom, Transparenzraster und Quelltextumschaltung
@@ -67,6 +68,7 @@ npm run check:version
 npm run check:associations
 npm run check
 npm test
+npm run test:browser
 npm run build
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo test --manifest-path src-tauri/Cargo.toml
@@ -85,7 +87,8 @@ Astro, Svelte und Vue werden als hervorgehobener Quelltext angezeigt. Projektkom
 ## Daten- und Bildformate
 
 - **SVG:** Die Grafik wird als Bild in einem Iframe ohne Sandbox-Rechte und mit deny-by-default-CSP dargestellt. Skripte oder externe Verweise in der SVG werden dadurch nie ausgeführt; per Umschalter steht der hervorgehobene Quelltext bereit.
-- **CSV/TSV:** Trennzeichen (Komma, Semikolon, Tabulator, Pipe) werden automatisch erkannt und können überschrieben werden. Anführungszeichen, maskierte Zitate und Zeilenumbrüche in Feldern folgen RFC 4180; die Tabelle ist auf 5.000 Zeilen begrenzt, der Editor zeigt weiterhin die vollständige Datei.
+- **CSV/TSV:** Trennzeichen (Komma, Semikolon, Tabulator, Pipe) werden automatisch erkannt und können überschrieben werden. Anführungszeichen, maskierte Zitate und Zeilenumbrüche in Feldern folgen RFC 4180; die Tabelle ist auf 5.000 Zeilen, 256 Spalten und insgesamt 20.000 Datenzellen begrenzt. Breite Tabellen zeigen entsprechend weniger Zeilen; der Editor zeigt weiterhin die vollständige Datei.
+- **JSONL/NDJSON:** Jeder nicht leere Datensatz wird einzeln als JSON gelesen; Fehler nennen die Quellzeile. Die Datensätze erscheinen als Array in der Strukturansicht. Vorschauen sind auf 2 Millionen Zeichen, 5.000 Knoten und 64 Verschachtelungsebenen begrenzt; übergroße Dateien bleiben im Editor nutzbar.
 - **Jupyter-Notebooks:** Markdown-Zellen laufen durch dieselbe sanitisierte Pipeline wie Markdown-Dateien, Code-Zellen werden nach Kernel-Sprache hervorgehoben. Ausgaben werden nur als Text, Markdown, JSON, geprüfte PNG-/JPEG-/GIF-/WebP-Bilder oder Fehlermeldungen gezeigt; `text/html`-Ausgaben bleiben deaktiviert.
 
 ## LaTeX
@@ -102,7 +105,15 @@ Die externe Distribution ist optional; Shell-Escape bleibt deaktiviert.
 
 ## Dateizuordnungen
 
-Installer registrieren alle 167 unterstützten Dateiendungen als mögliche P-Viewer-Formate. Unter **Einstellungen → Standardprogramme** lassen sich 88 sinnvolle Formatgruppen auswählen. Windows öffnet anschließend aus Sicherheitsgründen seine geschützte Standard-Apps-Seite zur Bestätigung; Linux aktualisiert die benutzerspezifische `mimeapps.list`, macOS verwendet LaunchServices. Eine vorhandene Standard-App wird bei der Windows-Installation nicht still überschrieben.
+Installer registrieren alle 169 unterstützten Dateiendungen als mögliche P-Viewer-Formate. Unter **Einstellungen → Standardprogramme** lassen sich 88 sinnvolle Formatgruppen auswählen. Windows öffnet anschließend aus Sicherheitsgründen seine geschützte Standard-Apps-Seite zur Bestätigung; Linux aktualisiert die benutzerspezifische `mimeapps.list`, macOS verwendet LaunchServices. Eine vorhandene Standard-App wird bei der Windows-Installation nicht still überschrieben.
+
+## Qualitätsprüfungen und Grenzen
+
+`npm run test:browser` prüft den Produktionsbuild mit Playwright (Windows: vorhandenes Edge; Linux: vorher `npx playwright install --with-deps chromium`). `node scripts/smoke-local-launcher.mjs` prüft unter Windows zusätzlich die tatsächlich gebaute Root-EXE mit temporären Dokumenten und einem eigenen WebView-Profil. Dazu wird nur für diesen Testprozess ein lokaler Debug-Port aktiviert.
+
+Vorschaugrenzen halten die App bei sehr großen/komplexen Dateien bedienbar; sie sind keine Beschränkung auf ebenso kleine Editorquellen. Markdown begrenzt Quelltext, Zeilen und Strukturmarker, Notebooks kombinieren Zell-/Text-/Ausgabelimits. Die PDF-Ansicht hält nur eine Seite mit begrenzter Bitmap-Größe vor. View ist über **Strg/Cmd+Umschalt+R** erreichbar, Split über **Strg/Cmd+Umschalt+P**.
+
+Testumfang, bekannte Grenzen und noch offene plattformspezifische Release-Abnahmen stehen in [`docs/QUALITY-v0.1.3.md`](docs/QUALITY-v0.1.3.md). Eine vollständige Fehlerfreiheit aller Dateiformate wird nicht behauptet.
 
 ## Versionierung
 

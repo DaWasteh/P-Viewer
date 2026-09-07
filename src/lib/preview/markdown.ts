@@ -184,11 +184,31 @@ const renderer = unified()
 
 const outlineParser = unified().use(remarkParse).use(remarkGfm).use(remarkMath);
 
+export const MAX_MARKDOWN_CHARACTERS = 500_000;
+export const MAX_MARKDOWN_LINES = 5_000;
+export const MAX_MARKDOWN_HEADINGS = 300;
+
+function guardMarkdown(source: string): void {
+  let lines = 1;
+  let markers = 0;
+  if (source.length > MAX_MARKDOWN_CHARACTERS) throw new Error("Markdown-Vorschau auf 500.000 Zeichen begrenzt; der Quelltext bleibt vollständig verfügbar.");
+  for (const c of source) {
+    if (c === "\n" && ++lines > MAX_MARKDOWN_LINES) throw new Error("Markdown-Vorschau auf 5.000 Zeilen begrenzt; der Quelltext bleibt vollständig verfügbar.");
+    if ("[]*_`$|>".includes(c) && ++markers > 20_000) throw new Error("Dieses Markdown ist für die Live-Vorschau zu komplex; bitte den Editor verwenden.");
+  }
+}
+
 export function renderMarkdown(source: string): string {
+  guardMarkdown(source);
   return String(renderer.processSync(source));
 }
 
+export function decodeMarkdownFragment(fragment: string): string {
+  try { return decodeURIComponent(fragment); } catch { return fragment; }
+}
+
 export function extractMarkdownHeadings(source: string): MarkdownHeading[] {
+  guardMarkdown(source);
   const tree = outlineParser.parse(source);
   const slugger = new GithubSlugger();
   const headings: MarkdownHeading[] = [];
@@ -196,8 +216,10 @@ export function extractMarkdownHeadings(source: string): MarkdownHeading[] {
   visit(tree, "heading", (node) => {
     const text = toString(node).trim();
     if (!text) return;
+    const id = slugger.slug(text);
+    if (headings.length >= MAX_MARKDOWN_HEADINGS) return;
     headings.push({
-      id: slugger.slug(text),
+      id,
       depth: node.depth,
       text,
     });

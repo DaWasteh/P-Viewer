@@ -6,6 +6,7 @@
   import { EditorView, keymap } from "@codemirror/view";
   import { oneDark } from "@codemirror/theme-one-dark";
   import { loadLanguageForFile } from "./languages";
+  import { restoreEditorState, type EditorSession } from "./session";
 
   interface CursorPosition {
     line: number;
@@ -17,6 +18,7 @@
     value: string;
     fileName: string;
     readOnly?: boolean;
+    session?: EditorSession;
     theme?: "dark" | "light";
     fontSize?: number;
     wordWrap?: boolean;
@@ -30,6 +32,7 @@
     value,
     fileName,
     readOnly = false,
+    session,
     theme = "dark",
     fontSize = 14,
     wordWrap = false,
@@ -176,9 +179,8 @@
   }
 
   onMount(() => {
-    const startState = EditorState.create({
-      doc: value,
-      extensions: [
+    const mountedSession = session;
+    const startState = restoreEditorState(mountedSession, value, [
         basicSetup,
         keymap.of([
           indentWithTab,
@@ -200,14 +202,23 @@
           }
           if (update.docChanged || update.selectionSet) reportCursor(update.view);
         }),
-      ],
-    });
+      ]);
 
     view = new EditorView({ state: startState, parent: host });
+    const editor = view;
+    editor.requestMeasure({ read: () => null, write: () => {
+      editor.scrollDOM.scrollTop = mountedSession?.scrollTop ?? 0;
+      editor.scrollDOM.scrollLeft = mountedSession?.scrollLeft ?? 0;
+    } });
     reportCursor(view);
 
     return () => {
       languageRequest += 1;
+      if (mountedSession && view) {
+        mountedSession.state = view.state;
+        mountedSession.scrollTop = view.scrollDOM.scrollTop;
+        mountedSession.scrollLeft = view.scrollDOM.scrollLeft;
+      }
       view?.destroy();
       view = null;
     };

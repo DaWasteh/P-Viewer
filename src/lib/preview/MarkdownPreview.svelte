@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { tick, onMount } from "svelte";
   import { ChevronDown, ChevronsDownUp, ChevronsUpDown, ListTree } from "@lucide/svelte";
   import { isRelativeImageSource, readLocalImages } from "$lib/files/localImages";
   import { resolveDocumentReference } from "$lib/files/paths";
@@ -7,6 +7,7 @@
   import "highlight.js/styles/github-dark-dimmed.css";
   import "./markdown-body.css";
   import {
+    decodeMarkdownFragment,
     extractMarkdownHeadings,
     renderMarkdown,
     type MarkdownHeading,
@@ -31,7 +32,13 @@
   let rendered = $state("");
   let headings = $state<MarkdownHeading[]>([]);
   let renderError = $state("");
-  let showOutline = $state(true);
+  let showOutline = $state(false);
+  let previewHost: HTMLDivElement;
+  onMount(() => {
+    const observer = new ResizeObserver(([entry]) => { showOutline = entry.contentRect.width >= 720; });
+    observer.observe(previewHost);
+    return () => observer.disconnect();
+  });
   let article = $state.raw<HTMLElement | null>(null);
 
   $effect(() => {
@@ -84,22 +91,25 @@
   async function resolveLocalImages(): Promise<void> {
     if (!article || !path) return;
     const currentArticle = article;
-    const images = Array.from(currentArticle.querySelectorAll<HTMLImageElement>("img[src]"));
+    const currentPath = path;
+    const images = Array.from(currentArticle.querySelectorAll<HTMLImageElement>("img"));
     const pending = images
-      .map((image) => ({ image, source: image.getAttribute("src") ?? "" }))
-      .filter(({ image, source }) => isRelativeImageSource(source) && image.dataset.localSource !== source);
+      .map((image) => ({ image, source: image.dataset.localSource ?? image.getAttribute("src") ?? "" }))
+      .filter(({ image, source }) => isRelativeImageSource(source) && (image.dataset.localSource !== source || image.dataset.localPath !== currentPath));
     if (pending.length === 0) return;
 
     for (const { image, source } of pending) {
       image.dataset.localSource = source;
+      image.dataset.localPath = currentPath;
+      image.removeAttribute("src");
       image.classList.add("local-image-loading");
     }
 
     try {
-      const payloads = await readLocalImages(path, pending.map(({ source }) => source));
+      const payloads = await readLocalImages(currentPath, pending.map(({ source }) => source));
       const bySource = new Map(payloads.map((payload) => [payload.source, payload]));
       for (const { image, source } of pending) {
-        if (!image.isConnected || image.dataset.localSource !== source) continue;
+        if (!image.isConnected || path !== currentPath || image.dataset.localPath !== currentPath || image.dataset.localSource !== source) continue;
         const payload = bySource.get(source);
         image.classList.remove("local-image-loading");
         if (payload?.dataUrl) {
@@ -114,7 +124,7 @@
       }
     } catch (error) {
       for (const { image, source } of pending) {
-        if (!image.isConnected || image.dataset.localSource !== source) continue;
+        if (!image.isConnected || path !== currentPath || image.dataset.localPath !== currentPath || image.dataset.localSource !== source) continue;
         image.removeAttribute("src");
         image.classList.remove("local-image-loading");
         image.classList.add("local-image-error");
@@ -183,7 +193,7 @@
     const href = anchor.getAttribute("href") ?? "";
     if (href.startsWith("#")) {
       event.preventDefault();
-      void openHeading(decodeURIComponent(href.slice(1)));
+      void openHeading(decodeMarkdownFragment(href.slice(1)));
       return;
     }
 
@@ -207,10 +217,11 @@
   class:light={theme === "light"}
   class:outline-hidden={!showOutline || headings.length === 0}
   class="markdown-preview"
+  bind:this={previewHost}
   style={`--preview-font-size: ${fontSize}px`}
 >
   <div class="preview-toolbar">
-    <button class:active={showOutline} title="Gliederung ein-/ausblenden" onclick={() => (showOutline = !showOutline)}>
+    <button class:active={showOutline} aria-pressed={showOutline} title="Gliederung ein-/ausblenden" onclick={() => (showOutline = !showOutline)}>
       <ListTree size={15} aria-hidden="true" />
       <span>Gliederung</span>
     </button>
@@ -263,6 +274,7 @@
 
 <style>
   .markdown-preview {
+    container-type: inline-size;
     display: grid;
     min-width: 0;
     min-height: 0;
@@ -428,7 +440,7 @@
     background: #d8dbe2;
   }
 
-  @media (max-width: 850px) {
+  @container (max-width: 600px) {
     .preview-grid {
       grid-template-columns: 165px minmax(0, 1fr);
     }

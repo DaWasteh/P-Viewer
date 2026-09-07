@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { modal } from "$lib/modal";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { confirm } from "@tauri-apps/plugin-dialog";
@@ -42,6 +43,7 @@
     unsavedCount?: number;
     onSave: () => Promise<boolean>;
     onClose: () => void;
+    onInstalling?: (installing: boolean) => void;
   }
 
   let {
@@ -50,6 +52,7 @@
     unsavedCount = hasUnsavedChanges ? 1 : 0,
     onSave,
     onClose,
+    onInstalling = () => undefined,
   }: Props = $props();
 
   let configuration = $state<UpdaterConfiguration | null>(null);
@@ -67,13 +70,14 @@
 
   onMount(() => {
     let unlisten: UnlistenFn | null = null;
+    let disposed = false;
     void listen<UpdateProgress>("p-viewer://update-progress", (event) => {
       progress = event.payload;
     }).then((cleanup) => {
-      unlisten = cleanup;
-    });
+      if (disposed) cleanup(); else unlisten = cleanup;
+    }).catch((error) => { errorMessage = messageFrom(error); });
     void initialize();
-    return () => unlisten?.();
+    return () => { disposed = true; unlisten?.(); };
   });
 
   async function initialize(): Promise<void> {
@@ -116,17 +120,21 @@
         cancelLabel: "Abbrechen",
       },
     );
-    if (!accepted) return;
+    if (!accepted || hasUnsavedChanges) return;
 
     installing = true;
+    onInstalling(true);
     progress = { downloaded: 0, total: null, finished: false };
     errorMessage = "";
     try {
       await invoke("download_and_install_update");
+      if (hasUnsavedChanges) throw new Error("Update installiert, Neustart zum Schutz ungespeicherter Änderungen angehalten. Bitte speichern und die App manuell neu starten.");
       await relaunch();
     } catch (error) {
       errorMessage = messageFrom(error);
+    } finally {
       installing = false;
+      onInstalling(false);
     }
   }
 
@@ -155,8 +163,8 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-<div class="update-backdrop" role="presentation" onclick={handleBackdrop}>
-  <div class:light={activeTheme === "light"} class="update-panel" role="dialog" aria-modal="true" aria-labelledby="update-title">
+<dialog use:modal class="update-backdrop" aria-labelledby="update-title" onclick={handleBackdrop}>
+  <div class:light={activeTheme === "light"} class="update-panel">
     <header>
       <div>
         <span class="eyebrow">SICHERE RELEASES</span>
@@ -261,10 +269,16 @@
       <button onclick={onClose} disabled={installing}>Schließen</button>
     </footer>
   </div>
-</div>
+</dialog>
 
 <style>
   .update-backdrop {
+    margin: 0;
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    max-height: none;
+    border: 0;
     position: fixed;
     z-index: 55;
     inset: 0;

@@ -2,6 +2,23 @@
 
 Alle Entwicklungsstufen folgen semantischer Vorabversionierung.
 
+## 0.1.3
+
+- Editorzustand pro Tab bewahrt Undo/Redo, Auswahl, Folding und Scrollposition, ohne zusätzliche unsichtbare Editoren zu betreiben
+- SHA-256-basierte Speicherkonflikterkennung verhindert das unbemerkte Überschreiben zwischenzeitlich extern geänderter Dateien; gelöschte Quelldateien werden nicht still neu angelegt
+- Kodierung in der Statusleiste explizit neu wählbar, unter anderem für BOM-loses UTF-16, Windows-125x, Shift_JIS und GB18030; verlustbehaftet gelesene Dateien werden nicht ohne Weiteres zurückgespeichert
+- JSON Lines (`.jsonl`) und NDJSON (`.ndjson`) mit Datensatzansicht, Syntaxhervorhebung, Fehlerzeilen und Systemzuordnungen ergänzt: nun 169 Endungen
+- Extremfallgrenzen für JSON-Tiefe und -Knoten, CSV-Tabellenzellen, Markdown-Komplexität, Notebook-Gesamtausgabe, LaTeX-Verschachtelung und PDF-Bitmaps; vollständige Dokumentquelle bleibt im Editor verfügbar
+- CSV bewahrt explizit zitierte Leerzeilen und meldet nicht geschlossene Anführungszeichen; Notebook-`text/latex` rendert auch Formeln ohne Markdown-Begrenzer
+- PDF-Vorschau zeigt eine frei wählbare Seite statt alle Seiten gleichzeitig im Speicher zu halten; veraltete LaTeX-Build-Ergebnisse werden nicht als aktueller Quellstand ausgegeben
+- Einstellungen und Updates sind echte Tastaturmodale mit Fokuswiederherstellung; Hintergrundkürzel sind gesperrt, und der Updater prüft vor dem Neustart erneut auf ungespeicherte Änderungen
+- View-Kürzel auf Strg/Cmd+Umschalt+R verlegt, damit Einfügen ohne Formatierung nicht länger die Ansicht umschaltet
+- Markdown-Gliederung passt sich der tatsächlichen Pane-Breite an, sodass Split bei 900 px lesbar bleibt; JSON-/CSV-/Notebook-Schalter besser beschriftet
+- Vorschauen an Tab-Identität gebunden; lokale Markdown-Bilder und verspätet geöffnete aktive HTML-Fenster gegen veraltete Async-Ergebnisse abgesichert
+- Datei-Lesegrenzen am geöffneten Handle durchgesetzt; späte Binär-NULs erkannt, kanonische Pfade und Windows-UNC-Vergleiche verbessert; externe Öffnungsanforderungen werden gepuffert statt bei Beschäftigung verworfen
+- aktive HTML-Vorschauen erhalten getrennte Cookie-Namen; unnötige CORS-Freigabe entfernt
+- automatisierte Browserregressionen gegen den Produktionsbuild und zusätzliche Parser-/Datei-/Editor-Extremfalltests in die Qualitätsprüfungen aufgenommen
+
 ## 0.1.2
 
 - neue Vorschauen ergänzt: CSV/TSV als Tabelle mit Trennzeichenerkennung, Kopfzeile und Zeilennummern, Jupyter-Notebooks mit Markdown-, Code- und sicheren Ausgabezellen sowie SVG als sandboxed Bildvorschau mit Zoom, Transparenzraster und Quelltextumschaltung

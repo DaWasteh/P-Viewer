@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
+  import { boundedPdfScale, MAX_PDF_BASE64_CHARACTERS } from "./pdfLimits";
   import { Minus, Plus, RotateCcw } from "@lucide/svelte";
   import type {
     PDFDocumentLoadingTask,
@@ -17,6 +18,8 @@
   let loading = $state(true);
   let errorMessage = $state("");
   let pageCount = $state(0);
+  let currentPage = $state(1);
+  let renderGeneration = 0;
   let zoom = $state(1);
   let pdfDocument = $state.raw<PDFDocumentProxy | null>(null);
   let loadingTask = $state.raw<PDFDocumentLoadingTask | null>(null);
@@ -38,6 +41,7 @@
 
     return () => {
       generation += 1;
+      renderGeneration += 1;
       observer?.disconnect();
       window.removeEventListener("resize", scheduleRender);
       window.clearTimeout(resizeTimer);
@@ -56,11 +60,13 @@
 
   $effect(() => {
     zoom;
+    currentPage;
     const loaded = untrack(() => pdfDocument);
     if (loaded) void renderPages(loaded);
   });
 
   function decodeBase64(value: string): Uint8Array {
+    if (value.length > MAX_PDF_BASE64_CHARACTERS) throw new Error("PDF überschreitet das Vorschau-Größenlimit.");
     const binary = window.atob(value);
     const bytes = new Uint8Array(binary.length);
     for (let index = 0; index < binary.length; index += 1) {
@@ -71,9 +77,11 @@
 
   async function loadPdf(encoded: string): Promise<void> {
     const currentGeneration = ++generation;
+    renderGeneration += 1;
     loading = true;
     errorMessage = "";
     pageCount = 0;
+    currentPage = 1;
     container.replaceChildren();
 
     try {
@@ -81,6 +89,7 @@
       renderTasks.clear();
       await pdfDocument?.cleanup();
       await loadingTask?.destroy();
+      if (currentGeneration !== generation) return;
       pdfDocument = null;
       loadingTask = null;
 
@@ -114,8 +123,10 @@
   }
 
   async function renderPages(pdf: PDFDocumentProxy): Promise<void> {
-    const currentGeneration = ++generation;
+    const currentGeneration = ++renderGeneration;
+    const selectedPage = currentPage;
     loading = true;
+    errorMessage = "";
     for (const task of renderTasks) task.cancel();
     renderTasks.clear();
     container.replaceChildren();
@@ -124,20 +135,23 @@
       const availableWidth = Math.max(240, container.clientWidth - 38);
       const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
 
-      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-        if (currentGeneration !== generation) return;
+      // Keep one bounded bitmap resident, regardless of document page count.
+      for (const pageNumber of [selectedPage]) {
+        if (currentGeneration !== renderGeneration) return;
         const page = await pdf.getPage(pageNumber);
+        if (currentGeneration !== renderGeneration) return;
         const natural = page.getViewport({ scale: 1 });
-        const fitScale = (availableWidth / natural.width) * zoom;
+        const fitScale = boundedPdfScale(natural.width, natural.height, (availableWidth / natural.width) * zoom);
         const cssViewport = page.getViewport({ scale: fitScale });
-        const renderViewport = page.getViewport({ scale: fitScale * pixelRatio });
+        const renderScale = boundedPdfScale(natural.width, natural.height, fitScale * pixelRatio);
+        const renderViewport = page.getViewport({ scale: renderScale });
 
         const wrapper = document.createElement("section");
         wrapper.className = "pdf-page";
         wrapper.setAttribute("aria-label", `PDF-Seite ${pageNumber}`);
         const canvas = document.createElement("canvas");
-        canvas.width = Math.floor(renderViewport.width);
-        canvas.height = Math.floor(renderViewport.height);
+        canvas.width = Math.max(1, Math.floor(renderViewport.width));
+        canvas.height = Math.max(1, Math.floor(renderViewport.height));
         canvas.style.width = `${Math.floor(cssViewport.width)}px`;
         canvas.style.height = `${Math.floor(cssViewport.height)}px`;
         wrapper.append(canvas);
@@ -147,10 +161,11 @@
         renderTasks.add(renderTask);
         await renderTask.promise;
         renderTasks.delete(renderTask);
+        page.cleanup();
       }
-      if (currentGeneration === generation) loading = false;
+      if (currentGeneration === renderGeneration) loading = false;
     } catch (error) {
-      if (currentGeneration !== generation) return;
+      if (currentGeneration !== renderGeneration) return;
       const name = error instanceof Error ? error.name : "";
       if (name !== "RenderingCancelledException") {
         errorMessage = error instanceof Error ? error.message : String(error);
@@ -176,7 +191,12 @@
     <button title="An Breite anpassen" onclick={() => (zoom = 1)}>
       <RotateCcw size={14} aria-hidden="true" />
     </button>
-    {#if pageCount > 0}<span class="pages">{pageCount} {pageCount === 1 ? "Seite" : "Seiten"}</span>{/if}
+    {#if pageCount > 0}
+      <button aria-label="Vorherige PDF-Seite" disabled={currentPage <= 1} onclick={() => currentPage -= 1}>‹</button>
+      <label>Seite <input aria-label="PDF-Seite" type="number" min="1" max={pageCount} value={currentPage} onchange={(event) => { currentPage = Math.max(1, Math.min(pageCount, Math.trunc(Number(event.currentTarget.value)) || 1)); }} /></label>
+      <button aria-label="Nächste PDF-Seite" disabled={currentPage >= pageCount} onclick={() => currentPage += 1}>›</button>
+      <span class="pages">von {pageCount}</span>
+    {/if}
   </div>
 
   <div class="canvas-scroll" bind:this={container}></div>
@@ -240,6 +260,8 @@
   .pdf-toolbar button:disabled {
     opacity: 0.35;
   }
+
+  .pdf-toolbar input { width: 56px; color: inherit; background: transparent; border: 1px solid #525967; border-radius: 4px; }
 
   .pages {
     margin-left: auto;

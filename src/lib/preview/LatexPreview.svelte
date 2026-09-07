@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import {
     AlertTriangle,
@@ -53,6 +53,8 @@
   let result = $state<LatexCompileResult | null>(null);
   let errorMessage = $state("");
   let compiledContent = $state<string | null>(null);
+  let disposed = false;
+  onDestroy(() => { disposed = true; });
 
   const desktop =
     typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -112,14 +114,14 @@
     if (!desktop || compiling || availableEngines.length === 0) return;
     compiling = true;
     errorMessage = "";
+    const submitted = { path, content, engine: selectedEngine };
+    const submittedName = fileName;
     try {
-      result = await invoke<LatexCompileResult>("compile_latex", {
-        path,
-        content,
-        engine: selectedEngine,
-      });
-      if (result.success) compiledContent = content;
-      else errorMessage = result.error ?? "Der LaTeX-Build ist fehlgeschlagen.";
+      const completed = await invoke<LatexCompileResult>("compile_latex", submitted);
+      if (disposed || path !== submitted.path || fileName !== submittedName) return;
+      result = completed;
+      if (completed.success) compiledContent = submitted.content;
+      else errorMessage = completed.error ?? "Der LaTeX-Build ist fehlgeschlagen.";
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : String(error);
     } finally {

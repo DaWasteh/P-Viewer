@@ -1,7 +1,6 @@
 <script lang="ts">
   import { Hash, Table2 } from "@lucide/svelte";
   import {
-    MAX_CSV_ROWS,
     delimiterLabel,
     parseCsv,
     type CsvDelimiterChoice,
@@ -58,11 +57,11 @@
         <option value="|">Pipe</option>
       </select>
     </label>
-    <button class:active={headerRow} title="Erste Zeile als Kopfzeile darstellen" onclick={() => (headerRow = !headerRow)}>
+    <button class:active={headerRow} aria-pressed={headerRow} title="Erste Zeile als Kopfzeile darstellen" onclick={() => (headerRow = !headerRow)}>
       <Table2 size={15} aria-hidden="true" />
       <span>Kopfzeile</span>
     </button>
-    <button class:active={showRowNumbers} title="Zeilennummern ein-/ausblenden" onclick={() => (showRowNumbers = !showRowNumbers)}>
+    <button class:active={showRowNumbers} aria-pressed={showRowNumbers} title="Zeilennummern ein-/ausblenden" onclick={() => (showRowNumbers = !showRowNumbers)}>
       <Hash size={15} aria-hidden="true" />
       <span>Zeilennummern</span>
     </button>
@@ -75,11 +74,12 @@
   </div>
 
   <div class="csv-scroll">
+    {#if table?.warning}<div class="csv-notice" role="status">{table.warning}</div>{/if}
     {#if table && table.rows.length > 0}
       {#if table.truncatedRows || table.truncatedColumns}
         <div class="csv-notice" role="status">
           {#if table.truncatedRows}
-            Es werden die ersten {MAX_CSV_ROWS.toLocaleString("de-DE")} Zeilen dargestellt; der Editor zeigt weiterhin die vollständige Datei.
+            Es werden die ersten {table.rows.length.toLocaleString("de-DE")} Zeilen dargestellt; der Editor zeigt weiterhin die vollständige Datei.
           {/if}
           {#if table.truncatedColumns}
             Zeilen mit sehr vielen Spalten wurden gekürzt.
@@ -113,7 +113,7 @@
           {/each}
         </tbody>
       </table>
-    {:else}
+    {:else if !table?.warning}
       <div class="empty-csv">
         <strong>Leere Tabellendatei</strong>
         <span>Kommagetrennte oder tabulatorgetrennte Werte werden hier als Tabelle dargestellt.</span>

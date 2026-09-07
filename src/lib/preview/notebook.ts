@@ -4,6 +4,7 @@ export type NotebookOutput =
   | { kind: "stream"; name: "stdout" | "stderr"; text: string }
   | { kind: "text"; text: string }
   | { kind: "markdown"; source: string }
+  | { kind: "latex"; source: string }
   | { kind: "image"; dataUrl: string; alt: string }
   | { kind: "json"; text: string }
   | { kind: "html-only" }
@@ -25,7 +26,9 @@ export interface NotebookDocument {
   truncatedCells: boolean;
 }
 
-export const MAX_NOTEBOOK_CELLS = 1_000;
+export const MAX_NOTEBOOK_CELLS = 200;
+export const MAX_NOTEBOOK_SOURCE_CHARACTERS = 8_000_000;
+export const MAX_NOTEBOOK_RENDER_CHARACTERS = 500_000;
 export const MAX_NOTEBOOK_OUTPUTS_PER_CELL = 50;
 export const MAX_NOTEBOOK_OUTPUT_CHARACTERS = 200_000;
 const MAX_IMAGE_BASE64_LENGTH = 8 * 1024 * 1024;
@@ -49,6 +52,7 @@ export class NotebookParseError extends Error {
 }
 
 export function parseNotebook(content: string): NotebookDocument {
+  if (content.length > MAX_NOTEBOOK_SOURCE_CHARACTERS) throw new NotebookParseError("Notebook-Vorschau auf 8 Millionen Zeichen begrenzt. Der Quelltext bleibt vollständig im Editor verfügbar.");
   let raw: unknown;
   try {
     raw = JSON.parse(content);
@@ -73,13 +77,35 @@ export function parseNotebook(content: string): NotebookDocument {
     .filter((value) => typeof value === "number")
     .join(".");
 
-  const cells = raw.cells.slice(0, MAX_NOTEBOOK_CELLS).map(parseCell);
+  const cells: NotebookCell[] = [];
+  let renderedCharacters = 0;
+  let renderedOutputs = 0;
+  let imageCharacters = 0;
+  let imageCount = 0;
+  for (const rawCell of raw.cells.slice(0, MAX_NOTEBOOK_CELLS)) {
+    const cell = parseCell(rawCell);
+    if (renderedCharacters + cell.source.length > MAX_NOTEBOOK_RENDER_CHARACTERS) break;
+    renderedCharacters += cell.source.length;
+    cell.outputs = cell.outputs.filter((output) => {
+      const image = output.kind === "image";
+      const cost = image ? output.dataUrl.length : JSON.stringify(output).length;
+      const fits = renderedOutputs < 500 && (image
+        ? imageCount < 32 && imageCharacters + cost <= MAX_IMAGE_BASE64_LENGTH
+        : renderedCharacters + cost <= MAX_NOTEBOOK_RENDER_CHARACTERS);
+      if (!fits) { cell.omittedOutputs += 1; return false; }
+      renderedOutputs += 1;
+      if (image) { imageCharacters += cost; imageCount += 1; }
+      else renderedCharacters += cost;
+      return true;
+    });
+    cells.push(cell);
+  }
   return {
     cells,
     language: language.toLowerCase(),
     kernel,
     nbformat,
-    truncatedCells: raw.cells.length > MAX_NOTEBOOK_CELLS,
+    truncatedCells: raw.cells.length > cells.length,
   };
 }
 
@@ -103,7 +129,7 @@ function parseCell(value: unknown): NotebookCell {
 
   return {
     type,
-    source: multilineText(cell.source),
+    source: limitText(multilineText(cell.source)),
     executionCount,
     outputs,
     omittedOutputs: Math.max(0, outputsSource.length - MAX_NOTEBOOK_OUTPUTS_PER_CELL),
@@ -125,8 +151,8 @@ function parseOutput(value: unknown): NotebookOutput | null {
       : "";
     return {
       kind: "error",
-      name: stringValue(output.ename),
-      value: stringValue(output.evalue),
+      name: limitText(stringValue(output.ename)),
+      value: limitText(stringValue(output.evalue)),
       traceback: limitText(traceback),
     };
   }
@@ -143,12 +169,13 @@ function parseOutput(value: unknown): NotebookOutput | null {
       return { kind: "markdown", source: limitText(multilineText(data["text/markdown"])) };
     }
     if ("text/latex" in data) {
-      return { kind: "markdown", source: limitText(multilineText(data["text/latex"])) };
+      return { kind: "latex", source: limitText(multilineText(data["text/latex"])) };
     }
     if ("application/json" in data) {
       const json = data["application/json"];
-      const text =
-        typeof json === "string" ? json : JSON.stringify(json, null, 2);
+      let text: string | undefined;
+      try { text = typeof json === "string" ? json : JSON.stringify(json, null, 2); }
+      catch { text = "JSON-Ausgabe ist zu tief verschachtelt."; }
       return { kind: "json", text: limitText(text ?? "") };
     }
     if ("text/plain" in data) {

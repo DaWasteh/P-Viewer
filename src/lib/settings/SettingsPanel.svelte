@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { modal } from "$lib/modal";
   import { invoke } from "@tauri-apps/api/core";
   import {
     Bug,
@@ -127,8 +128,8 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-<div class="settings-backdrop" role="presentation" onclick={handleBackdrop}>
-  <div class:light={activeTheme === "light"} class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+<dialog use:modal class="settings-backdrop" aria-labelledby="settings-title" onclick={handleBackdrop}>
+  <div class:light={activeTheme === "light"} class="settings-panel">
     <header>
       <div>
         <span class="eyebrow">P-VIEWER</span>
@@ -323,10 +324,16 @@
       <button class="done-button" onclick={onClose}>Fertig</button>
     </footer>
   </div>
-</div>
+</dialog>
 
 <style>
   .settings-backdrop {
+    margin: 0;
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    max-height: none;
+    border: 0;
     position: fixed;
     z-index: 50;
     inset: 0;

@@ -26,11 +26,13 @@ export interface DocumentPayload {
   lineEnding: LineEnding;
   size: number;
   lossy: boolean;
+  version?: string;
 }
 
 export interface SaveResult {
   path: string;
   size: number;
+  version?: string;
 }
 
 export interface OpenDocument extends DocumentPayload {

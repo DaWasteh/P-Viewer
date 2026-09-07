@@ -48,6 +48,8 @@ const NAME_ALIASES: Record<string, string> = {
 const EXTENSION_ALIASES: Record<string, string> = {
   jsonc: "JSON",
   json5: "JSON",
+  jsonl: "JSON",
+  ndjson: "JSON",
   ipynb: "JSON",
   jsonld: "JSON-LD",
   geojson: "JSON",

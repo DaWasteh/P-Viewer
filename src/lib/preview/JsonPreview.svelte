@@ -54,7 +54,7 @@
 
 <div class:light={theme === "light"} class="json-preview" style={`--json-font-size: ${fontSize}px`}>
   <div class="json-toolbar">
-    <button class:active={sortKeys} title="Objektschlüssel alphabetisch sortieren" onclick={() => (sortKeys = !sortKeys)}>
+    <button class:active={sortKeys} aria-pressed={sortKeys} title="Objektschlüssel alphabetisch sortieren" onclick={() => (sortKeys = !sortKeys)}>
       <ListOrdered size={15} aria-hidden="true" />
       <span>Schlüssel sortieren</span>
     </button>
@@ -77,14 +77,14 @@
   <div class="json-scroll">
     {#if result.error}
       <div class="json-error" role="alert">
-        <strong>Ungültiges JSON</strong>
+        <strong>JSON-Vorschau nicht verfügbar</strong>
         <span>{result.error}</span>
         {#if result.line && result.column}
           <code>Zeile {result.line}, Spalte {result.column}</code>
         {/if}
       </div>
     {:else if result.value !== undefined}
-      <div class="tree" role="tree" aria-label="JSON-Struktur">
+      <div class="tree" role="region" aria-label="JSON-Struktur">
         <JsonNode
           value={result.value}
           keyName={null}

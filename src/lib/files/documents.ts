@@ -1,3 +1,4 @@
+import { sameDocumentPath } from "./tabs";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import {
@@ -68,9 +69,9 @@ export async function chooseAndOpenDocument(): Promise<OpenDocument | null> {
   return openDocumentPath(selected);
 }
 
-export async function openDocumentPath(path: string): Promise<OpenDocument> {
+export async function openDocumentPath(path: string, encoding?: string): Promise<OpenDocument> {
   requireDesktop();
-  const payload = await invoke<DocumentPayload>("read_document", { path });
+  const payload = await invoke<DocumentPayload>("read_document", { path, encoding: encoding ?? null });
   return {
     ...payload,
     savedContent: payload.content,
@@ -86,6 +87,7 @@ export async function saveDocument(
   validatePath?: (path: string) => void,
 ): Promise<OpenDocument | null> {
   requireDesktop();
+  if (document.lossy && !forceDialog) throw new Error("Diese Datei wurde mit Ersatzzeichen gelesen. Bitte die Kodierung in der Statusleiste korrigieren oder die bearbeitete Kopie mit Speichern unter sichern.");
   let path = document.path;
 
   if (forceDialog || document.untitled || !path) {
@@ -105,6 +107,7 @@ export async function saveDocument(
     encoding: document.encoding,
     hasBom: document.hasBom,
     lineEnding: document.lineEnding,
+    expectedVersion: sameDocumentPath(path, document.path) ? document.version ?? null : null,
   });
   const name = fileNameFromPath(result.path);
 
@@ -114,6 +117,7 @@ export async function saveDocument(
     name,
     savedContent,
     size: result.size,
+    version: result.version,
     lossy: false,
     untitled: false,
     metadataDirty: false,

@@ -498,11 +498,8 @@ fn read_preview_asset(
     if metadata.len() > MAX_LOCAL_ASSET_BYTES {
         return Err(AssetError::TooLarge);
     }
-    let bytes = fs::read(&candidate).map_err(|error| {
-        AssetError::Io(format!(
-            "Lokale Ressource kann nicht gelesen werden: {error}"
-        ))
-    })?;
+    let bytes = crate::document::read_bounded_file(&candidate, MAX_LOCAL_ASSET_BYTES)
+        .map_err(AssetError::Io)?;
     let content_type = mime_guess::from_path(&candidate)
         .first_or_octet_stream()
         .essence_str()
@@ -540,7 +537,7 @@ fn has_expected_host(request: &Request, port: u16) -> bool {
 }
 
 fn has_preview_cookie(request: &Request, token: &str) -> bool {
-    let expected = format!("PViewerPreview={token}");
+    let expected = format!("PViewerPreview_{token}=1");
     request
         .headers()
         .iter()
@@ -586,7 +583,7 @@ fn respond_asset(request: Request, bytes: Vec<u8>, content_type: &str, token: &s
     .with_header(header("Accept-Ranges", "bytes"))
     .with_header(header(
         "Set-Cookie",
-        &format!("PViewerPreview={token}; Path=/; HttpOnly; SameSite=Strict"),
+        &format!("PViewerPreview_{token}=1; Path=/; HttpOnly; SameSite=Strict"),
     ));
     if let Some(value) = content_range {
         response = response.with_header(header("Content-Range", &value));
@@ -607,7 +604,6 @@ fn base_response<R: Read>(response: Response<R>, content_type: &str) -> Response
         .with_header(header("Content-Type", content_type))
         .with_header(header("Cache-Control", "no-store, max-age=0"))
         .with_header(header("Pragma", "no-cache"))
-        .with_header(header("Access-Control-Allow-Origin", "*"))
         .with_header(header("X-Content-Type-Options", "nosniff"))
         .with_header(header("Referrer-Policy", "no-referrer"))
         .with_header(header("Content-Security-Policy", "frame-ancestors 'none'"))
@@ -859,7 +855,7 @@ mod tests {
         assert!(script.contains("Content-Range: bytes 0-5/21"));
         assert!(script.ends_with("window"));
 
-        let cookie = format!("PViewerPreview={}", prepared.token);
+        let cookie = format!("PViewerPreview_{}=1", prepared.token);
         let absolute_script = http_get_with_cookie(
             prepared.port,
             &prepared.host,
@@ -878,6 +874,50 @@ mod tests {
         let traversal = http_get(prepared.port, &prepared.host, &traversal_path, None);
         assert!(traversal.starts_with("HTTP/1.1 403"));
         state.release(&prepared.token);
+    }
+
+    #[test]
+    fn concurrent_preview_cookies_coexist_and_head_has_no_body() {
+        let directory = tempdir().unwrap();
+        let document = directory.path().join("index.html");
+        fs::write(&document, "disk").unwrap();
+        fs::write(directory.path().join("asset.txt"), "asset").unwrap();
+        let state = FullHtmlPreviewState::default();
+        let a = state
+            .prepare(document.to_str().unwrap(), "index.html", "first".into())
+            .unwrap();
+        let b = state
+            .prepare(document.to_str().unwrap(), "index.html", "second".into())
+            .unwrap();
+        let cookies = format!("PViewerPreview_{}=1; PViewerPreview_{}=1", a.token, b.token);
+        for preview in [&a, &b] {
+            let response = http_get_with_cookie(
+                preview.port,
+                &preview.host,
+                "/asset.txt",
+                None,
+                Some(&cookies),
+            );
+            assert!(response.starts_with("HTTP/1.1 200"));
+            assert!(response.ends_with("asset"));
+            assert!(!response.contains("Access-Control-Allow-Origin"));
+        }
+        let mut stream = TcpStream::connect(("127.0.0.1", a.port)).unwrap();
+        write!(
+            stream,
+            "HEAD {} HTTP/1.1\r\nHost: {}:{}\r\nConnection: close\r\n\r\n",
+            a.url.path(),
+            a.host,
+            a.port
+        )
+        .unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        assert!(response.starts_with("HTTP/1.1 200"));
+        assert!(response.contains("Content-Length: 5"));
+        assert!(response.ends_with("\r\n\r\n"));
+        state.release(&a.token);
+        state.release(&b.token);
     }
 
     fn http_get(port: u16, host: &str, path: &str, range: Option<&str>) -> String {

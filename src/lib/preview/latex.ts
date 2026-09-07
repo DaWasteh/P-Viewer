@@ -685,7 +685,19 @@ const SPECIAL_CHARACTERS: Record<string, string> = {
   "}": "}",
 };
 
+export const MAX_LATEX_NESTING = 128;
+
 export function renderLatexLive(source: string): LatexLiveRenderResult {
+  // Reject pathological groups before recursive inline parsing or macro extraction.
+  let depth = 0;
+  let lines = 1;
+  for (let i = 0; i < Math.min(source.length, MAX_LIVE_SOURCE_LENGTH); i += 1) {
+    const c = source[i];
+    if (c === "\\") { i += 1; continue; }
+    if (c === "{") { if (++depth > MAX_LATEX_NESTING) throw new Error("LaTeX-Livevorschau: zu tiefe Verschachtelung (maximal 128 Ebenen)."); }
+    else if (c === "}") depth = Math.max(0, depth - 1);
+    if (c === "\n" && ++lines > 10_000) throw new Error("LaTeX-Livevorschau auf 10.000 Zeilen begrenzt.");
+  }
   const truncated = source.length > MAX_LIVE_SOURCE_LENGTH;
   const input = normalizeSource(source.slice(0, MAX_LIVE_SOURCE_LENGTH));
   const context: RenderContext = {

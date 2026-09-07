@@ -3,6 +3,8 @@ export type CsvDelimiterChoice = CsvDelimiter | "auto";
 
 export const MAX_CSV_ROWS = 5_000;
 export const MAX_CSV_COLUMNS = 256;
+export const MAX_CSV_CELLS = 20_000;
+export const MAX_CSV_CHARACTERS = 4_000_000;
 
 export interface CsvTable {
   delimiter: CsvDelimiter;
@@ -12,6 +14,7 @@ export interface CsvTable {
   truncatedRows: boolean;
   truncatedColumns: boolean;
   numericColumns: boolean[];
+  warning?: string;
 }
 
 const DELIMITERS: CsvDelimiter[] = [",", ";", "\t", "|"];
@@ -31,7 +34,7 @@ export function delimiterLabel(delimiter: CsvDelimiter): string {
 
 export function detectCsvDelimiter(content: string, fileName = ""): CsvDelimiter {
   if (/\.tsv$/i.test(fileName)) return "\t";
-  const sample = content.split(/\r\n|\r|\n/).filter((line) => line.trim()).slice(0, 25);
+  const sample = content.slice(0, 65_536).split(/\r\n|\r|\n/).filter((line) => line.trim()).slice(0, 25);
   if (sample.length === 0) return ",";
 
   // Candidates are ordered by how unlikely they are to appear inside free text or
@@ -73,12 +76,19 @@ export function parseCsv(
   delimiterChoice: CsvDelimiterChoice = "auto",
   fileName = "",
 ): CsvTable {
+  if (content.length > MAX_CSV_CHARACTERS) return {
+    delimiter: delimiterChoice === "auto" ? detectCsvDelimiter(content, fileName) : delimiterChoice,
+    rows: [], columnCount: 0, totalRows: 0, truncatedRows: true,
+    truncatedColumns: false, numericColumns: [],
+    warning: "CSV-Vorschau auf 4 Millionen Zeichen begrenzt. Der vollständige Quelltext bleibt im Editor verfügbar.",
+  };
   const delimiter =
     delimiterChoice === "auto" ? detectCsvDelimiter(content, fileName) : delimiterChoice;
   const rows: string[][] = [];
   let row: string[] = [];
   let field = "";
   let quoted = false;
+  let explicitRecord = false;
   let totalRows = 0;
   let truncatedColumns = false;
   let truncatedRows = false;
@@ -91,17 +101,20 @@ export function parseCsv(
   };
   const finishRow = () => {
     finishField();
-    const empty = row.length === 1 && row[0] === "";
+    const empty = !explicitRecord && row.length === 1 && row[0] === "";
     if (!empty) {
       totalRows += 1;
-      if (rows.length < MAX_CSV_ROWS) {
+      columnCount = Math.max(columnCount, row.length);
+      const rowLimit = Math.min(MAX_CSV_ROWS, Math.floor(MAX_CSV_CELLS / Math.max(1, columnCount)));
+      if (rows.length > rowLimit) { rows.length = rowLimit; truncatedRows = true; }
+      if (rows.length < rowLimit) {
         rows.push(row);
-        columnCount = Math.max(columnCount, row.length);
       } else {
         truncatedRows = true;
       }
     }
     row = [];
+    explicitRecord = false;
   };
 
   for (let index = 0; index < content.length; index += 1) {
@@ -122,6 +135,7 @@ export function parseCsv(
 
     if (character === '"' && field === "") {
       quoted = true;
+      explicitRecord = true;
     } else if (character === delimiter) {
       finishField();
     } else if (character === "\r") {
@@ -133,8 +147,12 @@ export function parseCsv(
       field += character;
     }
   }
-  if (field !== "" || row.length > 0) finishRow();
+  const warning = quoted ? "Nicht geschlossenes Anführungszeichen: Die letzte CSV-Zeile ist unvollständig." : undefined;
+  if (field !== "" || row.length > 0 || explicitRecord) finishRow();
 
+  // The table pads short rows: budget the rectangle, not just stored values.
+  const visibleRows = Math.min(MAX_CSV_ROWS, Math.floor(MAX_CSV_CELLS / Math.max(1, columnCount)));
+  if (rows.length > visibleRows) { rows.length = visibleRows; truncatedRows = true; }
   const numericColumns = Array.from({ length: columnCount }, (_, column) => {
     const values = rows.slice(1).map((entry) => entry[column] ?? "").filter((value) => value.trim());
     return values.length > 0 && values.every((value) => isNumericValue(value));
@@ -148,6 +166,7 @@ export function parseCsv(
     truncatedRows,
     truncatedColumns,
     numericColumns,
+    warning,
   };
 }
 

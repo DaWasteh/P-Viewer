@@ -3,7 +3,7 @@
   import "katex/dist/katex.min.css";
   import "highlight.js/styles/github-dark-dimmed.css";
   import "./markdown-body.css";
-  import { renderMarkdown } from "./markdown";
+  import { renderNotebookMarkdown, renderNotebookLatex } from "./notebookRendering";
   import { parseNotebook, type NotebookDocument, type NotebookOutput } from "./notebook";
 
   interface Props {
@@ -48,7 +48,7 @@
   function renderCode(source: string, language: string): string {
     // Reuse the sanitized Markdown pipeline so highlighting stays within the same boundary.
     const fence = "`".repeat(Math.max(3, longestBacktickRun(source) + 1));
-    return renderMarkdown(`${fence}${safeFence(language)}\n${source}\n${fence}`);
+    return renderNotebookMarkdown(`${fence}${safeFence(language)}\n${source}\n${fence}`);
   }
 
   function longestBacktickRun(source: string): number {
@@ -58,7 +58,7 @@
   }
 
   function renderMarkdownCell(source: string): string {
-    return renderMarkdown(source);
+    return renderNotebookMarkdown(source);
   }
 
   function outputLabel(output: NotebookOutput): string {
@@ -81,11 +81,11 @@
 
 <div class:light={theme === "light"} class="notebook-preview" style={`--preview-font-size: ${fontSize}px`}>
   <div class="preview-toolbar">
-    <button class:active={showOutputs} title="Zellenausgaben ein-/ausblenden" onclick={() => (showOutputs = !showOutputs)}>
+    <button class:active={showOutputs} aria-pressed={showOutputs} title="Zellenausgaben ein-/ausblenden" onclick={() => (showOutputs = !showOutputs)}>
       {#if showOutputs}<Eye size={15} aria-hidden="true" />{:else}<EyeOff size={15} aria-hidden="true" />{/if}
       <span>Ausgaben</span>
     </button>
-    <button class:active={showCounts} title="Ausführungszähler ein-/ausblenden" onclick={() => (showCounts = !showCounts)}>
+    <button class:active={showCounts} aria-pressed={showCounts} title="Ausführungszähler ein-/ausblenden" onclick={() => (showCounts = !showCounts)}>
       <Hash size={15} aria-hidden="true" />
       <span>Zähler</span>
     </button>
@@ -121,7 +121,7 @@
               {:else if cell.type === "code"}
                 <!-- The code cell is rendered through the same sanitized Markdown pipeline. -->
                 <div class:light={theme === "light"} class="markdown-body code-cell">{@html renderCode(cell.source, notebook.language)}</div>
-                {#if showOutputs && cell.outputs.length > 0}
+                {#if showOutputs && (cell.outputs.length > 0 || cell.omittedOutputs > 0)}
                   <div class="outputs">
                     {#each cell.outputs as output}
                       <div class={`output output-${output.kind}`}>
@@ -130,6 +130,8 @@
                           <pre>{output.text}</pre>
                         {:else if output.kind === "markdown"}
                           <article class:light={theme === "light"} class="markdown-body">{@html renderMarkdownCell(output.source)}</article>
+                        {:else if output.kind === "latex"}
+                          <div class="markdown-body">{@html renderNotebookLatex(output.source)}</div>
                         {:else if output.kind === "image"}
                           <img src={output.dataUrl} alt={output.alt} loading="lazy" decoding="async" />
                         {:else if output.kind === "error"}

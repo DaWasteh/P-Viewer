@@ -35,6 +35,7 @@
   let fullPreviewUpdateGeneration = 0;
   let fullPreviewUpdateChain: Promise<void> = Promise.resolve();
   let renderRequest = 0;
+  let disposed = false;
 
   async function requestFullPreview(): Promise<void> {
     fullPreviewError = "";
@@ -76,6 +77,10 @@
         fileName: activeFileName,
         content: source,
       });
+      if (disposed || path !== documentPath || fileName !== activeFileName) {
+        await closeFullPreview(session.token);
+        return;
+      }
       fullPreviewIdentity = `${documentPath}\u0000${activeFileName}`;
       fullPreviewLastContent = source;
       fullPreviewToken = session.token;
@@ -140,6 +145,8 @@
   });
 
   onDestroy(() => {
+    disposed = true;
+    renderRequest += 1;
     const token = fullPreviewToken;
     if (token) void closeFullPreview(token);
   });

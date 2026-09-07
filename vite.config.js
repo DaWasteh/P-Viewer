@@ -7,6 +7,7 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [sveltekit()],
+  test: { include: ["src/**/*.test.ts"] },
   // Markdown and PDF renderers are lazy chunks; keep the startup bundle small
   // without warning for the intentionally isolated renderer payloads.
   build: {

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
+  import type { EditorSession } from "$lib/editor/session";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import type { Window as TauriWindow } from "@tauri-apps/api/window";
@@ -49,6 +50,12 @@
     type AppSettings,
   } from "$lib/settings/settings";
 
+  const editorSessions = new Map<string, EditorSession>();
+  function editorSession(key: string): EditorSession {
+    let session = editorSessions.get(key);
+    if (!session) { session = {}; editorSessions.set(key, session); }
+    return session;
+  }
   let tabSequence = 0;
 
   function createTab(document: OpenDocument): DocumentTab {
@@ -61,6 +68,15 @@
   let activeTabId = $state(initialTab.id);
   let mode = $state<ViewMode>("edit");
   let busy = $state(false);
+  let installingUpdate = $state(false);
+  let pendingOpens = $state<Array<{ path: string; replacePristine: boolean }>>([]);
+  $effect(() => {
+    if (busy || installingUpdate || settingsOpen || updateOpen || pendingOpens.length === 0) return;
+    untrack(() => {
+      const next = pendingOpens.shift();
+      if (next) void openDroppedDocument(next.path, next.replacePristine);
+    });
+  });
   let errorMessage = $state("");
   let dragActive = $state(false);
   let cursorLine = $state(1);
@@ -210,14 +226,16 @@
       appWindow = getCurrentWindow();
       cleanups.push(
         await appWindow.onCloseRequested(async (event) => {
+          if (busy || installingUpdate) { event.preventDefault(); return; }
           const dirtyNames = tabs
             .filter((tab) => documentIsDirty(tab.document))
             .map((tab) => tab.document.name);
           if (dirtyNames.length === 0) return;
           event.preventDefault();
-          if (await confirmDiscardDocuments(dirtyNames)) {
-            await appWindow?.destroy();
-          }
+          busy = true;
+          try {
+            if (await confirmDiscardDocuments(dirtyNames)) await appWindow?.destroy();
+          } finally { busy = false; }
         }),
       );
       cleanups.push(
@@ -259,8 +277,12 @@
       return;
     }
 
+    if (tabs.length >= 32 || tabs.reduce((size, tab) => size + tab.document.content.length, opened.content.length) > 64_000_000) {
+      throw new Error("Zu viele offene Dokumente (maximal 32 Tabs / 64 Millionen Zeichen). Bitte zuerst Tabs schließen.");
+    }
     const current = tabs.find((tab) => tab.id === activeTabId);
     if (replacePristine && current && isPristineUntitled(current.document)) {
+      editorSessions.delete(`${current.id}:${current.revision}`);
       current.document = opened;
       current.revision += 1;
       return;
@@ -272,7 +294,8 @@
   }
 
   function newDocument(): void {
-    if (busy) return;
+    if (busy || installingUpdate) return;
+    if (tabs.length >= 32) { errorMessage = "Maximal 32 offene Tabs. Bitte zuerst einen Tab schließen."; return; }
     const name = nextUntitledName(tabs.map((tab) => tab.document));
     const tab = createTab(createUntitledDocument(name));
     tabs.push(tab);
@@ -300,7 +323,10 @@
     replacePristine = true,
   ): Promise<void> {
     for (let index = 0; index < paths.length; index += 1) {
-      await openDroppedDocument(paths[index], replacePristine && index === 0);
+      const path = paths[index];
+      if (pendingOpens.some((entry) => entry.path === path)) continue;
+      if (pendingOpens.length >= 64) { errorMessage = "Öffnen-Warteschlange voll. Bitte weitere Dateien später öffnen."; break; }
+      pendingOpens.push({ path, replacePristine: replacePristine && index === 0 });
     }
   }
 
@@ -355,6 +381,7 @@
       if (index < 0) return null;
     }
 
+    editorSessions.delete(`${closing.id}:${closing.revision}`);
     if (tabs.length === 1) {
       const replacement = createTab(createUntitledDocument());
       tabs.splice(0, 1, replacement);
@@ -448,6 +475,21 @@
     }
   }
 
+  async function reopenEncoding(encoding: string): Promise<void> {
+    if (busy || installingUpdate || document.untitled) return;
+    const tab = activeTab!;
+    busy = true;
+    errorMessage = "";
+    try {
+      if (documentIsDirty(tab.document) && !await confirmDiscardChanges(tab.document.name)) return;
+      const reopened = await openDocumentPath(tab.document.path, encoding || undefined);
+      editorSessions.delete(`${tab.id}:${tab.revision}`);
+      tab.document = reopened;
+      tab.revision += 1;
+    } catch (error) { errorMessage = messageFrom(error); }
+    finally { busy = false; }
+  }
+
   function updateContent(content: string): void {
     document.content = content;
   }
@@ -480,7 +522,7 @@
 
   function handleShortcut(event: KeyboardEvent): void {
     const primary = event.ctrlKey || event.metaKey;
-    if (!primary) return;
+    if (!primary || event.defaultPrevented || settingsOpen || updateOpen || busy || installingUpdate || window.document.querySelector("dialog[open]")) return;
 
     const key = event.key.toLowerCase();
     if (key === "tab") {
@@ -501,7 +543,7 @@
     } else if (key === "e" && event.shiftKey) {
       event.preventDefault();
       mode = "edit";
-    } else if (key === "v" && event.shiftKey) {
+    } else if (key === "r" && event.shiftKey) {
       event.preventDefault();
       mode = "view";
     } else if (key === "p" && event.shiftKey) {
@@ -579,7 +621,7 @@
         <Pencil size={15} aria-hidden="true" />
         <span>Edit</span>
       </button>
-      <button class:active={mode === "view"} aria-pressed={mode === "view"} onclick={() => (mode = "view")} title="Ansehen (Strg/Cmd+Umschalt+V)">
+      <button class:active={mode === "view"} aria-pressed={mode === "view"} onclick={() => (mode = "view")} title="Ansehen (Strg/Cmd+Umschalt+R)">
         <Eye size={15} aria-hidden="true" />
         <span>View</span>
       </button>
@@ -642,8 +684,9 @@
       {#key `${activeTabId}:${activeTab!.revision}`}
         <EditorPane
           value={document.content}
+          session={editorSession(`${activeTabId}:${activeTab!.revision}`)}
           fileName={document.name}
-          readOnly={false}
+          readOnly={busy || installingUpdate}
           theme={activeTheme}
           fontSize={settings.editorFontSize}
           wordWrap={settings.wordWrap && (document.fileType.kind === "text" || document.fileType.kind === "markdown")}
@@ -657,6 +700,7 @@
 
     {#if mode === "view" || mode === "split"}
       <div class="pane viewer-pane" aria-label="Leseansicht">
+        {#key `${activeTabId}:${activeTab!.revision}`}
         <PreviewPane
           content={document.content}
           fileName={document.name}
@@ -666,8 +710,9 @@
           editorFontSize={settings.editorFontSize}
           previewFontSize={settings.previewFontSize}
           wordWrap={settings.wordWrap}
-          onOpenPath={openDroppedDocument}
+          onOpenPath={(path) => void openExternalDocuments([path])}
         />
+        {/key}
       </div>
     {/if}
   </div>
@@ -684,7 +729,15 @@
     <span>{wordCount.toLocaleString("de-DE")} Wörter</span>
     <span>Ln {cursorLine}, Sp {cursorColumn}</span>
     {#if selectedCharacters > 0}<span>{selectedCharacters} ausgewählt</span>{/if}
-    <span>{document.encoding}{document.hasBom ? " BOM" : ""}</span>
+    <label class="encoding-control" title="Datei mit anderer Kodierung neu lesen (keine Konvertierung)">
+      <span class="sr-only">Mit Kodierung neu öffnen</span>
+      <select disabled={document.untitled || busy || installingUpdate} value={document.encoding} onchange={(event) => { const selected = event.currentTarget.value; event.currentTarget.value = document.encoding; void reopenEncoding(selected); }}>
+        {#each [...new Set([document.encoding, "UTF-8", "UTF-16LE", "UTF-16BE", "windows-1252", "windows-1251", "Shift_JIS", "GB18030", "EUC-KR", "ISO-8859-15"])] as encoding}
+          <option value={encoding}>{encoding}</option>
+        {/each}
+        <option value="">Automatisch erkennen</option>
+      </select>{document.hasBom ? " BOM" : ""}
+    </label>
     <span>{lineEndingLabel(document.lineEnding)}</span>
     {#if document.lossy}<span class="warning">Kodierung mit Ersatzzeichen</span>{/if}
     {#if settings.debugMode}
@@ -711,6 +764,7 @@
       hasUnsavedChanges={dirtyCount > 0}
       unsavedCount={dirtyCount}
       onSave={saveAllDirtyDocuments}
+      onInstalling={(value) => (installingUpdate = value)}
       onClose={() => (updateOpen = false)}
     />
   {/if}
@@ -735,6 +789,8 @@
     --danger: #ef8b91;
     --mono: var(--font-mono);
   }
+
+  .encoding-control select { max-width: 125px; border: 0; color: inherit; background: var(--chrome); font: inherit; cursor: pointer; }
 
   .app-shell {
     display: grid;

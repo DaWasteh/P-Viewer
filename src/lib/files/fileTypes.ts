@@ -55,6 +55,8 @@ const TYPES: Record<string, FileTypeInfo> = {
   json: { kind: "json", language: "json", label: "JSON" },
   jsonc: { kind: "json", language: "json", label: "JSON mit Kommentaren" },
   json5: { kind: "json", language: "json5", label: "JSON5" },
+  jsonl: { kind: "json", language: "json", label: "JSON Lines" },
+  ndjson: { kind: "json", language: "json", label: "NDJSON" },
   jsonld: { kind: "json", language: "json", label: "JSON-LD" },
   geojson: { kind: "json", language: "json", label: "GeoJSON" },
   webmanifest: { kind: "json", language: "json", label: "Web App Manifest" },

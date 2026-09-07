@@ -4,10 +4,11 @@ use chardetng::{EncodingDetector, Iso2022JpDetection, Utf8Detection};
 use encoding_rs::Encoding;
 use percent_encoding::percent_decode_str;
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::{
     collections::HashSet,
     fs,
-    io::Write,
+    io::{Read, Write},
     path::{Component, Path, PathBuf},
     sync::Mutex,
 };
@@ -32,6 +33,7 @@ pub struct DocumentPayload {
     pub line_ending: String,
     pub size: u64,
     pub lossy: bool,
+    pub version: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -39,6 +41,7 @@ pub struct DocumentPayload {
 pub struct SaveResult {
     pub path: String,
     pub size: u64,
+    pub version: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -103,24 +106,15 @@ pub fn take_pending_document_paths(
 }
 
 #[tauri::command]
-pub fn read_document(path: String) -> Result<DocumentPayload, String> {
-    let path = checked_path(&path)?;
-    let metadata =
-        fs::metadata(&path).map_err(|error| format!("Datei kann nicht gelesen werden: {error}"))?;
-
-    if !metadata.is_file() {
-        return Err("Der gewählte Pfad ist keine Datei.".into());
-    }
-    if metadata.len() > MAX_DOCUMENT_BYTES {
-        return Err(format!(
-            "Die Datei ist größer als {} MiB und wird zum Schutz des Editors nicht geöffnet.",
-            MAX_DOCUMENT_BYTES / 1024 / 1024
-        ));
-    }
-
-    let bytes =
-        fs::read(&path).map_err(|error| format!("Datei kann nicht geöffnet werden: {error}"))?;
-    let decoded = decode_text(&bytes)?;
+pub fn read_document(path: String, encoding: Option<String>) -> Result<DocumentPayload, String> {
+    let path = checked_path(&path)?
+        .canonicalize()
+        .map_err(|error| format!("Dateipfad kann nicht aufgelöst werden: {error}"))?;
+    let bytes = read_bounded_file(&path, MAX_DOCUMENT_BYTES)?;
+    let decoded = match encoding.as_deref() {
+        Some(name) => decode_text_as(&bytes, name)?,
+        None => decode_text(&bytes)?,
+    };
 
     Ok(DocumentPayload {
         path: display_path(&path),
@@ -129,8 +123,9 @@ pub fn read_document(path: String) -> Result<DocumentPayload, String> {
         content: decoded.content,
         encoding: decoded.encoding,
         has_bom: decoded.has_bom,
-        size: metadata.len(),
+        size: bytes.len() as u64,
         lossy: decoded.lossy,
+        version: content_version(&bytes),
     })
 }
 
@@ -141,6 +136,7 @@ pub fn write_document(
     encoding: String,
     has_bom: bool,
     line_ending: String,
+    expected_version: Option<String>,
 ) -> Result<SaveResult, String> {
     let mut path = checked_path(&path)?;
 
@@ -175,17 +171,66 @@ pub fn write_document(
         ));
     }
 
+    check_file_version(&path, expected_version.as_deref())?;
     let mut file = AtomicWriteFile::open(&path)
         .map_err(|error| format!("Temporäre Speicherdatei kann nicht erstellt werden: {error}"))?;
     file.write_all(&bytes)
         .map_err(|error| format!("Datei kann nicht geschrieben werden: {error}"))?;
+    // Check again after staging bytes, immediately before the atomic replacement.
+    check_file_version(&path, expected_version.as_deref())?;
     file.commit()
         .map_err(|error| format!("Datei kann nicht atomar ersetzt werden: {error}"))?;
 
     Ok(SaveResult {
         path: display_path(&path),
         size,
+        version: content_version(&bytes),
     })
+}
+
+fn content_version(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+fn check_file_version(path: &Path, expected: Option<&str>) -> Result<(), String> {
+    if let Some(expected) = expected {
+        let current = read_bounded_file(path, MAX_DOCUMENT_BYTES)
+            .map_err(|_| "Die ursprüngliche Datei fehlt oder kann nicht mehr gelesen werden. Bitte mit Speichern unter an einem anderen Ort sichern.".to_string())?;
+        if content_version(&current) != expected {
+            return Err("Die Datei wurde außerhalb von P-Viewer geändert. Zum Schutz dieser Änderungen wurde nicht gespeichert. Bitte mit Speichern unter an einem anderen Ort sichern oder die Datei neu öffnen.".into());
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn read_bounded_file(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
+    // Reject ordinary special-file inputs before open (e.g. a Unix FIFO would
+    // otherwise block). The opened handle is still checked below for file races.
+    let before = fs::metadata(path).map_err(|error| format!("Dateimetadaten fehlen: {error}"))?;
+    if !before.is_file() {
+        return Err("Der gewählte Pfad ist keine reguläre Datei.".into());
+    }
+    let file = fs::File::open(path)
+        .map_err(|error| format!("Datei kann nicht geöffnet werden: {error}"))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("Dateimetadaten fehlen: {error}"))?;
+    if !metadata.is_file() {
+        return Err("Der gewählte Pfad ist keine reguläre Datei.".into());
+    }
+    if metadata.len() > limit {
+        return Err(format!(
+            "Die Datei überschreitet das Größenlimit von {limit} Bytes."
+        ));
+    }
+    let mut bytes = Vec::new();
+    file.take(limit + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("Datei kann nicht gelesen werden: {error}"))?;
+    if bytes.len() as u64 > limit {
+        return Err("Das Dateilimit wurde während des Lesens überschritten.".into());
+    }
+    Ok(bytes)
 }
 
 #[tauri::command]
@@ -292,8 +337,7 @@ fn resolve_local_image(
         ));
     }
 
-    let bytes = fs::read(&canonical)
-        .map_err(|error| format!("Lokales Bild kann nicht gelesen werden: {error}"))?;
+    let bytes = read_bounded_file(&canonical, MAX_LOCAL_IMAGE_BYTES)?;
     if bytes.len() as u64 > MAX_LOCAL_IMAGE_BYTES
         || total_bytes.saturating_add(bytes.len() as u64) > MAX_LOCAL_IMAGE_TOTAL_BYTES
     {
@@ -358,6 +402,48 @@ fn simplify_extended_path(value: &str) -> String {
         }
     }
     value.to_string()
+}
+
+fn decode_text_as(bytes: &[u8], name: &str) -> Result<DecodedText, String> {
+    match name.to_ascii_uppercase().as_str() {
+        "UTF-16LE" => decode_utf16(
+            bytes.strip_prefix(UTF16_LE_BOM).unwrap_or(bytes),
+            true,
+            bytes.starts_with(UTF16_LE_BOM),
+        ),
+        "UTF-16BE" => decode_utf16(
+            bytes.strip_prefix(UTF16_BE_BOM).unwrap_or(bytes),
+            false,
+            bytes.starts_with(UTF16_BE_BOM),
+        ),
+        "UTF-8" => {
+            let content = std::str::from_utf8(bytes.strip_prefix(UTF8_BOM).unwrap_or(bytes))
+                .map_err(|_| "Die Datei enthält kein gültiges UTF-8.".to_string())?;
+            if content.contains('\0') {
+                return Err("Binärdateien werden nicht als Text geöffnet.".into());
+            }
+            Ok(DecodedText {
+                content: content.into(),
+                encoding: "UTF-8".into(),
+                has_bom: bytes.starts_with(UTF8_BOM),
+                lossy: false,
+            })
+        }
+        _ => {
+            if looks_binary(bytes) {
+                return Err("Binärdateien werden nicht als Text geöffnet.".into());
+            }
+            let encoding = Encoding::for_label(name.as_bytes())
+                .ok_or_else(|| "Unbekannte Zeichenkodierung.".to_string())?;
+            let (content, lossy) = encoding.decode_without_bom_handling(bytes);
+            Ok(DecodedText {
+                content: content.into_owned(),
+                encoding: encoding.name().into(),
+                has_bom: false,
+                lossy,
+            })
+        }
+    }
 }
 
 fn decode_text(bytes: &[u8]) -> Result<DecodedText, String> {
@@ -449,7 +535,7 @@ fn decode_utf16(bytes: &[u8], little_endian: bool, has_bom: bool) -> Result<Deco
 }
 
 fn looks_binary(bytes: &[u8]) -> bool {
-    bytes.iter().take(8_192).any(|byte| *byte == 0)
+    bytes.contains(&0)
 }
 
 /// Returns `Some(little_endian)` when the sample looks like BOM-less UTF-16 text:
@@ -664,6 +750,101 @@ mod tests {
     }
 
     #[test]
+    fn conflict_detection_preserves_external_changes_and_deletion() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("conflict.txt");
+        let name = path.to_string_lossy().into_owned();
+        fs::write(&path, "original").unwrap();
+        let opened = read_document(name.clone(), None).unwrap();
+        fs::write(&path, "external").unwrap(); // Same length; mtime is irrelevant.
+        let error = write_document(
+            name.clone(),
+            "mine".into(),
+            "UTF-8".into(),
+            false,
+            "lf".into(),
+            Some(opened.version.clone()),
+        )
+        .unwrap_err();
+        assert!(error.contains("außerhalb"));
+        assert_eq!(fs::read(&path).unwrap(), b"external");
+        fs::remove_file(&path).unwrap();
+        assert!(write_document(
+            name,
+            "mine".into(),
+            "UTF-8".into(),
+            false,
+            "lf".into(),
+            Some(opened.version)
+        )
+        .is_err());
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn conditional_save_returns_new_version_and_allows_next_save() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("save.txt");
+        let name = path.to_string_lossy().into_owned();
+        fs::write(&path, "original").unwrap();
+        let opened = read_document(name.clone(), None).unwrap();
+        let saved = write_document(
+            name.clone(),
+            "changed".into(),
+            "UTF-8".into(),
+            false,
+            "lf".into(),
+            Some(opened.version.clone()),
+        )
+        .unwrap();
+        assert_ne!(opened.version, saved.version);
+        assert_eq!(
+            saved.version,
+            read_document(name.clone(), None).unwrap().version
+        );
+        assert!(write_document(
+            name,
+            "again".into(),
+            "UTF-8".into(),
+            false,
+            "lf".into(),
+            Some(saved.version)
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn bounded_read_checks_actual_size_and_binary_suffix() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("bounded.txt");
+        fs::write(&path, b"12345").unwrap();
+        assert!(read_bounded_file(&path, 4).is_err());
+        assert_eq!(read_bounded_file(&path, 5).unwrap(), b"12345");
+        assert!(read_bounded_file(directory.path(), 5).is_err());
+        let mut bytes = vec![b'A'; 8192];
+        bytes.push(0);
+        assert!(decode_text(&bytes).is_err());
+    }
+
+    #[test]
+    fn explicit_encoding_handles_ambiguous_bomless_unicode() {
+        for text in ["你好", "Привет", "γειά", "😀"] {
+            for little in [true, false] {
+                let bytes = encode_utf16(text, little, false).unwrap();
+                let decoded =
+                    decode_text_as(&bytes, if little { "UTF-16LE" } else { "UTF-16BE" }).unwrap();
+                assert_eq!(decoded.content, text);
+                assert!(!decoded.has_bom);
+            }
+        }
+        assert!(decode_text_as(&[0xff], "UTF-8").is_err());
+        assert_eq!(
+            decode_text_as(&[0xe4], "windows-1252").unwrap().content,
+            "ä"
+        );
+    }
+
+    #[test]
     fn command_round_trip_preserves_utf16_bom_and_crlf() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("paper.txt");
@@ -675,10 +856,11 @@ mod tests {
             "UTF-16LE".into(),
             true,
             "crlf".into(),
+            None,
         )
         .unwrap();
         let raw = fs::read(&path).unwrap();
-        let opened = read_document(path_string).unwrap();
+        let opened = read_document(path_string, None).unwrap();
 
         assert_eq!(saved.size, raw.len() as u64);
         assert!(raw.starts_with(UTF16_LE_BOM));

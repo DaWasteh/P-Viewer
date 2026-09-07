@@ -82,7 +82,7 @@
       <button
         class:expanded
         class="toggle"
-        aria-label={expanded ? "Knoten einklappen" : "Knoten aufklappen"}
+        aria-label={`${keyName ?? "Dokument"} ${expanded ? "einklappen" : "aufklappen"}`}
         aria-expanded={expanded}
         onclick={() => (expanded = !expanded)}
       >

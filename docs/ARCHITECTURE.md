@@ -1,7 +1,7 @@
 # Architekturentscheidung
 
 **Status:** angenommen  
-**Version:** v0.1.2
+**Version:** v0.1.3
 
 ## Entscheidung
 
@@ -21,9 +21,9 @@ Diese Kombination liefert native, kleine Desktop-Pakete und direkten, kontrollie
 | HTML | sichere HAST-/Iframe-Vorschau als Standard; explizit bestätigter separater WebView über tokenisierten Loopback-Ursprung für vollständige aktive Inhalte |
 | SVG | Bild-Data-URL in einem Iframe ohne Sandbox-Rechte mit deny-by-default-CSP; kein Skript- oder Ressourcenzugriff |
 | Webkomponenten | lazy Astro-/Svelte-/Vue-Mischsyntax; keine Ausführung von Projektcode |
-| JSON | CodeMirror plus eigene einklappbare Baumansicht |
+| JSON/JSONL/NDJSON | CodeMirror plus eigene einklappbare Baumansicht mit Quelltext-, Tiefen- und Knotengrenze |
 | Notebooks | eigener nbformat-Parser; Markdown- und Code-Zellen über die sanitisierte Markdown-Pipeline, Ausgaben nur als Text, Bilddaten oder Fehler |
-| CSV/TSV | eigener RFC-4180-Parser mit Trennzeichenerkennung und Zeilenlimit |
+| CSV/TSV | eigener RFC-4180-Parser mit Trennzeichenerkennung und aggregiertem Tabellenzellenlimit |
 | LaTeX | gebündelter sicherer HTML-/KaTeX-Live-Renderer; optionale lokale Compilersteuerung in Rust und PDF.js |
 | Dateizuordnungen | Tauri-Bundle-Metadaten plus OS-konforme Auswahl über Windows Default Apps, Linux MIME Apps und macOS LaunchServices |
 | Einstellungen | Tauri Store im plattformüblichen App-Konfigurationspfad, inklusive persistentem Debug-Modus |
@@ -33,9 +33,9 @@ Diese Kombination liefert native, kleine Desktop-Pakete und direkten, kontrollie
 ## Produktprinzipien
 
 1. **Schnell öffnen:** unbekannte Textformate fallen auf Plaintext zurück; schwere Renderer werden erst bei Bedarf geladen.
-2. **Mehrere Dokumente, wenig Ablenkung:** Eine kompakte Tab-Leiste hält mehrere Dateien parallel offen; Edit-, View- und Split-Modus bleiben im Mittelpunkt.
+2. **Mehrere Dokumente, wenig Ablenkung:** Immutable CodeMirror-Zustände bleiben pro Tab erhalten; nur der aktive Editor ist gemountet. Vorschauen sind an die Tab-Identität gebunden.  Eine kompakte Tab-Leiste hält mehrere Dateien parallel offen; Edit-, View- und Split-Modus bleiben im Mittelpunkt.
 3. **Keine implizite Ausführung von Dokumentcode:** Markdown-HTML wird sanitisiert, HTML läuft standardmäßig nur statisch in einem Iframe ohne Sandbox-Rechte und SVG wird ausschließlich als Bild dargestellt. Notebook-Ausgaben vom Typ `text/html` bleiben deaktiviert. Aktives HTML erfordert eine ausdrückliche Warnungsbestätigung und öffnet ausschließlich in einem getrennten WebView ohne App-Capabilities; Astro-/Svelte-/Vue-Projektcode bleibt Quelltext.
-4. **Minimale native Rechte:** Dateioperationen laufen über eng begrenzte Rust-Commands statt pauschaler Dateisystemfreigaben.
+4. **Minimale native Rechte:** Datei-Reads sind am geöffneten Handle begrenzt. Reguläre Saves vergleichen die beim Lesen/Speichern ermittelte SHA-256-Version unmittelbar vor dem atomaren Commit (optimistische Konflikterkennung, kein betriebssystemweiter Lock).  Dateioperationen laufen über eng begrenzte Rust-Commands statt pauschaler Dateisystemfreigaben.
 5. **Einstellungen getrennt vom Programm:** Updates ersetzen nur Anwendungsartefakte. Einstellungen bleiben in `%APPDATA%`, `~/Library/Application Support` beziehungsweise `$XDG_DATA_HOME` erhalten.
 6. **Sichere TeX-Vorgaben:** Die gebündelte Live-Ansicht escaped Text und verwendet KaTeX mit `trust: false`. Externe Compiler werden über absolute Programme aus bereinigten PATH-Ordnern ohne Benutzershell gestartet. Arbeitsausgaben bleiben temporär, Projektdateien werden nur als Inputs gesucht, und `shell-escape` bleibt aus.
 7. **Benutzer kontrollieren Standardprogramme:** Installer und Laufzeitcode registrieren P-Viewer unter Windows ausschließlich als Kandidaten und schreiben weder Extension-Defaults noch `UserChoice`. Das eigentliche Setzen geschieht nur nach expliziter Formatauswahl und, wo vom OS verlangt, in dessen geschützter Oberfläche.
