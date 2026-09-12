@@ -48,6 +48,22 @@ export function encodeBase64(value: string): string {
   return btoa(binary);
 }
 
+/**
+ * The document arrives as an already decoded string. An XML declaration naming a
+ * legacy encoding (`encoding="ISO-8859-1"`) would make the browser decode the
+ * UTF-8 bytes of the data URL incorrectly, so the declaration is rewritten.
+ */
+export function normalizeSvgSource(source: string): string {
+  return source.replace(
+    /^(﻿?\s*<\?xml\b[^>]*?)\sencoding\s*=\s*(?:"[^"]*"|'[^']*')/i,
+    '$1 encoding="UTF-8"',
+  );
+}
+
+export function svgDataUrl(source: string): string {
+  return `data:image/svg+xml;charset=utf-8;base64,${encodeBase64(normalizeSvgSource(source))}`;
+}
+
 export function svgRootAttributes(source: string): Pick<SvgPreviewResult, "width" | "height" | "viewBox"> {
   const root = source.match(/<svg\b[^>]*>/i)?.[0] ?? "";
   const attribute = (name: string): string | null => {
@@ -71,13 +87,17 @@ export function renderSvgPreview(source: string, options: SvgPreviewOptions = {}
   const background = theme === "dark" ? "#111318" : "#ffffff";
   const checkA = theme === "dark" ? "#1c2028" : "#e6e8ee";
   const checkB = theme === "dark" ? "#242833" : "#f6f7fa";
-  const dataUrl = `data:image/svg+xml;base64,${encodeBase64(source)}`;
+  const dataUrl = svgDataUrl(source);
+  // `max-width` scales with the zoom factor: at 100 % a wide graphic is fitted to
+  // the pane, and zooming in may then exceed the pane width (scrollable). A fixed
+  // `max-width: 100%` previously made zooming a no-op for wide graphics.
+  // `safe center` keeps the left/top edge reachable once the image overflows.
   const css = `
 :root { color-scheme: ${theme}; }
 html, body { margin: 0; min-height: 100%; }
-body { display: grid; place-items: center; box-sizing: border-box; min-height: 100vh; padding: 24px; background: ${background}; }
+body { display: grid; place-items: safe center; box-sizing: border-box; min-height: 100vh; padding: 24px; background: ${background}; }
 body.checkerboard { background-color: ${checkB}; background-image: linear-gradient(45deg, ${checkA} 25%, transparent 25%), linear-gradient(-45deg, ${checkA} 25%, transparent 25%), linear-gradient(45deg, transparent 75%, ${checkA} 75%), linear-gradient(-45deg, transparent 75%, ${checkA} 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0; }
-img { display: block; max-width: 100%; zoom: ${zoom}; }
+img { display: block; max-width: calc(100% * ${zoom}); zoom: ${zoom}; }
 `;
 
   return {

@@ -110,6 +110,26 @@ test("safe HTML and SVG block active content and remote resources", async ({ pag
   await expect.poll(() => remote.every((request) => /csp/i.test(request.failure()?.errorText ?? ""))).toBe(true);
 });
 
+test("SVG zoom exceeds the pane width and keeps the left edge reachable", async ({ page }) => {
+  await selectExtension(page, "svg");
+  await enterText(page, '<?xml version="1.0" encoding="ISO-8859-1"?><svg xmlns="http://www.w3.org/2000/svg" width="3000" height="300" viewBox="0 0 3000 300"><rect width="3000" height="300" fill="#345"/><text x="20" y="200" font-size="160" fill="#fff">Grüße</text></svg>');
+  await page.getByRole("button", { name: "Split", exact: true }).click();
+  const iframe = page.locator('iframe[title^="Sichere SVG"]');
+  await expect(iframe).toBeVisible();
+  const frame = page.frameLocator('iframe[title^="Sichere SVG"]');
+  const image = frame.locator("img");
+  await expect(image).toBeVisible();
+  const paneWidth = (await iframe.boundingBox())!.width;
+  const fitted = await image.evaluate((element) => element.getBoundingClientRect().width);
+  expect(fitted).toBeLessThanOrEqual(paneWidth);
+  for (let i = 0; i < 4; i++) await page.getByRole("button", { name: "Vergrößern" }).click();
+  await expect(page.locator(".svg-preview .zoom-value")).toHaveText("244 %");
+  await expect.poll(() => frame.locator("img").evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(paneWidth * 1.5);
+  expect(await frame.locator("img").evaluate((element) => element.getBoundingClientRect().left)).toBeGreaterThanOrEqual(0);
+  expect(await frame.locator("body").evaluate((body) => body.scrollWidth > body.clientWidth)).toBe(true);
+  await page.screenshot({ path: "test-results/svg-zoom.png" });
+});
+
 test("notebook bare LaTeX and live TeX render offline, light theme persists", async ({ page }) => {
   await selectExtension(page, "ipynb");
   await enterText(page, JSON.stringify({ cells: [{ cell_type: "code", source: "x = 2", outputs: [{ output_type: "display_data", data: { "text/latex": "x^2" } }] }] }));

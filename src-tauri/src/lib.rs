@@ -21,6 +21,7 @@ pub fn run() {
             associations::apply_default_file_associations,
             document::take_pending_document_paths,
             document::read_document,
+            document::read_binary_document,
             document::read_local_images,
             document::write_document,
             html_preview::open_full_html_preview,

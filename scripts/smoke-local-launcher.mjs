@@ -13,7 +13,10 @@ await mkdir(resolve("test-results"), { recursive: true });
 const textPath = join(temporary, "smoke.txt");
 const dataPath = join(temporary, "records.jsonl");
 const queuedPath = join(temporary, "queued.txt");
+const imagePath = join(temporary, "pixel.png");
 await writeFile(queuedPath, Buffer.from("你好", "utf16le"));
+// 2×2 PNG: the binary document path must go through the real Rust signature check.
+await writeFile(imagePath, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVQIW2P8z8Dwn4GBgYGJAQoAADgVAgLkOfJKAAAAAElFTkSuQmCC", "base64"));
 await writeFile(textPath, "Original\r\n", "utf8");
 await writeFile(dataPath, '{"record":"Alpha"}\n{"record":"Beta"}', "utf8");
 const server = createServer();
@@ -23,7 +26,7 @@ await new Promise((accept) => server.close(accept));
 // Test-only CDP and a disposable WebView profile. The native app may read its
 // normal preferences; this smoke does not edit settings or touch existing windows.
 // No global environment or installed application is changed.
-const child = spawn(binary, [textPath, dataPath], {
+const child = spawn(binary, [textPath, dataPath, imagePath], {
   cwd: temporary,
   env: { ...process.env, WEBVIEW2_USER_DATA_FOLDER: join(temporary, "webview"), WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1` },
   stdio: ["ignore", "pipe", "pipe"],
@@ -47,7 +50,13 @@ try {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await expect(page.locator(".version")).toHaveText(`v${metadata.version}`);
-  await expect(page.getByRole("tab")).toHaveCount(2);
+  await expect(page.getByRole("tab")).toHaveCount(3);
+  await page.getByRole("tab", { name: "pixel.png", exact: true }).click();
+  await expect(page.getByRole("img", { name: "pixel.png" })).toBeVisible();
+  await expect(page.locator(".image-preview .dimensions")).toContainText("2 × 2 px");
+  await expect(page.getByRole("button", { name: "Dokument speichern unter" })).toBeDisabled();
+  await expect(page.locator(".editor-pane")).toHaveCount(0);
+  await page.getByRole("tab", { name: "records.jsonl", exact: true }).click();
   await page.getByRole("button", { name: "Split", exact: true }).click();
   await expect(page.getByRole("region", { name: "JSON-Struktur" })).toContainText("Alpha");
   await expect(page.getByRole("region", { name: "JSON-Struktur" })).toContainText("Beta");
@@ -62,9 +71,9 @@ try {
   await page.getByRole("button", { name: "Einstellungen öffnen" }).click();
   await expect(page.getByRole("dialog", { name: "Einstellungen" })).toBeVisible();
   await page.evaluate((path) => window.__TAURI_INTERNALS__.invoke("plugin:event|emit", { event: "open-documents", payload: [path, path] }), queuedPath);
-  await expect(page.getByRole("tab")).toHaveCount(2);
-  await page.keyboard.press("Escape");
   await expect(page.getByRole("tab")).toHaveCount(3);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("tab")).toHaveCount(4);
   await expect(page.getByRole("tab", { name: "queued.txt", exact: true })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("combobox", { name: "Mit Kodierung neu öffnen" }).selectOption("UTF-16LE");
   await expect(page.locator(".editor-pane .cm-content")).toHaveText("你好");
@@ -88,7 +97,7 @@ try {
     if (!page.isClosed()) throw error;
   });
   succeeded = true;
-  console.log(`PASS native Windows v${metadata.version}: startup files, JSONL, Unicode/CRLF save, queued/deduplicated open during modal, external conflict, explicit UTF-16LE reopen, modal UI; ${binary}`);
+  console.log(`PASS native Windows v${metadata.version}: startup files, PNG viewer, JSONL, Unicode/CRLF save, queued/deduplicated open during modal, external conflict, explicit UTF-16LE reopen, modal UI; ${binary}`);
 } finally {
   await browser?.close().catch(() => undefined);
   if (child.exitCode === null) {

@@ -1,3 +1,5 @@
+import { svgDataUrl } from "./svg";
+
 export type NotebookCellType = "markdown" | "code" | "raw";
 
 export type NotebookOutput =
@@ -32,6 +34,7 @@ export const MAX_NOTEBOOK_RENDER_CHARACTERS = 500_000;
 export const MAX_NOTEBOOK_OUTPUTS_PER_CELL = 50;
 export const MAX_NOTEBOOK_OUTPUT_CHARACTERS = 200_000;
 const MAX_IMAGE_BASE64_LENGTH = 8 * 1024 * 1024;
+const MAX_SVG_OUTPUT_LENGTH = 2 * 1024 * 1024;
 
 const IMAGE_TYPES: Array<[string, string]> = [
   ["image/png", "png"],
@@ -164,6 +167,14 @@ function parseOutput(value: unknown): NotebookOutput | null {
       const encoded = multilineText(data[mime]).replace(/\s+/g, "");
       if (encoded.length > MAX_IMAGE_BASE64_LENGTH || !base64Pattern.test(encoded)) continue;
       return { kind: "image", dataUrl: `data:image/${extension};base64,${encoded}`, alt: `${extension}-Ausgabe` };
+    }
+    if ("image/svg+xml" in data) {
+      // Matplotlib and Plotly export vector output. As an <img> data URL the SVG
+      // cannot run scripts or load external resources, like the SVG preview.
+      const svg = multilineText(data["image/svg+xml"]);
+      if (svg.length <= MAX_SVG_OUTPUT_LENGTH && /<svg\b/i.test(svg)) {
+        return { kind: "image", dataUrl: svgDataUrl(svg), alt: "svg-Ausgabe" };
+      }
     }
     if ("text/markdown" in data) {
       return { kind: "markdown", source: limitText(multilineText(data["text/markdown"])) };

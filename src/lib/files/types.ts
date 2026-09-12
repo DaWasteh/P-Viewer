@@ -8,7 +8,9 @@ export type DocumentKind =
   | "svg"
   | "csv"
   | "code"
-  | "text";
+  | "text"
+  | "image"
+  | "pdf";
 export type LineEnding = "lf" | "crlf" | "cr";
 
 export interface FileTypeInfo {
@@ -29,6 +31,15 @@ export interface DocumentPayload {
   version?: string;
 }
 
+/** Read-only binary content (images, PDF) delivered as a base64 payload. */
+export interface BinaryDocumentPayload {
+  path: string;
+  name: string;
+  size: number;
+  mime: string;
+  base64: string;
+}
+
 export interface SaveResult {
   path: string;
   size: number;
@@ -40,4 +51,6 @@ export interface OpenDocument extends DocumentPayload {
   fileType: FileTypeInfo;
   untitled: boolean;
   metadataDirty: boolean;
+  /** Present for image and PDF documents; such documents are never editable. */
+  binary?: Pick<BinaryDocumentPayload, "mime" | "base64"> | null;
 }

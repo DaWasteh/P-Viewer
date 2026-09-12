@@ -21,6 +21,8 @@ const MAX_LOCAL_IMAGE_TOTAL_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_LOCAL_IMAGE_COUNT: usize = 32;
 const MAX_LOCAL_IMAGE_SOURCE_LENGTH: usize = 2_048;
 const MAX_DOCUMENT_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_IMAGE_DOCUMENT_BYTES: u64 = 32 * 1024 * 1024;
+const MAX_PDF_DOCUMENT_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,6 +44,17 @@ pub struct SaveResult {
     pub path: String,
     pub size: u64,
     pub version: String,
+}
+
+/// Read-only binary document (image or PDF) delivered to the viewer as base64.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BinaryDocumentPayload {
+    pub path: String,
+    pub name: String,
+    pub size: u64,
+    pub mime: String,
+    pub base64: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -126,6 +139,48 @@ pub fn read_document(path: String, encoding: Option<String>) -> Result<DocumentP
         size: bytes.len() as u64,
         lossy: decoded.lossy,
         version: content_version(&bytes),
+    })
+}
+
+/// Images and PDF files are never decoded as text. The content type is taken
+/// from the file signature, not the extension, so a mislabeled file is either
+/// shown with its real type or rejected.
+#[tauri::command]
+pub fn read_binary_document(path: String, kind: String) -> Result<BinaryDocumentPayload, String> {
+    let path = checked_path(&path)?
+        .canonicalize()
+        .map_err(|error| format!("Dateipfad kann nicht aufgelöst werden: {error}"))?;
+    let (limit, label) = match kind.as_str() {
+        "image" => (MAX_IMAGE_DOCUMENT_BYTES, "Das Bild"),
+        "pdf" => (MAX_PDF_DOCUMENT_BYTES, "Das PDF-Dokument"),
+        _ => return Err("Unbekannte Binärdokumentart.".into()),
+    };
+    let metadata = fs::metadata(&path)
+        .map_err(|error| format!("Dateimetadaten können nicht gelesen werden: {error}"))?;
+    if metadata.len() > limit {
+        return Err(format!(
+            "{label} ist größer als {} MiB und wird nicht dargestellt.",
+            limit / 1024 / 1024
+        ));
+    }
+    let bytes = read_bounded_file(&path, limit)?;
+    let mime = if kind == "pdf" {
+        if !bytes.starts_with(b"%PDF-") {
+            return Err(
+                "Die Datei beginnt nicht mit einer PDF-Signatur und wird nicht dargestellt.".into(),
+            );
+        }
+        "application/pdf"
+    } else {
+        image_mime(&bytes)?
+    };
+
+    Ok(BinaryDocumentPayload {
+        path: display_path(&path),
+        name: display_name(&path),
+        size: bytes.len() as u64,
+        mime: mime.into(),
+        base64: BASE64.encode(bytes),
     })
 }
 
@@ -365,8 +420,13 @@ fn image_mime(bytes: &[u8]) -> Result<&'static str, String> {
         Ok("image/bmp")
     } else if bytes.starts_with(&[0x00, 0x00, 0x01, 0x00]) {
         Ok("image/x-icon")
+    } else if bytes.len() >= 12
+        && &bytes[4..8] == b"ftyp"
+        && (&bytes[8..12] == b"avif" || &bytes[8..12] == b"avis")
+    {
+        Ok("image/avif")
     } else {
-        Err("Aus Sicherheitsgründen werden nur geprüfte PNG-, JPEG-, GIF-, WebP-, BMP- und ICO-Bilder geladen.".into())
+        Err("Aus Sicherheitsgründen werden nur geprüfte PNG-, JPEG-, GIF-, WebP-, BMP-, ICO- und AVIF-Bilder geladen.".into())
     }
 }
 
@@ -946,6 +1006,68 @@ mod tests {
         assert!(payloads[1].data_url.is_some());
         assert!(payloads[2].data_url.is_none());
         assert!(payloads[2].error.as_deref().unwrap().contains("zusammen"));
+    }
+
+    #[test]
+    fn binary_documents_use_signatures_and_reject_text_or_mislabeled_input() {
+        let directory = tempfile::tempdir().unwrap();
+        let png = directory.path().join("photo.png");
+        let jpeg_as_png = directory.path().join("really-jpeg.png");
+        let pdf = directory.path().join("paper.pdf");
+        let text = directory.path().join("notes.pdf");
+        let avif = directory.path().join("modern.avif");
+        fs::write(&png, b"\x89PNG\r\n\x1a\ncontent").unwrap();
+        fs::write(&jpeg_as_png, [0xFF, 0xD8, 0xFF, 0xE0, 0x00]).unwrap();
+        fs::write(&pdf, b"%PDF-1.7\n%\xE2\xE3\xCF\xD3\n").unwrap();
+        fs::write(&text, "Nur Text").unwrap();
+        let mut avif_bytes = vec![0x00, 0x00, 0x00, 0x1C];
+        avif_bytes.extend_from_slice(b"ftypavif");
+        avif_bytes.extend_from_slice(&[0u8; 8]);
+        fs::write(&avif, &avif_bytes).unwrap();
+
+        let opened =
+            read_binary_document(png.to_string_lossy().into_owned(), "image".into()).unwrap();
+        assert_eq!(opened.mime, "image/png");
+        assert_eq!(opened.name, "photo.png");
+        assert_eq!(opened.size, 15);
+        assert_eq!(opened.base64, BASE64.encode(fs::read(&png).unwrap()));
+
+        let mislabeled =
+            read_binary_document(jpeg_as_png.to_string_lossy().into_owned(), "image".into())
+                .unwrap();
+        assert_eq!(mislabeled.mime, "image/jpeg");
+        assert_eq!(
+            read_binary_document(avif.to_string_lossy().into_owned(), "image".into())
+                .unwrap()
+                .mime,
+            "image/avif"
+        );
+        assert_eq!(
+            read_binary_document(pdf.to_string_lossy().into_owned(), "pdf".into())
+                .unwrap()
+                .mime,
+            "application/pdf"
+        );
+        assert!(
+            read_binary_document(text.to_string_lossy().into_owned(), "pdf".into())
+                .unwrap_err()
+                .contains("PDF-Signatur")
+        );
+        assert!(
+            read_binary_document(text.to_string_lossy().into_owned(), "image".into())
+                .unwrap_err()
+                .contains("Sicherheitsgründen")
+        );
+        assert!(
+            read_binary_document(png.to_string_lossy().into_owned(), "video".into())
+                .unwrap_err()
+                .contains("Unbekannte")
+        );
+        assert!(read_binary_document(
+            directory.path().to_string_lossy().into_owned(),
+            "image".into()
+        )
+        .is_err());
     }
 
     #[test]

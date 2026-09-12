@@ -8,6 +8,7 @@
     fileName: string;
     path: string;
     fileType: FileTypeInfo;
+    binary?: { mime: string; base64: string } | null;
     theme?: "dark" | "light";
     editorFontSize?: number;
     previewFontSize?: number;
@@ -20,6 +21,7 @@
     fileName,
     path,
     fileType,
+    binary = null,
     theme = "dark",
     editorFontSize = 14,
     previewFontSize = 16,
@@ -40,6 +42,8 @@
     html: () => import("./HtmlPreview.svelte"),
     svg: () => import("./SvgPreview.svelte"),
     csv: () => import("./CsvPreview.svelte"),
+    image: () => import("./ImagePreview.svelte"),
+    pdf: () => import("./PdfPreview.svelte"),
   };
   const PROSE_KINDS = new Set<DocumentKind>(["markdown", "latex", "notebook"]);
 
@@ -86,6 +90,7 @@
       {content}
       {fileName}
       {path}
+      {binary}
       {theme}
       {onOpenPath}
       fontSize={PROSE_KINDS.has(fileType.kind) ? previewFontSize : editorFontSize}
@@ -116,7 +121,7 @@
     />
   </div>
 {:else}
-  <div class:light={theme === "light"} class:monospace={/\.(?:log|srt|vtt)$/i.test(fileName)} class="text-preview">
+  <div class:light={theme === "light"} class:monospace={/\.(?:log|srt|vtt|ass|ssa|sha256|md5|pem|crt|csr|pub|asc|sln)$/i.test(fileName)} class="text-preview">
     {#if content}
       <pre style={`font-size: ${previewFontSize}px`}>{content}</pre>
     {:else}
@@ -219,7 +224,7 @@
     overflow-wrap: anywhere;
   }
 
-  /* Logs and subtitles are column oriented and read better in a monospace face. */
+  /* Logs, subtitles, checksums and PEM blocks are column oriented and read better in a monospace face. */
   .text-preview.monospace pre {
     width: calc(100% - 48px);
     font-family: var(--font-mono);

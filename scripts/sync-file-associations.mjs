@@ -74,8 +74,9 @@ function validateAssociations(groups, source) {
   )?.[1];
   if (!typeBlock) throw new Error("Unterstützte Dateiendungen konnten nicht gelesen werden.");
 
+  // Keys with hyphens (`"code-workspace"`) are quoted in the TypeScript source.
   const supported = [
-    ...typeBlock.matchAll(/^\s{2}([a-zA-Z][\w]*):/gm),
+    ...typeBlock.matchAll(/^\s{2}"?([a-z0-9][\w-]*)"?:/gm),
   ].map((match) => match[1]);
   const ids = new Set();
   const progIds = new Set();

@@ -13,12 +13,13 @@ P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter f
 - mehrere Dokumente parallel in einer kompakten Tab-Leiste öffnen und sicher schließen, mit eigener Undo-Historie, Auswahl und Scrollposition pro Tab
 - Speicherkonflikte bei externen Änderungen erkennen; bei mehrdeutigen Dateien die Kodierung in der Statusleiste explizit neu wählen
 - Dateityp direkt in der Werkzeugleiste aus allen unterstützten Formaten, speziellen Dateinamen oder über eine eigene Endung wählen
-- breite Syntaxhervorhebung für 169 Dateiendungen und 36 spezielle Dateinamen mit sicherem Plaintext-Fallback, inklusive gemischter Astro-, Svelte- und Vue-Syntax sowie eigener Modi für Batch, Makefile, GraphQL, Elixir, BibTeX, Ignore-Dateien und CSV
+- breite Syntaxhervorhebung für 295 Text-Dateiendungen und 131 spezielle Dateinamen mit sicherem Plaintext-Fallback, inklusive gemischter Astro-, Svelte- und Vue-Syntax sowie eigener Modi für Batch, Makefile, GraphQL, Elixir, BibTeX, Ignore-Dateien, CSV, Terraform/HCL, Nix und Vim Script
+- schreibgeschützte Bildansicht für PNG, JPEG, GIF, WebP, BMP, ICO und AVIF mit Zoom, Einpassen und Transparenzraster sowie eine integrierte PDF-Ansicht; beide werden per Dateisignatur geprüft, nie als Text gelesen und nie überschrieben
 - Edit-, View- und Split-Ansicht
 - sichere statische HTML-/HTM-/XHTML-Vorschau sowie eine explizit bestätigte vollständige Vorschau mit Skripten, Stylesheets und lokalen Ressourcen
 - Markdown mit GFM, Gliederung, Folding, Tabellen, Aufgabenlisten, Fußnoten, Callouts, Syntaxhervorhebung in Codeblöcken und KaTeX-Mathematik
-- einklappbare JSON-Strukturansicht für JSON, JSONC, JSON5, JSON-LD, GeoJSON und Web-Manifeste sowie zeilenweise JSONL-/NDJSON-Datensätze
-- Jupyter-Notebook-Ansicht mit Markdown-, Code- und Ausgabezellen (Text, Bilder, Fehler); HTML-Ausgaben werden bewusst nicht ausgeführt
+- einklappbare JSON-Strukturansicht für JSON, JSONC, JSON5, JSON-LD, GeoJSON, Source Maps und Web-Manifeste sowie zeilenweise JSONL-/NDJSON-Datensätze; Werkzeugdateien wie `tsconfig.json`, `.babelrc` oder VS-Code-Einstellungen gelten als JSONC, Syntaxfehler werden auf Deutsch mit Zeile und Spalte gemeldet
+- Jupyter-Notebook-Ansicht mit Markdown-, Code- und Ausgabezellen (Text, Raster- und SVG-Bilder, Fehler); HTML-Ausgaben werden bewusst nicht ausgeführt
 - CSV-/TSV-Tabellenansicht mit automatischer Trennzeichenerkennung, Kopfzeile, Zeilennummern und Zahlenausrichtung
 - sandboxed SVG-Bildvorschau mit Zoom, Transparenzraster und Quelltextumschaltung
 - gebündelte, automatisch aktualisierte LaTeX-Livevorschau mit KaTeX, nummerierten Überschriften, Inhaltsverzeichnis, Fußnoten, Theorem-Umgebungen, Tabellen und Makros sowie optionaler PDF-Build über eine lokale TeX-Distribution
@@ -105,7 +106,7 @@ Die externe Distribution ist optional; Shell-Escape bleibt deaktiviert.
 
 ## Dateizuordnungen
 
-Installer registrieren alle 169 unterstützten Dateiendungen als mögliche P-Viewer-Formate. Unter **Einstellungen → Standardprogramme** lassen sich 88 sinnvolle Formatgruppen auswählen. Windows öffnet anschließend aus Sicherheitsgründen seine geschützte Standard-Apps-Seite zur Bestätigung; Linux aktualisiert die benutzerspezifische `mimeapps.list`, macOS verwendet LaunchServices. Eine vorhandene Standard-App wird bei der Windows-Installation nicht still überschrieben.
+Installer registrieren alle 306 unterstützten Dateiendungen als mögliche P-Viewer-Formate. Unter **Einstellungen → Standardprogramme** lassen sich 110 sinnvolle Formatgruppen auswählen; die acht Bild- und PDF-Gruppen sind dabei bewusst abgewählt, bis sie ausdrücklich angehakt werden. Windows öffnet anschließend aus Sicherheitsgründen seine geschützte Standard-Apps-Seite zur Bestätigung; Linux aktualisiert die benutzerspezifische `mimeapps.list`, macOS verwendet LaunchServices. Eine vorhandene Standard-App wird bei der Windows-Installation nicht still überschrieben.
 
 ## Qualitätsprüfungen und Grenzen
 

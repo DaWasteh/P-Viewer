@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_FILE_ASSOCIATION_IDS,
   FILE_ASSOCIATION_GROUPS,
   FILE_ASSOCIATION_IDS,
   extensionsForAssociationIds,
@@ -23,8 +24,22 @@ describe("system file association groups", () => {
     expect(associated).toEqual(expect.arrayContaining([...SUPPORTED_FILE_EXTENSIONS]));
   });
 
+  it("keeps images and PDF out of the initial default-app selection", () => {
+    const binaryGroups = FILE_ASSOCIATION_GROUPS.filter((group) => group.defaultSelection === false);
+    expect(binaryGroups.map((group) => group.id)).toEqual(
+      expect.arrayContaining(["png-image", "jpeg-image", "pdf"]),
+    );
+    expect(binaryGroups.flatMap((group) => group.extensions)).toEqual(
+      expect.arrayContaining(["png", "jpg", "webp", "pdf"]),
+    );
+    expect(DEFAULT_FILE_ASSOCIATION_IDS).not.toContain("pdf");
+    expect(DEFAULT_FILE_ASSOCIATION_IDS).toContain("markdown");
+    expect(DEFAULT_FILE_ASSOCIATION_IDS.length + binaryGroups.length).toBe(FILE_ASSOCIATION_IDS.length);
+  });
+
   it("normalizes persisted selections", () => {
-    expect(normalizeAssociationIds(undefined)).toEqual(FILE_ASSOCIATION_IDS);
+    expect(normalizeAssociationIds(undefined)).toEqual(DEFAULT_FILE_ASSOCIATION_IDS);
+    expect(normalizeAssociationIds(["pdf", "markdown"])).toEqual(["pdf", "markdown"]);
     expect(normalizeAssociationIds(["markdown", "invalid", "markdown", 12])).toEqual([
       "markdown",
     ]);

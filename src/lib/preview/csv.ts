@@ -33,7 +33,7 @@ export function delimiterLabel(delimiter: CsvDelimiter): string {
 }
 
 export function detectCsvDelimiter(content: string, fileName = ""): CsvDelimiter {
-  if (/\.tsv$/i.test(fileName)) return "\t";
+  if (/\.(?:tsv|tab)$/i.test(fileName)) return "\t";
   const sample = content.slice(0, 65_536).split(/\r\n|\r|\n/).filter((line) => line.trim()).slice(0, 25);
   if (sample.length === 0) return ",";
 

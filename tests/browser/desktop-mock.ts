@@ -21,6 +21,8 @@ export async function mockDesktop(page: Page, name: string, content: string) {
         if (command === "plugin:event|unlisten") return null;
         if (command === "take_pending_document_paths") return [`C:/fixtures/${name}`];
         if (command === "read_document") return { path: args.path, name: args.path.split("/").pop(), content, encoding: "UTF-8", hasBom: false, lineEnding: "lf", size: content.length, lossy: false, version: "fixture-version" };
+        // A 2×2 PNG (red/blue checker) so the image viewer reports real dimensions.
+        if (command === "read_binary_document") return { path: args.path, name: args.path.split("/").pop(), size: 87, mime: args.kind === "pdf" ? "application/pdf" : "image/png", base64: args.kind === "pdf" ? content : "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVQIW2P8z8Dwn4GBgYGJAQoAADgVAgLkOfJKAAAAAElFTkSuQmCC" };
         if (command === "write_document") return { path: args.path, size: args.content.length, version: "written-version" };
         if (command === "plugin:store|load") return 1;
         if (command === "plugin:store|get") return null;

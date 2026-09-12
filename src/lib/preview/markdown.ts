@@ -50,6 +50,28 @@ import gherkin from "highlight.js/lib/languages/gherkin";
 import vhdl from "highlight.js/lib/languages/vhdl";
 import verilog from "highlight.js/lib/languages/verilog";
 import stylus from "highlight.js/lib/languages/stylus";
+import nsis from "highlight.js/lib/languages/nsis";
+import d from "highlight.js/lib/languages/d";
+import nim from "highlight.js/lib/languages/nim";
+import prolog from "highlight.js/lib/languages/prolog";
+import awk from "highlight.js/lib/languages/awk";
+import vim from "highlight.js/lib/languages/vim";
+import glsl from "highlight.js/lib/languages/glsl";
+import apache from "highlight.js/lib/languages/apache";
+import pgsql from "highlight.js/lib/languages/pgsql";
+import llvm from "highlight.js/lib/languages/llvm";
+import haml from "highlight.js/lib/languages/haml";
+import erb from "highlight.js/lib/languages/erb";
+import smalltalk from "highlight.js/lib/languages/smalltalk";
+import sml from "highlight.js/lib/languages/sml";
+import ebnf from "highlight.js/lib/languages/ebnf";
+import bnf from "highlight.js/lib/languages/bnf";
+import abnf from "highlight.js/lib/languages/abnf";
+import mipsasm from "highlight.js/lib/languages/mipsasm";
+import avrasm from "highlight.js/lib/languages/avrasm";
+import accesslog from "highlight.js/lib/languages/accesslog";
+import dns from "highlight.js/lib/languages/dns";
+import gcode from "highlight.js/lib/languages/gcode";
 import svelteLike from "highlight.js/lib/languages/xml";
 
 export interface MarkdownHeading {
@@ -157,6 +179,28 @@ const highlightLanguages = {
   vhdl,
   verilog,
   stylus,
+  nsis,
+  d,
+  nim,
+  prolog,
+  awk,
+  vim,
+  glsl,
+  apache,
+  pgsql,
+  llvm,
+  haml,
+  erb,
+  smalltalk,
+  sml,
+  ebnf,
+  bnf,
+  abnf,
+  mipsasm,
+  avrasm,
+  accesslog,
+  dns,
+  gcode,
   svelte: svelteLike,
   vue: svelteLike,
   astro: svelteLike,

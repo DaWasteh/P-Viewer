@@ -4,7 +4,7 @@
     "label": "Markdown",
     "progId": "PViewer.Markdown",
     "description": "Markdown-Dokument",
-    "extensions": ["md", "markdown", "mdown", "mkd", "mkdn", "mdwn"],
+    "extensions": ["md","markdown","mdown","mkd","mkdn","mdwn"],
     "mimeType": "text/markdown",
     "contentTypes": ["net.daringfireball.markdown"]
   },
@@ -22,25 +22,25 @@
     "label": "R Markdown und Quarto",
     "progId": "PViewer.RMarkdown",
     "description": "R-Markdown- oder Quarto-Dokument",
-    "extensions": ["rmd", "qmd"],
+    "extensions": ["rmd","qmd"],
     "mimeType": "text/x-rmarkdown",
     "contentTypes": ["net.daringfireball.markdown"]
   },
   {
     "id": "json",
-    "label": "JSON, JSONC und JSON5",
+    "label": "JSON, JSONC, JSON5 und Werkzeugdateien",
     "progId": "PViewer.Json",
     "description": "JSON-Dokument",
-    "extensions": ["json", "jsonc", "json5", "jsonl", "ndjson"],
+    "extensions": ["json","jsonc","json5","jsonl","ndjson","map","har","avsc","arb","sarif","code-workspace","code-snippets"],
     "mimeType": "application/json",
     "contentTypes": ["public.json"]
   },
   {
     "id": "json-web",
-    "label": "JSON-LD, GeoJSON und Web-Manifest",
+    "label": "JSON-LD, GeoJSON, TopoJSON und Web-Manifest",
     "progId": "PViewer.JsonWeb",
     "description": "JSON-Webdokument",
-    "extensions": ["jsonld", "geojson", "webmanifest"],
+    "extensions": ["jsonld","geojson","webmanifest","topojson"],
     "mimeType": "application/ld+json",
     "contentTypes": ["public.json"]
   },
@@ -55,19 +55,19 @@
   },
   {
     "id": "latex",
-    "label": "LaTeX",
+    "label": "LaTeX und R noweb",
     "progId": "PViewer.LaTeX",
     "description": "LaTeX-Dokument",
-    "extensions": ["tex", "latex", "ltx"],
+    "extensions": ["tex","latex","ltx","rnw"],
     "mimeType": "application/x-tex",
     "contentTypes": ["public.tex"]
   },
   {
     "id": "latex-support",
-    "label": "LaTeX-Klassen und -Stile",
+    "label": "LaTeX-Klassen, -Stile und -Quellpakete",
     "progId": "PViewer.LaTeXSupport",
     "description": "LaTeX-Klasse oder -Stil",
-    "extensions": ["sty", "cls"],
+    "extensions": ["sty","cls","dtx","ins"],
     "mimeType": "text/x-tex",
     "contentTypes": ["public.source-code"]
   },
@@ -85,7 +85,7 @@
     "label": "JavaScript",
     "progId": "PViewer.JavaScript",
     "description": "JavaScript-Quelltext",
-    "extensions": ["js", "mjs", "cjs"],
+    "extensions": ["js","mjs","cjs"],
     "mimeType": "text/javascript",
     "contentTypes": ["com.netscape.javascript-source"]
   },
@@ -103,7 +103,7 @@
     "label": "TypeScript",
     "progId": "PViewer.TypeScript",
     "description": "TypeScript-Quelltext",
-    "extensions": ["ts", "mts", "cts"],
+    "extensions": ["ts","mts","cts"],
     "mimeType": "application/typescript",
     "contentTypes": ["public.source-code"]
   },
@@ -127,10 +127,10 @@
   },
   {
     "id": "python",
-    "label": "Python",
+    "label": "Python, Cython und Starlark",
     "progId": "PViewer.Python",
-    "description": "Python-Quelltext",
-    "extensions": ["py", "pyw", "pyi"],
+    "description": "Python-, Cython- oder Starlark-Quelltext",
+    "extensions": ["py","pyw","pyi","pyx","pxd","pxi","bzl","bazel"],
     "mimeType": "text/x-python",
     "contentTypes": ["public.python-script"]
   },
@@ -166,7 +166,7 @@
     "label": "Kotlin",
     "progId": "PViewer.Kotlin",
     "description": "Kotlin-Quelltext",
-    "extensions": ["kt", "kts"],
+    "extensions": ["kt","kts"],
     "mimeType": "text/x-kotlin",
     "contentTypes": ["public.source-code"]
   },
@@ -175,16 +175,16 @@
     "label": "Groovy und Gradle",
     "progId": "PViewer.Groovy",
     "description": "Groovy-Quelltext",
-    "extensions": ["groovy", "gradle"],
+    "extensions": ["groovy","gradle"],
     "mimeType": "text/x-groovy",
     "contentTypes": ["public.source-code"]
   },
   {
     "id": "scala",
-    "label": "Scala",
+    "label": "Scala und sbt",
     "progId": "PViewer.Scala",
     "description": "Scala-Quelltext",
-    "extensions": ["scala"],
+    "extensions": ["scala","sc","sbt"],
     "mimeType": "text/x-scala",
     "contentTypes": ["public.source-code"]
   },
@@ -193,7 +193,7 @@
     "label": "C#",
     "progId": "PViewer.CSharp",
     "description": "C#-Quelltext",
-    "extensions": ["cs"],
+    "extensions": ["cs","csx"],
     "mimeType": "text/x-csharp",
     "contentTypes": ["public.source-code"]
   },
@@ -202,7 +202,7 @@
     "label": "F#",
     "progId": "PViewer.FSharp",
     "description": "F#-Quelltext",
-    "extensions": ["fs", "fsx"],
+    "extensions": ["fs","fsx","fsi"],
     "mimeType": "text/x-fsharp",
     "contentTypes": ["public.source-code"]
   },
@@ -211,7 +211,7 @@
     "label": "Visual Basic und VBScript",
     "progId": "PViewer.VisualBasic",
     "description": "Visual-Basic-Quelltext",
-    "extensions": ["vb", "vbs"],
+    "extensions": ["vb","vbs"],
     "mimeType": "text/x-vb",
     "contentTypes": ["public.source-code"]
   },
@@ -220,18 +220,27 @@
     "label": "C",
     "progId": "PViewer.C",
     "description": "C-Quelltext",
-    "extensions": ["c", "h"],
+    "extensions": ["c","h"],
     "mimeType": "text/x-c",
     "contentTypes": ["public.c-source"]
   },
   {
     "id": "cpp",
-    "label": "C++ und Arduino",
+    "label": "C++ und CUDA",
     "progId": "PViewer.Cpp",
-    "description": "C++-Quelltext",
-    "extensions": ["cc", "cpp", "cxx", "hpp", "hh", "hxx", "ino"],
+    "description": "C++- oder CUDA-Quelltext",
+    "extensions": ["cc","cpp","cxx","hpp","hh","hxx","ino","ipp","tpp","inl","cu","cuh"],
     "mimeType": "text/x-c++",
     "contentTypes": ["public.c-plus-plus-source"]
+  },
+  {
+    "id": "shader",
+    "label": "GLSL- und HLSL-Shader",
+    "progId": "PViewer.Shader",
+    "description": "Shader-Quelltext",
+    "extensions": ["glsl","vert","frag","hlsl"],
+    "mimeType": "text/x-glsl",
+    "contentTypes": ["public.source-code"]
   },
   {
     "id": "objective-cpp",
@@ -253,10 +262,10 @@
   },
   {
     "id": "ruby",
-    "label": "Ruby",
+    "label": "Ruby und ERB",
     "progId": "PViewer.Ruby",
     "description": "Ruby-Quelltext",
-    "extensions": ["rb"],
+    "extensions": ["rb","rake","gemspec","ru","podspec","erb"],
     "mimeType": "text/x-ruby",
     "contentTypes": ["public.ruby-script"]
   },
@@ -265,7 +274,7 @@
     "label": "PHP",
     "progId": "PViewer.Php",
     "description": "PHP-Quelltext",
-    "extensions": ["php"],
+    "extensions": ["php","phtml"],
     "mimeType": "application/x-httpd-php",
     "contentTypes": ["public.source-code"]
   },
@@ -274,7 +283,7 @@
     "label": "Perl",
     "progId": "PViewer.Perl",
     "description": "Perl-Quelltext",
-    "extensions": ["pl", "pm"],
+    "extensions": ["pl","pm"],
     "mimeType": "text/x-perl",
     "contentTypes": ["public.perl-script"]
   },
@@ -316,10 +325,10 @@
   },
   {
     "id": "elixir",
-    "label": "Elixir",
+    "label": "Elixir und Phoenix-Vorlagen",
     "progId": "PViewer.Elixir",
     "description": "Elixir-Quelltext",
-    "extensions": ["ex", "exs"],
+    "extensions": ["ex","exs","eex","heex","leex"],
     "mimeType": "text/x-elixir",
     "contentTypes": ["public.source-code"]
   },
@@ -328,16 +337,16 @@
     "label": "Erlang",
     "progId": "PViewer.Erlang",
     "description": "Erlang-Quelltext",
-    "extensions": ["erl", "hrl"],
+    "extensions": ["erl","hrl"],
     "mimeType": "text/x-erlang",
     "contentTypes": ["public.source-code"]
   },
   {
     "id": "haskell",
-    "label": "Haskell",
+    "label": "Haskell und Cabal",
     "progId": "PViewer.Haskell",
     "description": "Haskell-Quelltext",
-    "extensions": ["hs"],
+    "extensions": ["hs","cabal"],
     "mimeType": "text/x-haskell",
     "contentTypes": ["public.source-code"]
   },
@@ -355,8 +364,17 @@
     "label": "OCaml",
     "progId": "PViewer.OCaml",
     "description": "OCaml-Quelltext",
-    "extensions": ["ml", "mli"],
+    "extensions": ["ml","mli","mll","mly"],
     "mimeType": "text/x-ocaml",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "sml",
+    "label": "Standard ML",
+    "progId": "PViewer.StandardML",
+    "description": "Standard-ML-Quelltext",
+    "extensions": ["sml"],
+    "mimeType": "text/x-sml",
     "contentTypes": ["public.source-code"]
   },
   {
@@ -364,16 +382,16 @@
     "label": "Clojure und EDN",
     "progId": "PViewer.Clojure",
     "description": "Clojure-Quelltext",
-    "extensions": ["clj", "cljs", "cljc", "edn"],
+    "extensions": ["clj","cljs","cljc","edn"],
     "mimeType": "text/x-clojure",
     "contentTypes": ["public.source-code"]
   },
   {
     "id": "lisp",
-    "label": "Lisp und Scheme",
+    "label": "Lisp, Scheme und Racket",
     "progId": "PViewer.Lisp",
     "description": "Lisp-Quelltext",
-    "extensions": ["lisp", "el", "scm"],
+    "extensions": ["lisp","el","scm","lsp","cl","ss","rkt"],
     "mimeType": "text/x-lisp",
     "contentTypes": ["public.source-code"]
   },
@@ -397,10 +415,10 @@
   },
   {
     "id": "pascal",
-    "label": "Pascal",
+    "label": "Pascal und Delphi",
     "progId": "PViewer.Pascal",
     "description": "Pascal-Quelltext",
-    "extensions": ["pas"],
+    "extensions": ["pas","dpr","lpr"],
     "mimeType": "text/x-pascal",
     "contentTypes": ["public.source-code"]
   },
@@ -409,16 +427,34 @@
     "label": "Fortran",
     "progId": "PViewer.Fortran",
     "description": "Fortran-Quelltext",
-    "extensions": ["f90", "f95", "f"],
+    "extensions": ["f90","f95","f","f03","f08","for","f77","ftn"],
     "mimeType": "text/x-fortran",
     "contentTypes": ["public.source-code"]
   },
   {
+    "id": "cobol",
+    "label": "COBOL",
+    "progId": "PViewer.Cobol",
+    "description": "COBOL-Quelltext",
+    "extensions": ["cob","cbl","cpy"],
+    "mimeType": "text/x-cobol",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "haxe",
+    "label": "Haxe",
+    "progId": "PViewer.Haxe",
+    "description": "Haxe-Quelltext",
+    "extensions": ["hx"],
+    "mimeType": "text/x-haxe",
+    "contentTypes": ["public.source-code"]
+  },
+  {
     "id": "tcl",
-    "label": "Tcl",
+    "label": "Tcl/Tk",
     "progId": "PViewer.Tcl",
     "description": "Tcl-Skript",
-    "extensions": ["tcl"],
+    "extensions": ["tcl","tk"],
     "mimeType": "text/x-tcl",
     "contentTypes": ["public.source-code"]
   },
@@ -427,7 +463,7 @@
     "label": "Assembler",
     "progId": "PViewer.Assembler",
     "description": "Assembler-Quelltext",
-    "extensions": ["asm", "s"],
+    "extensions": ["asm","s"],
     "mimeType": "text/x-asm",
     "contentTypes": ["public.assembly-source"]
   },
@@ -436,8 +472,17 @@
     "label": "VHDL",
     "progId": "PViewer.Vhdl",
     "description": "VHDL-Quelltext",
-    "extensions": ["vhd", "vhdl"],
+    "extensions": ["vhd","vhdl"],
     "mimeType": "text/x-vhdl",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "verilog",
+    "label": "Verilog und SystemVerilog",
+    "progId": "PViewer.Verilog",
+    "description": "Verilog-Quelltext",
+    "extensions": ["v","sv","svh"],
+    "mimeType": "text/x-verilog",
     "contentTypes": ["public.source-code"]
   },
   {
@@ -445,7 +490,7 @@
     "label": "WebAssembly-Text",
     "progId": "PViewer.WasmText",
     "description": "WebAssembly-Textformat",
-    "extensions": ["wat", "wast"],
+    "extensions": ["wat","wast"],
     "mimeType": "text/x-wat",
     "contentTypes": ["public.source-code"]
   },
@@ -468,11 +513,38 @@
     "contentTypes": ["public.plain-text"]
   },
   {
+    "id": "sparql",
+    "label": "SPARQL und Cypher",
+    "progId": "PViewer.Sparql",
+    "description": "Graphabfrage",
+    "extensions": ["sparql","rq","cypher"],
+    "mimeType": "application/sparql-query",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "rdf-text",
+    "label": "Turtle und N-Triples",
+    "progId": "PViewer.Turtle",
+    "description": "RDF-Textformat",
+    "extensions": ["ttl","nt"],
+    "mimeType": "text/turtle",
+    "contentTypes": ["public.plain-text"]
+  },
+  {
+    "id": "xquery",
+    "label": "XQuery",
+    "progId": "PViewer.XQuery",
+    "description": "XQuery-Abfrage",
+    "extensions": ["xq","xquery"],
+    "mimeType": "application/xquery",
+    "contentTypes": ["public.source-code"]
+  },
+  {
     "id": "shell",
     "label": "Shell-Skripte",
     "progId": "PViewer.Shell",
     "description": "Shell-Skript",
-    "extensions": ["sh", "bash", "zsh", "fish", "ksh"],
+    "extensions": ["sh","bash","zsh","fish","ksh","csh","tcsh"],
     "mimeType": "application/x-shellscript",
     "contentTypes": ["public.shell-script"]
   },
@@ -481,7 +553,7 @@
     "label": "Windows Batch und CMD",
     "progId": "PViewer.Batch",
     "description": "Windows-Batchdatei",
-    "extensions": ["bat", "cmd"],
+    "extensions": ["bat","cmd"],
     "mimeType": "application/x-bat",
     "contentTypes": ["public.source-code"]
   },
@@ -490,7 +562,7 @@
     "label": "PowerShell",
     "progId": "PViewer.PowerShell",
     "description": "PowerShell-Skript",
-    "extensions": ["ps1", "psm1", "psd1"],
+    "extensions": ["ps1","psm1","psd1"],
     "mimeType": "text/x-powershell",
     "contentTypes": ["public.source-code"]
   },
@@ -508,7 +580,7 @@
     "label": "Makefile",
     "progId": "PViewer.Makefile",
     "description": "Makefile",
-    "extensions": ["mk"],
+    "extensions": ["mk","make","mak"],
     "mimeType": "text/x-makefile",
     "contentTypes": ["public.make-source"]
   },
@@ -526,7 +598,7 @@
     "label": "NSIS",
     "progId": "PViewer.Nsis",
     "description": "NSIS-Installerskript",
-    "extensions": ["nsi", "nsh"],
+    "extensions": ["nsi","nsh"],
     "mimeType": "text/x-nsis",
     "contentTypes": ["public.source-code"]
   },
@@ -535,7 +607,7 @@
     "label": "Diff und Patch",
     "progId": "PViewer.Diff",
     "description": "Diff-Datei",
-    "extensions": ["diff", "patch"],
+    "extensions": ["diff","patch"],
     "mimeType": "text/x-diff",
     "contentTypes": ["public.patch-file"]
   },
@@ -544,16 +616,43 @@
     "label": "HTTP-Anfragen",
     "progId": "PViewer.Http",
     "description": "HTTP-Anfragedatei",
-    "extensions": ["http", "rest"],
+    "extensions": ["http","rest"],
     "mimeType": "text/x-http",
     "contentTypes": ["public.plain-text"]
+  },
+  {
+    "id": "hcl",
+    "label": "Terraform und HCL",
+    "progId": "PViewer.Hcl",
+    "description": "HashiCorp-Konfiguration",
+    "extensions": ["tf","tfvars","hcl"],
+    "mimeType": "text/x-hcl",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "nix",
+    "label": "Nix",
+    "progId": "PViewer.Nix",
+    "description": "Nix-Ausdruck",
+    "extensions": ["nix"],
+    "mimeType": "text/x-nix",
+    "contentTypes": ["public.source-code"]
+  },
+  {
+    "id": "vim",
+    "label": "Vim Script",
+    "progId": "PViewer.Vim",
+    "description": "Vim-Skript",
+    "extensions": ["vim"],
+    "mimeType": "text/x-vim",
+    "contentTypes": ["public.source-code"]
   },
   {
     "id": "html",
     "label": "HTML",
     "progId": "PViewer.Html",
     "description": "HTML-Dokument",
-    "extensions": ["html", "htm"],
+    "extensions": ["html","htm"],
     "mimeType": "text/html",
     "contentTypes": ["public.html"]
   },
@@ -598,16 +697,16 @@
     "label": "Handlebars",
     "progId": "PViewer.Handlebars",
     "description": "Handlebars-Vorlage",
-    "extensions": ["hbs", "handlebars"],
+    "extensions": ["hbs","handlebars"],
     "mimeType": "text/x-handlebars-template",
     "contentTypes": ["public.source-code"]
   },
   {
     "id": "pug",
-    "label": "Pug",
+    "label": "Pug und Jade",
     "progId": "PViewer.Pug",
     "description": "Pug-Vorlage",
-    "extensions": ["pug"],
+    "extensions": ["pug","jade"],
     "mimeType": "text/x-pug",
     "contentTypes": ["public.source-code"]
   },
@@ -616,7 +715,7 @@
     "label": "Jinja",
     "progId": "PViewer.Jinja",
     "description": "Jinja-Vorlage",
-    "extensions": ["j2", "jinja", "jinja2"],
+    "extensions": ["j2","jinja","jinja2"],
     "mimeType": "text/x-jinja",
     "contentTypes": ["public.source-code"]
   },
@@ -643,7 +742,7 @@
     "label": "Sass und SCSS",
     "progId": "PViewer.Sass",
     "description": "Sass-Stylesheet",
-    "extensions": ["scss", "sass"],
+    "extensions": ["scss","sass"],
     "mimeType": "text/x-scss",
     "contentTypes": ["public.source-code"]
   },
@@ -667,10 +766,19 @@
   },
   {
     "id": "xml",
-    "label": "XML, XSLT, Schemas und Feeds",
+    "label": "XML, XSLT, Feeds und XML-Formate",
     "progId": "PViewer.Xml",
     "description": "XML-Dokument",
-    "extensions": ["xml", "xsl", "xsd", "dtd", "plist", "xaml", "rss", "atom"],
+    "extensions": ["xml","xsl","xsd","dtd","plist","xaml","rss","atom","xslt","wsdl","rdf","opml","gpx","kml","xlf","xliff","ui","qrc","wxml","fxml","axaml","mobileconfig","entitlements","xcscheme"],
+    "mimeType": "application/xml",
+    "contentTypes": ["public.xml"]
+  },
+  {
+    "id": "msbuild",
+    "label": "MSBuild- und .NET-Projektdateien",
+    "progId": "PViewer.MsBuild",
+    "description": ".NET-Projektdatei",
+    "extensions": ["csproj","vbproj","fsproj","props","targets","nuspec","resx"],
     "mimeType": "application/xml",
     "contentTypes": ["public.xml"]
   },
@@ -685,10 +793,10 @@
   },
   {
     "id": "yaml",
-    "label": "YAML",
+    "label": "YAML und Citation File Format",
     "progId": "PViewer.Yaml",
     "description": "YAML-Dokument",
-    "extensions": ["yaml", "yml"],
+    "extensions": ["yaml","yml","cff"],
     "mimeType": "application/yaml",
     "contentTypes": ["public.yaml"]
   },
@@ -703,10 +811,10 @@
   },
   {
     "id": "configuration",
-    "label": "INI und Konfiguration",
+    "label": "INI, Konfigurations- und systemd-Dateien",
     "progId": "PViewer.Configuration",
     "description": "Konfigurationsdatei",
-    "extensions": ["ini", "cfg", "conf", "desktop", "reg"],
+    "extensions": ["ini","cfg","conf","desktop","reg","cnf","inf","service","timer","socket"],
     "mimeType": "text/x-ini",
     "contentTypes": ["public.plain-text"]
   },
@@ -715,16 +823,16 @@
     "label": "Environment und Properties",
     "progId": "PViewer.Properties",
     "description": "Properties-Datei",
-    "extensions": ["env", "properties"],
+    "extensions": ["env","properties","xcconfig"],
     "mimeType": "text/x-java-properties",
     "contentTypes": ["public.plain-text"]
   },
   {
     "id": "sql",
-    "label": "SQL",
+    "label": "SQL-Dialekte",
     "progId": "PViewer.Sql",
     "description": "SQL-Skript",
-    "extensions": ["sql"],
+    "extensions": ["sql","pgsql","mysql","plsql","hql","cql"],
     "mimeType": "application/sql",
     "contentTypes": ["public.source-code"]
   },
@@ -733,7 +841,7 @@
     "label": "GraphQL",
     "progId": "PViewer.GraphQL",
     "description": "GraphQL-Dokument",
-    "extensions": ["graphql", "gql"],
+    "extensions": ["graphql","gql"],
     "mimeType": "application/graphql",
     "contentTypes": ["public.source-code"]
   },
@@ -742,16 +850,34 @@
     "label": "Text und Log",
     "progId": "PViewer.Text",
     "description": "Textdokument",
-    "extensions": ["txt", "text", "log"],
+    "extensions": ["txt","text","log","sln"],
+    "mimeType": "text/plain",
+    "contentTypes": ["public.plain-text"]
+  },
+  {
+    "id": "certificates",
+    "label": "Zertifikate und Schlüssel (PEM)",
+    "progId": "PViewer.Certificate",
+    "description": "PEM-kodierte Zertifikats- oder Schlüsseldatei",
+    "extensions": ["pem","crt","csr","pub","asc"],
+    "mimeType": "application/x-pem-file",
+    "contentTypes": ["public.plain-text"]
+  },
+  {
+    "id": "checksums",
+    "label": "Prüfsummen",
+    "progId": "PViewer.Checksum",
+    "description": "Prüfsummendatei",
+    "extensions": ["sha256","md5"],
     "mimeType": "text/plain",
     "contentTypes": ["public.plain-text"]
   },
   {
     "id": "prose",
-    "label": "reStructuredText, AsciiDoc und Org",
+    "label": "reStructuredText, AsciiDoc, Org, POD und Wikitext",
     "progId": "PViewer.Prose",
     "description": "Textdokument mit leichter Auszeichnung",
-    "extensions": ["rst", "adoc", "asciidoc", "org"],
+    "extensions": ["rst","adoc","asciidoc","org","pod","wiki"],
     "mimeType": "text/x-rst",
     "contentTypes": ["public.plain-text"]
   },
@@ -769,7 +895,7 @@
     "label": "Untertitel (SRT und WebVTT)",
     "progId": "PViewer.Subtitles",
     "description": "Untertiteldatei",
-    "extensions": ["srt", "vtt"],
+    "extensions": ["srt","vtt","ass","ssa"],
     "mimeType": "text/vtt",
     "contentTypes": ["public.plain-text"]
   },
@@ -787,8 +913,88 @@
     "label": "TSV",
     "progId": "PViewer.Tsv",
     "description": "TSV-Tabelle",
-    "extensions": ["tsv"],
+    "extensions": ["tsv","tab"],
     "mimeType": "text/tab-separated-values",
     "contentTypes": ["public.tab-separated-values-text"]
+  },
+  {
+    "id": "png-image",
+    "label": "PNG-Bilder",
+    "progId": "PViewer.Png",
+    "description": "PNG-Bild",
+    "extensions": ["png","apng"],
+    "mimeType": "image/png",
+    "contentTypes": ["public.png"],
+    "defaultSelection": false
+  },
+  {
+    "id": "jpeg-image",
+    "label": "JPEG-Bilder",
+    "progId": "PViewer.Jpeg",
+    "description": "JPEG-Bild",
+    "extensions": ["jpg","jpeg","jfif"],
+    "mimeType": "image/jpeg",
+    "contentTypes": ["public.jpeg"],
+    "defaultSelection": false
+  },
+  {
+    "id": "gif-image",
+    "label": "GIF-Bilder",
+    "progId": "PViewer.Gif",
+    "description": "GIF-Bild",
+    "extensions": ["gif"],
+    "mimeType": "image/gif",
+    "contentTypes": ["com.compuserve.gif"],
+    "defaultSelection": false
+  },
+  {
+    "id": "webp-image",
+    "label": "WebP-Bilder",
+    "progId": "PViewer.WebP",
+    "description": "WebP-Bild",
+    "extensions": ["webp"],
+    "mimeType": "image/webp",
+    "contentTypes": ["public.webp"],
+    "defaultSelection": false
+  },
+  {
+    "id": "bmp-image",
+    "label": "Bitmap-Bilder",
+    "progId": "PViewer.Bmp",
+    "description": "Bitmap-Bild",
+    "extensions": ["bmp"],
+    "mimeType": "image/bmp",
+    "contentTypes": ["com.microsoft.bmp"],
+    "defaultSelection": false
+  },
+  {
+    "id": "ico-image",
+    "label": "Windows-Symbole",
+    "progId": "PViewer.Ico",
+    "description": "Windows-Symbol",
+    "extensions": ["ico"],
+    "mimeType": "image/vnd.microsoft.icon",
+    "contentTypes": ["com.microsoft.ico"],
+    "defaultSelection": false
+  },
+  {
+    "id": "avif-image",
+    "label": "AVIF-Bilder",
+    "progId": "PViewer.Avif",
+    "description": "AVIF-Bild",
+    "extensions": ["avif"],
+    "mimeType": "image/avif",
+    "contentTypes": ["public.avif"],
+    "defaultSelection": false
+  },
+  {
+    "id": "pdf",
+    "label": "PDF-Dokumente",
+    "progId": "PViewer.Pdf",
+    "description": "PDF-Dokument",
+    "extensions": ["pdf"],
+    "mimeType": "application/pdf",
+    "contentTypes": ["com.adobe.pdf"],
+    "defaultSelection": false
   }
 ]

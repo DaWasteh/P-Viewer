@@ -72,3 +72,33 @@ test("update installation freezes background editing until the mocked restart", 
   await page.evaluate(() => (window as any).__testNative.pending.download_and_install_update(null));
   await expect.poll(() => page.evaluate(() => (window as any).__testNative.calls.some((call: any) => call.command === "plugin:process|restart"))).toBe(true);
 });
+
+test("images open as a read-only viewer without editor, save or type switch", async ({ page }) => {
+  await mockDesktop(page, "photo.png", "");
+  await page.goto("/");
+  await expect(page.getByRole("tab", { name: "photo.png", exact: true })).toBeVisible();
+  await expect(page.locator(".editor-pane")).toHaveCount(0);
+  const image = page.getByRole("img", { name: "photo.png" });
+  await expect(image).toBeVisible();
+  await expect(page.locator(".image-preview .dimensions")).toContainText("2 × 2 px");
+  await expect(page.getByRole("button", { name: "Dokument speichern unter" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeDisabled();
+  await expect(page.getByLabel("Dateityp", { exact: true })).toBeDisabled();
+  await expect(page.getByLabel("Dateityp", { exact: true }).locator("option:checked")).toHaveText("PNG-Bild (.png)");
+  await expect(page.locator(".statusbar")).toContainText("Schreibgeschützt");
+  await page.keyboard.press("ControlOrMeta+s");
+  expect(await page.evaluate(() => (window as any).__testNative.calls.some((call: any) => call.command === "write_document"))).toBe(false);
+  await page.getByRole("button", { name: "Vergrößern" }).click();
+  await expect(page.locator(".image-preview .zoom-value")).toHaveText("125 %");
+  expect(await image.evaluate((element) => (element as HTMLImageElement).getBoundingClientRect().width)).toBeCloseTo(3, 0);
+  await page.screenshot({ path: "test-results/image-viewer.png" });
+  await page.keyboard.press("ControlOrMeta+n");
+  await expect(page.getByRole("tab")).toHaveCount(2);
+  await expect(page.locator(".editor-pane .cm-content")).toBeVisible();
+  // A split mode chosen for a text tab must not halve the image viewer.
+  await page.getByRole("button", { name: "Split", exact: true }).click();
+  await page.getByRole("tab", { name: "photo.png", exact: true }).click();
+  await expect(page.locator(".workspace")).not.toHaveClass(/split/);
+  const workspaceWidth = (await page.locator(".workspace").boundingBox())!.width;
+  expect((await page.locator(".viewer-pane").boundingBox())!.width).toBeCloseTo(workspaceWidth, 0);
+});

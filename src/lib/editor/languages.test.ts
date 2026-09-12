@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SUPPORTED_FILE_EXTENSIONS, detectFileType } from "$lib/files/fileTypes";
+import { SUPPORTED_FILE_EXTENSIONS, SUPPORTED_FILE_TYPE_CHOICES, detectFileType, isBinaryKind } from "$lib/files/fileTypes";
 import { loadLanguageForFile } from "./languages";
 
 const astroFixture = `---
@@ -71,12 +71,37 @@ describe("lazy editor language loading", () => {
 
   it("provides highlighting for every supported non-plaintext extension", async () => {
     for (const extension of SUPPORTED_FILE_EXTENSIONS) {
-      if (PLAINTEXT_EXTENSIONS.has(extension)) continue;
       const fileName = `sample.${extension}`;
+      const fileType = detectFileType(fileName);
+      if (isBinaryKind(fileType.kind)) continue;
+      if (fileType.kind === "text") {
+        expect(fileType.language, fileName).toBe("plaintext");
+        await expect(loadLanguageForFile(fileName), fileName).resolves.toBeNull();
+        continue;
+      }
+      expect(PLAINTEXT_EXTENSIONS.has(extension), fileName).toBe(false);
       const support = await loadLanguageForFile(fileName);
       expect(support, fileName).not.toBeNull();
-      expect(detectFileType(fileName).language, fileName).not.toBe("plaintext");
+      expect(fileType.language, fileName).not.toBe("plaintext");
     }
+  });
+
+  it("provides highlighting for every special file name that is not plain text", async () => {
+    for (const choice of SUPPORTED_FILE_TYPE_CHOICES) {
+      if (!choice.fileName) continue;
+      const support = await loadLanguageForFile(choice.fileName);
+      if (choice.fileType.kind === "text" || choice.fileType.language === "gomod") {
+        expect(support, choice.fileName).toBeNull();
+      } else {
+        expect(support, choice.fileName).not.toBeNull();
+      }
+    }
+    // Legacy stream modes from language-data carry no name; lezer/custom modes do.
+    await expect(loadLanguageForFile("Dockerfile.prod")).resolves.not.toBeNull();
+    await expect(loadLanguageForFile("nginx.conf")).resolves.not.toBeNull();
+    expect((await loadLanguageForFile("BUILD.bazel"))?.language.name).toBe("python");
+    expect((await loadLanguageForFile(".vimrc"))?.language.name).toBe("vim");
+    await expect(loadLanguageForFile("go.mod")).resolves.toBeNull();
   });
 
   it("uses maintained aliases for common web-adjacent formats", async () => {
@@ -110,8 +135,17 @@ describe("lazy editor language loading", () => {
     expect(bibtex?.language.name).toBe("bibtex");
     const csv = await loadLanguageForFile("data.csv");
     expect(csv?.language.name).toBe("csv");
+    const hcl = await loadLanguageForFile("main.tf");
+    expect(hcl?.language.name).toBe("hcl");
+    const nix = await loadLanguageForFile("flake.nix");
+    expect(nix?.language.name).toBe("nix");
+    const vim = await loadLanguageForFile("plugins.vim");
+    expect(vim?.language.name).toBe("vim");
 
     for (const [support, source] of [
+      [hcl, 'resource "aws_s3_bucket" "b" {\n  bucket = "x" # c\n  tags = { Name = var.name }\n  policy = <<-EOT\n  {}\n  EOT\n}\n/* block */\n'],
+      [nix, "{ pkgs ? import <nixpkgs> {} }:\nlet x = ''\n  multi ''' line\n''; in rec { inherit x; y = ./path; z = \"s\\\"q\"; }\n"],
+      [vim, '" comment\nset number\nlet g:mapleader = " "\nnnoremap <leader>w :w<CR>\nfunction! Fn(a)\n  return a:a . \'x\'\nendfunction\n'],
       [batch, "@echo off\nREM comment\nset NAME=%1\nif exist \"%NAME%\" goto :done\n:done\n"],
       [makefile, ".PHONY: all\nall: main.o\n\t$(CC) -o app main.o # link\n"],
       [graphql, 'query Q($id: ID!) { user(id: $id) { name @include(if: true) } }\n"""doc"""\n'],

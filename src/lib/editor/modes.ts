@@ -376,9 +376,277 @@ const csvParser: StreamParser<{ column: number }> = {
   },
 };
 
+interface HclState {
+  inComment: boolean;
+  heredoc: string | null;
+}
+
+const hclKeywords = new Set([
+  "resource",
+  "data",
+  "variable",
+  "output",
+  "module",
+  "provider",
+  "terraform",
+  "locals",
+  "backend",
+  "provisioner",
+  "connection",
+  "dynamic",
+  "moved",
+  "import",
+  "check",
+  "removed",
+  "lifecycle",
+  "required_providers",
+  "job",
+  "group",
+  "task",
+  "service",
+  "policy",
+  "path",
+  "listener",
+  "storage",
+  "for",
+  "in",
+  "if",
+  "else",
+  "endif",
+  "endfor",
+]);
+
+// HashiCorp Configuration Language (Terraform, Packer, Nomad, Vault, Consul).
+const hclParser: StreamParser<HclState> = {
+  name: "hcl",
+  startState: () => ({ inComment: false, heredoc: null }),
+  token(stream, state) {
+    if (state.heredoc !== null) {
+      if (stream.sol() && stream.match(new RegExp(`^\\s*${state.heredoc}\\s*$`))) state.heredoc = null;
+      else stream.skipToEnd();
+      return "string";
+    }
+    if (state.inComment) {
+      if (stream.match(/^[\s\S]*?\*\//)) state.inComment = false;
+      else stream.skipToEnd();
+      return "comment";
+    }
+    if (stream.eatSpace()) return null;
+    if (stream.match(/^(?:#|\/\/).*$/)) return "comment";
+    if (stream.match(/^\/\*/)) {
+      if (!stream.match(/^[\s\S]*?\*\//)) state.inComment = true;
+      return "comment";
+    }
+    const heredoc = stream.match(/^<<-?([A-Za-z_][\w-]*)/) as RegExpMatchArray | null;
+    if (heredoc) {
+      state.heredoc = heredoc[1];
+      return "string";
+    }
+    if (stream.match(/^"/)) {
+      readString(stream, '"');
+      return "string";
+    }
+    if (stream.match(/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/)) return "number";
+    if (stream.match(/^[A-Za-z_][\w-]*/)) {
+      const word = stream.current();
+      if (word === "true" || word === "false" || word === "null") return "atom";
+      if (stream.match(/^\s*=(?!=)/, false)) return "propertyName";
+      if (stream.match(/^\s*\(/, false)) return "function(variableName)";
+      if (stream.match(/^\s*(?:"|\{)/, false) && hclKeywords.has(word)) return "keyword";
+      if (hclKeywords.has(word)) return "keyword";
+      return "variableName";
+    }
+    if (stream.match(/^(?:==|!=|<=|>=|&&|\|\||=>|\.\.\.|[+\-*\/%<>!?:=.])/)) return "operator";
+    if (stream.match(/^[{}()[\]]/)) return "bracket";
+    stream.next();
+    return null;
+  },
+  languageData: { commentTokens: { line: "#", block: { open: "/*", close: "*/" } } },
+};
+
+const nixKeywords = new Set([
+  "let",
+  "in",
+  "with",
+  "rec",
+  "inherit",
+  "if",
+  "then",
+  "else",
+  "assert",
+  "import",
+  "or",
+]);
+
+const nixParser: StreamParser<SimpleState> = {
+  name: "nix",
+  startState: startSimpleState,
+  token(stream, state) {
+    if (state.inString === "''") {
+      // Indented strings end at `''` unless escaped as `'''` or `''$`.
+      while (!stream.eol()) {
+        if (stream.match(/^'''|^''\$|^''\\/)) continue;
+        if (stream.match(/^''/)) {
+          state.inString = null;
+          return "string";
+        }
+        stream.next();
+      }
+      return "string";
+    }
+    if (state.inString === '"') {
+      if (readString(stream, '"')) state.inString = null;
+      return "string";
+    }
+    if (state.inComment) {
+      if (stream.match(/^[\s\S]*?\*\//)) state.inComment = false;
+      else stream.skipToEnd();
+      return "comment";
+    }
+    if (stream.eatSpace()) return null;
+    if (stream.match(/^#.*$/)) return "comment";
+    if (stream.match(/^\/\*/)) {
+      if (!stream.match(/^[\s\S]*?\*\//)) state.inComment = true;
+      return "comment";
+    }
+    if (stream.match(/^''/)) {
+      state.inString = "''";
+      return "string";
+    }
+    if (stream.match(/^"/)) {
+      if (!readString(stream, '"')) state.inString = '"';
+      return "string";
+    }
+    if (stream.match(/^(?:~?\/|\.\.?\/)[\w.+\-\/]*|^<[\w.+\-\/]+>/)) return "special(string)";
+    if (stream.match(/^\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/)) return "number";
+    if (stream.match(/^[A-Za-z_][\w'-]*/)) {
+      const word = stream.current();
+      if (nixKeywords.has(word)) return "keyword";
+      if (word === "true" || word === "false" || word === "null") return "atom";
+      if (stream.match(/^\s*=(?!=)/, false)) return "propertyName";
+      return "variableName";
+    }
+    if (stream.match(/^(?:\+\+|\/\/|->|==|!=|<=|>=|&&|\|\||[+\-*\/<>!?=@:.])/)) return "operator";
+    if (stream.match(/^[{}()[\]]/)) return "bracket";
+    stream.next();
+    return null;
+  },
+  languageData: { commentTokens: { line: "#", block: { open: "/*", close: "*/" } } },
+};
+
+const vimKeywords = new Set([
+  "set",
+  "setlocal",
+  "setglobal",
+  "let",
+  "unlet",
+  "const",
+  "map",
+  "nmap",
+  "imap",
+  "vmap",
+  "xmap",
+  "omap",
+  "cmap",
+  "tmap",
+  "noremap",
+  "nnoremap",
+  "inoremap",
+  "vnoremap",
+  "xnoremap",
+  "onoremap",
+  "cnoremap",
+  "tnoremap",
+  "unmap",
+  "nunmap",
+  "iunmap",
+  "vunmap",
+  "autocmd",
+  "au",
+  "augroup",
+  "function",
+  "function!",
+  "endfunction",
+  "endf",
+  "return",
+  "call",
+  "if",
+  "elseif",
+  "else",
+  "endif",
+  "for",
+  "endfor",
+  "while",
+  "endwhile",
+  "try",
+  "catch",
+  "finally",
+  "endtry",
+  "execute",
+  "exe",
+  "syntax",
+  "syn",
+  "highlight",
+  "hi",
+  "colorscheme",
+  "filetype",
+  "source",
+  "runtime",
+  "finish",
+  "silent",
+  "command",
+  "normal",
+  "echo",
+  "echom",
+  "echomsg",
+  "echoerr",
+  "plug",
+  "packadd",
+  "abbrev",
+  "iabbrev",
+  "cabbrev",
+  "nohlsearch",
+  "lua",
+  "python3",
+  "scriptencoding",
+  "vim9script",
+  "def",
+  "enddef",
+  "var",
+  "in",
+]);
+
+const vimParser: StreamParser<SimpleState> = {
+  name: "vim",
+  startState: startSimpleState,
+  token(stream) {
+    if (stream.sol() && stream.match(/^\s*".*$/)) return "comment";
+    if (stream.eatSpace()) return null;
+    if (stream.match(/^"/)) {
+      readString(stream, '"');
+      return "string";
+    }
+    if (stream.match(/^'(?:[^']|'')*'/)) return "string";
+    if (stream.match(/^<[A-Za-z][\w-]*>/)) return "special(string)";
+    if (stream.match(/^[gsvlbwta]:[A-Za-z_]\w*|^&[A-Za-z_]\w*|^\$[A-Za-z_]\w*/)) return "variableName";
+    if (stream.match(/^-?\d+(?:\.\d+)?/)) return "number";
+    if (stream.match(/^[A-Za-z_][\w#]*!?/)) {
+      const word = stream.current();
+      if (vimKeywords.has(word)) return "keyword";
+      if (stream.match(/^\s*\(/, false)) return "function(variableName)";
+      return null;
+    }
+    if (stream.match(/^(?:==|!=|=~|!~|>=|<=|\.\.|[+\-*\/%<>=.!?:|])/)) return "operator";
+    if (stream.match(/^[{}()[\]]/)) return "bracket";
+    stream.next();
+    return null;
+  },
+  languageData: { commentTokens: { line: '"' } },
+};
+
 const cache = new Map<string, StreamLanguage<unknown>>();
 
-export const CUSTOM_LANGUAGE_IDS = ["batch", "makefile", "graphql", "elixir", "bibtex", "ignore", "csv"] as const;
+export const CUSTOM_LANGUAGE_IDS = ["batch", "makefile", "graphql", "elixir", "bibtex", "ignore", "csv", "hcl", "nix", "vim"] as const;
 export type CustomLanguageId = (typeof CUSTOM_LANGUAGE_IDS)[number];
 
 const parsers: Record<CustomLanguageId, StreamParser<any>> = {
@@ -389,6 +657,9 @@ const parsers: Record<CustomLanguageId, StreamParser<any>> = {
   bibtex: bibtexParser,
   ignore: ignoreParser,
   csv: csvParser,
+  hcl: hclParser,
+  nix: nixParser,
+  vim: vimParser,
 };
 
 export function customLanguage(id: CustomLanguageId): StreamLanguage<unknown> {

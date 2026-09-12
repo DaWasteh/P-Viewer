@@ -4,7 +4,9 @@ import {
   SVG_PREVIEW_CSP,
   SvgPreviewTooLargeError,
   encodeBase64,
+  normalizeSvgSource,
   renderSvgPreview,
+  svgDataUrl,
   svgRootAttributes,
 } from "./svg";
 
@@ -14,10 +16,25 @@ describe("SVG preview document", () => {
     const result = renderSvgPreview(source, { theme: "light", zoom: 2 });
 
     expect(result.document.indexOf(SVG_PREVIEW_CSP)).toBeGreaterThan(0);
-    expect(result.document).toContain(`<img src="data:image/svg+xml;base64,${encodeBase64(source)}"`);
+    expect(result.document).toContain(`<img src="data:image/svg+xml;charset=utf-8;base64,${encodeBase64(source)}"`);
     expect(result.document).not.toContain("<script>");
     expect(result.document).toContain("zoom: 2;");
     expect(result).toMatchObject({ width: "10", height: "20", viewBox: "0 0 10 20" });
+  });
+
+  it("lets zoom exceed the pane width and keeps the overflow reachable", () => {
+    expect(renderSvgPreview("<svg/>", { zoom: 2 }).document).toContain("max-width: calc(100% * 2);");
+    expect(renderSvgPreview("<svg/>", { zoom: 0.5 }).document).toContain("max-width: calc(100% * 0.5);");
+    expect(renderSvgPreview("<svg/>").document).toContain("place-items: safe center;");
+  });
+
+  it("rewrites legacy XML encoding declarations for the decoded source", () => {
+    const legacy = '<?xml version="1.0" encoding="ISO-8859-1" standalone="no"?>\n<svg xmlns="http://www.w3.org/2000/svg"><text>Grüße</text></svg>';
+    expect(normalizeSvgSource(legacy)).toContain('<?xml version="1.0" encoding="UTF-8" standalone="no"?>');
+    expect(normalizeSvgSource("<svg/>")).toBe("<svg/>");
+    expect(normalizeSvgSource("<?xml version='1.0'?><svg/>")).toBe("<?xml version='1.0'?><svg/>");
+    expect(svgDataUrl(legacy)).toBe(`data:image/svg+xml;charset=utf-8;base64,${encodeBase64(normalizeSvgSource(legacy))}`);
+    expect(renderSvgPreview(legacy).document).not.toContain(encodeBase64(legacy));
   });
 
   it("encodes Unicode content and reads root attributes with either quote style", () => {

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  SUPPORTED_BINARY_EXTENSIONS,
   SUPPORTED_FILE_EXTENSIONS,
   SUPPORTED_FILE_TYPE_CHOICES,
+  SUPPORTED_TEXT_EXTENSIONS,
+  isBinaryKind,
   countLines,
   countWords,
   detectFileType,
@@ -53,6 +56,41 @@ describe("file type detection", () => {
     expect(fileTypeChoiceIdFor(".env.local")).toBe("name:.env");
   });
 
+  it("recognizes the formats added in v0.1.3", () => {
+    expect(detectFileType("main.tf")).toMatchObject({ kind: "code", language: "hcl" });
+    expect(detectFileType("flake.nix")).toMatchObject({ kind: "code", language: "nix" });
+    expect(detectFileType("demo.code-workspace")).toMatchObject({ kind: "json" });
+    expect(detectFileType("bundle.js.map")).toMatchObject({ kind: "json", label: "Source Map" });
+    expect(detectFileType("cpu.v")).toMatchObject({ kind: "code", language: "verilog" });
+    expect(detectFileType("kernel.cu")).toMatchObject({ kind: "code", language: "cuda" });
+    expect(detectFileType("app.csproj")).toMatchObject({ kind: "code", language: "xml" });
+    expect(detectFileType("units.tab")).toMatchObject({ kind: "csv" });
+    expect(detectFileType("cert.pem")).toMatchObject({ kind: "text" });
+    expect(detectFileType("Dockerfile.prod")).toMatchObject({ kind: "code", language: "dockerfile" });
+    expect(detectFileType("app.Dockerfile")).toMatchObject({ kind: "code", language: "dockerfile" });
+    expect(detectFileType("go.mod")).toMatchObject({ kind: "code", language: "gomod" });
+    expect(detectFileType("BUILD.bazel")).toMatchObject({ kind: "code", language: "starlark" });
+    expect(detectFileType(".vimrc")).toMatchObject({ kind: "code", language: "vim" });
+    expect(detectFileType("nginx.conf")).toMatchObject({ kind: "code", language: "nginx" });
+    expect(detectFileType("poetry.lock")).toMatchObject({ kind: "code", language: "toml" });
+    expect(fileTypeChoiceIdFor("Dockerfile.dev")).toBe("name:dockerfile");
+  });
+
+  it("treats images and PDF as read-only binary kinds that cannot be chosen as a target type", () => {
+    expect(detectFileType("photo.JPG")).toMatchObject({ kind: "image", language: "binary" });
+    expect(detectFileType("icon.ico")).toMatchObject({ kind: "image" });
+    expect(detectFileType("paper.pdf")).toMatchObject({ kind: "pdf", language: "binary" });
+    expect(isBinaryKind("image")).toBe(true);
+    expect(isBinaryKind("pdf")).toBe(true);
+    expect(isBinaryKind("svg")).toBe(false);
+    expect(SUPPORTED_BINARY_EXTENSIONS).toEqual(
+      expect.arrayContaining(["png", "apng", "jpg", "jpeg", "jfif", "gif", "webp", "bmp", "ico", "avif", "pdf"]),
+    );
+    expect(SUPPORTED_TEXT_EXTENSIONS).not.toContain("png");
+    expect(SUPPORTED_TEXT_EXTENSIONS.length + SUPPORTED_BINARY_EXTENSIONS.length).toBe(SUPPORTED_FILE_EXTENSIONS.length);
+    expect(SUPPORTED_FILE_TYPE_CHOICES.some((choice) => choice.extension === "png" || choice.extension === "pdf")).toBe(false);
+  });
+
   it("falls back to plain text for unknown extensions", () => {
     expect(detectFileType("research.custom-format")).toMatchObject({
       kind: "text",
@@ -61,15 +99,15 @@ describe("file type detection", () => {
     expect(extensionOf(".gitignore")).toBe("");
   });
 
-  it("offers every supported extension and special file name", () => {
+  it("offers every supported text extension and special file name", () => {
     const extensionChoices = SUPPORTED_FILE_TYPE_CHOICES.filter(
       (choice) => choice.extension,
     );
     expect(extensionChoices.map((choice) => choice.extension)).toEqual(
-      expect.arrayContaining([...SUPPORTED_FILE_EXTENSIONS]),
+      expect.arrayContaining([...SUPPORTED_TEXT_EXTENSIONS]),
     );
     expect(new Set(extensionChoices.map((choice) => choice.extension)).size).toBe(
-      SUPPORTED_FILE_EXTENSIONS.length,
+      SUPPORTED_TEXT_EXTENSIONS.length,
     );
 
     for (const choice of SUPPORTED_FILE_TYPE_CHOICES) {

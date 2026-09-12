@@ -20,6 +20,7 @@ Diese Kombination liefert native, kleine Desktop-Pakete und direkten, kontrollie
 | Markdown | unified, remark-gfm, remark-math, rehype-katex, rehype-sanitize, rehype-highlight |
 | HTML | sichere HAST-/Iframe-Vorschau als Standard; explizit bestätigter separater WebView über tokenisierten Loopback-Ursprung für vollständige aktive Inhalte |
 | SVG | Bild-Data-URL in einem Iframe ohne Sandbox-Rechte mit deny-by-default-CSP; kein Skript- oder Ressourcenzugriff |
+| Bilder und PDF | schreibgeschützte Base64-Payload aus Rust nach Signaturprüfung (nie Textdecodierung); Bild als `<img>`-Data-URL, PDF über PDF.js im Worker; kein Editor, kein Speicherpfad |
 | Webkomponenten | lazy Astro-/Svelte-/Vue-Mischsyntax; keine Ausführung von Projektcode |
 | JSON/JSONL/NDJSON | CodeMirror plus eigene einklappbare Baumansicht mit Quelltext-, Tiefen- und Knotengrenze |
 | Notebooks | eigener nbformat-Parser; Markdown- und Code-Zellen über die sanitisierte Markdown-Pipeline, Ausgaben nur als Text, Bilddaten oder Fehler |
@@ -64,12 +65,12 @@ src/lib/
   debug/        WebView-/Plattformdiagnose für den expliziten Debug-Modus
   editor/       CodeMirror-Integration, lazy Sprachauflösung und eigene Stream-Modi
   files/        Dateitypen, Zuordnungsgruppen, Dokumentzustand, Pfade und Dialoge
-  preview/      isolierte HTML-, SVG-, Markdown-, Notebook-, JSON-, CSV-, Text-, LaTeX- und PDF-Ansichten
+  preview/      isolierte HTML-, SVG-, Bild-, Markdown-, Notebook-, JSON-, CSV-, Text-, LaTeX- und PDF-Ansichten
   settings/     persistente UI-/Editor-/Zuordnungseinstellungen
   update/       Oberfläche des signierten Release-Updaters
 src-tauri/src/
   associations.rs  OS-konforme Standardprogramm-Auswahl
-  document.rs      Encoding-sichere und atomare Datei-E/A sowie Open-Events
+  document.rs      Encoding-sichere und atomare Datei-E/A, signaturgeprüfte Binärdokumente sowie Open-Events
   html_preview.rs  isolierter Loopback-Server und Fenster-Lifecycle für aktives HTML
   latex.rs         isolierte Compilersteuerung mit Timeouts
   updater.rs       HTTPS-, Signatur- und Installationsgrenze

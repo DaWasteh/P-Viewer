@@ -222,7 +222,7 @@ const sanitizeSchema: Schema = {
 const parser = unified().use(rehypeParse);
 const sanitizer = unified().use(rehypeSanitize, sanitizeSchema).use(rehypeStringify);
 const safeDataImagePattern =
-  /^data:image\/(?:png|jpeg|gif|webp|bmp|x-icon);base64,[a-z\d+/=\s]+$/i;
+  /^data:image\/(?:png|jpeg|gif|webp|bmp|x-icon|avif);base64,[a-z\d+/=\s]+$/i;
 const languagePattern = /^[a-z]{1,8}(?:-[a-z\d]{1,8})*$/i;
 
 function formatBytes(bytes: number): string {

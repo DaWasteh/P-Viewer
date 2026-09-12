@@ -16,3 +16,6 @@ vite.config.ts.timestamp-*
 # Browser-test artifacts
 /test-results/
 /playwright-report/
+
+# Visual Studio user metadata
+/.vs/

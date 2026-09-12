@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   detectLanguage,
   extractKatexMacros,
+  isolateBlockCommands,
   parseColumnAlignments,
   renderLatexLive,
 } from "./latex";
@@ -138,6 +139,35 @@ describe("bundled LaTeX live renderer", () => {
     expect(result.html).toContain("<ul>\n<li>A\n<ol>\n<li>B</li>\n</ol>\n</li>\n<li>C</li>\n</ul>");
     expect(result.html).toContain("<dl>\n<dt>Begriff</dt><dd>Erklärung</dd>\n</dl>");
     expect(result.warnings).toEqual([]);
+  });
+
+  it("renders block environments and items that share a line with other text", () => {
+    const result = renderLatexLive(String.raw`
+      \begin{document}
+      \begin{center}{\Large Titelzeile}\end{center} Danach.
+      \begin{itemize}[noitemsep] \item Eins \item Zwei
+      \item[Label] Drei \end{itemize}
+      \begin{minipage}[t]{0.5\textwidth}Im Kasten\end{minipage}
+      \begin{theorem}[Euler] Aussage \end{theorem}
+      \begin{abstract}Kurz\end{abstract}
+      \end{document}
+    `);
+
+    expect(result.html).toContain('<div class="latex-center">\n<p><span class="latex-size-Large">Titelzeile</span></p>\n</div>\n<p>Danach.</p>');
+    expect(result.html).toContain('<ul>\n<li>Eins</li>\n<li>Zwei</li>\n<li class="latex-labeled"><span class="latex-item-label">Label</span> Drei</li>\n</ul>');
+    expect(result.html).toContain("<p>Im Kasten</p>");
+    expect(result.html).not.toContain("textwidth");
+    expect(result.html).toContain("(Euler).</strong> \n<p>Aussage</p>");
+    expect(result.html).toContain("Zusammenfassung</h2>\n<p>Kurz</p>");
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("keeps well-formed sources unchanged when isolating block commands", () => {
+    const source = "\\begin{itemize}\n\\item A\n\n\\item B\n\\end{itemize}\nText \\\\item nicht\n";
+    expect(isolateBlockCommands(source)).toBe(source);
+    expect(isolateBlockCommands("Text\\begin{quote}Zitat\\end{quote}Rest")).toBe(
+      "Text\n\\begin{quote}\nZitat\n\\end{quote}\nRest",
+    );
   });
 
   it("treats line breaks with spacing, accents and quotes like LaTeX", () => {

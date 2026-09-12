@@ -2,6 +2,7 @@
   import { ChevronDown } from "@lucide/svelte";
   import {
     SUPPORTED_FILE_TYPE_CHOICES,
+    detectFileType,
     extensionOf,
     fileNameForFileTypeChoice,
     fileNameWithExtension,
@@ -98,6 +99,9 @@
             ? `Eigene Endung (.${currentCustomExtension})`
             : "Text (ohne Endung)"}
         </option>
+      {:else if !SUPPORTED_FILE_TYPE_CHOICES.some((choice) => choice.id === currentChoiceId)}
+        <!-- Read-only binary kinds (images, PDF) are shown but never offered as a target type. -->
+        <option value={currentChoiceId}>{detectFileType(fileName).label} (.{extensionOf(fileName)})</option>
       {/if}
       {#each groups as group}
         <optgroup label={group}>

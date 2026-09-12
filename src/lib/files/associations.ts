@@ -8,10 +8,12 @@ export interface FileAssociationGroup {
   extensions: readonly string[];
   mimeType: string;
   contentTypes: readonly string[];
+  /** `false` keeps a group (images, PDF) out of the initial default-app selection. */
+  defaultSelection?: boolean;
 }
 
 export const FILE_ASSOCIATION_GROUPS: readonly FileAssociationGroup[] = Object.freeze(
-  associationData.map((group) =>
+  (associationData as FileAssociationGroup[]).map((group) =>
     Object.freeze({
       ...group,
       extensions: Object.freeze([...group.extensions]),
@@ -24,10 +26,17 @@ export const FILE_ASSOCIATION_IDS: readonly string[] = Object.freeze(
   FILE_ASSOCIATION_GROUPS.map((group) => group.id),
 );
 
+/** Groups preselected for "Als Standardprogramm übernehmen": text formats only. */
+export const DEFAULT_FILE_ASSOCIATION_IDS: readonly string[] = Object.freeze(
+  FILE_ASSOCIATION_GROUPS.filter((group) => group.defaultSelection !== false).map(
+    (group) => group.id,
+  ),
+);
+
 const associationIds = new Set(FILE_ASSOCIATION_IDS);
 
 export function normalizeAssociationIds(value: unknown): string[] {
-  if (!Array.isArray(value)) return [...FILE_ASSOCIATION_IDS];
+  if (!Array.isArray(value)) return [...DEFAULT_FILE_ASSOCIATION_IDS];
 
   const normalized = value.filter(
     (entry): entry is string => typeof entry === "string" && associationIds.has(entry),

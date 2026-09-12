@@ -4,10 +4,17 @@ Alle Entwicklungsstufen folgen semantischer Vorabversionierung.
 
 ## 0.1.3
 
+- schreibgeschützte Bildansicht (PNG, APNG, JPEG, GIF, WebP, BMP, ICO, AVIF) mit Zoom, Einpassen, Pixelraster und Transparenzraster sowie integrierte PDF-Ansicht für eigenständige PDF-Dateien; Inhalte werden per Dateisignatur geprüft, nie als Text gelesen und nie gespeichert oder umbenannt
+- unterstützte Formate von 169 auf 306 Dateiendungen in 110 Gruppen und von 36 auf 131 spezielle Dateinamen erweitert: unter anderem Terraform/HCL, Nix und Vim Script mit eigenen Syntaxmodi, Verilog/SystemVerilog, CUDA, GLSL/HLSL, Cython, Starlark/Bazel, COBOL, Haxe, Standard ML, Racket, SPARQL/Cypher, Turtle, XQuery, SQL-Dialekte, MSBuild-/.NET-Projektdateien, Qt-, Xcode- und Apple-Konfigurations-XML, systemd-Units, PEM-Zertifikate, Prüfsummen, Lock-Dateien, Bazel-`BUILD`, `go.mod`, `nginx.conf`, `Dockerfile.*`, `justfile`, Ruby-Tooling-Dateien sowie Dutzende `.*rc`-, Ignore- und Versionsdateien
+- LaTeX-Livevorschau: einzeilige Umgebungen wie `\begin{center}…\end{center}` und mehrere `\item` in einer Zeile verloren ihren Text; Argumente von `minipage`, `frame` und ähnlichen Umgebungen erscheinen nicht mehr als Fließtext
+- SVG-Vorschau: „Vergrößern“ war bei pane-breiten Grafiken wirkungslos und der linke Rand wurde beim Überlauf abgeschnitten; XML-Deklarationen mit Legacy-Kodierung werden für die bereits decodierte Quelle auf UTF-8 umgeschrieben
+- JSON-Vorschau: Werkzeugdateien wie `tsconfig.json`, `.babelrc`, `.eslintrc` oder VS-Code-`settings.json` werden nach JSONC-Konvention gelesen statt mit Kommentarfehler abgelehnt; Syntaxfehler erscheinen auf Deutsch, nachgestellte Kommas und mehrere Wurzelwerte erhalten einen konkreten Hinweis
+- Notebook-Ausgaben vom Typ `image/svg+xml` (Matplotlib, Plotly) werden als opakes Bild dargestellt statt zu fehlen; Markdown-Codeblöcke erhalten 22 weitere Grammatiken wie NSIS, D, Nim, Prolog, AWK, Vim, GLSL, Apache, PL/pgSQL, LLVM, Haml, ERB oder G-code
+- Tabulatorgetrennte `.tab`-Dateien werden als TSV erkannt; Prüfsummen, PEM-Blöcke und weitere Untertitelformate nutzen die Monospace-Leseansicht
 - Editorzustand pro Tab bewahrt Undo/Redo, Auswahl, Folding und Scrollposition, ohne zusätzliche unsichtbare Editoren zu betreiben
 - SHA-256-basierte Speicherkonflikterkennung verhindert das unbemerkte Überschreiben zwischenzeitlich extern geänderter Dateien; gelöschte Quelldateien werden nicht still neu angelegt
 - Kodierung in der Statusleiste explizit neu wählbar, unter anderem für BOM-loses UTF-16, Windows-125x, Shift_JIS und GB18030; verlustbehaftet gelesene Dateien werden nicht ohne Weiteres zurückgespeichert
-- JSON Lines (`.jsonl`) und NDJSON (`.ndjson`) mit Datensatzansicht, Syntaxhervorhebung, Fehlerzeilen und Systemzuordnungen ergänzt: nun 169 Endungen
+- JSON Lines (`.jsonl`) und NDJSON (`.ndjson`) mit Datensatzansicht, Syntaxhervorhebung, Fehlerzeilen und Systemzuordnungen ergänzt
 - Extremfallgrenzen für JSON-Tiefe und -Knoten, CSV-Tabellenzellen, Markdown-Komplexität, Notebook-Gesamtausgabe, LaTeX-Verschachtelung und PDF-Bitmaps; vollständige Dokumentquelle bleibt im Editor verfügbar
 - CSV bewahrt explizit zitierte Leerzeilen und meldet nicht geschlossene Anführungszeichen; Notebook-`text/latex` rendert auch Formeln ohne Markdown-Begrenzer
 - PDF-Vorschau zeigt eine frei wählbare Seite statt alle Seiten gleichzeitig im Speicher zu halten; veraltete LaTeX-Build-Ergebnisse werden nicht als aktueller Quellstand ausgegeben

@@ -1,5 +1,5 @@
 import {
-  FILE_ASSOCIATION_IDS,
+  DEFAULT_FILE_ASSOCIATION_IDS,
   normalizeAssociationIds,
 } from "$lib/files/associations";
 
@@ -24,7 +24,7 @@ export const DEFAULT_SETTINGS: AppSettings = Object.freeze({
   wordWrap: true,
   spellcheck: true,
   debugMode: false,
-  defaultAppAssociations: [...FILE_ASSOCIATION_IDS],
+  defaultAppAssociations: [...DEFAULT_FILE_ASSOCIATION_IDS],
 });
 
 const STORE_FILE = "settings.json";

@@ -725,6 +725,7 @@ export function renderLatexLive(source: string): LatexLiveRenderResult {
   body = protectMathEnvironments(body, context);
   body = protectDelimitedMath(body, context);
   body = protectTabular(body, context);
+  body = isolateBlockCommands(body);
 
   let html = renderLines(body, context, metadata);
   if (context.footnotes.length > 0) html += renderFootnotes(context);
@@ -799,6 +800,81 @@ function removeHiddenBlocks(source: string): string {
   return source
     .replace(/\\begin\s*\{comment\}[\s\S]*?\\end\s*\{comment\}/g, "")
     .replace(/\\iffalse\b[\s\S]*?\\fi\b/g, "");
+}
+
+// Environments whose mandatory `{…}` arguments follow `\begin{name}` and must not
+// be mistaken for body text when the environment is isolated on its own line.
+const BRACED_ARGUMENT_ENVIRONMENTS = new Set([
+  "minipage",
+  "column",
+  "wrapfigure",
+  "wraptable",
+  "multicols",
+  "spacing",
+  "adjustbox",
+  "otherlanguage",
+  "subfigure",
+  "subtable",
+  "frame",
+  "block",
+  "alertblock",
+  "exampleblock",
+  "thebibliography",
+  "list",
+  "picture",
+  "tcolorbox",
+]);
+
+/**
+ * The line renderer recognises `\begin`, `\end` and `\item` only at the start of a
+ * line. Real documents write `\begin{center}Title\end{center}` or
+ * `\item A \item B` on one line, which previously lost the text. Line breaks are
+ * inserted only where other text shares the line, so paragraph and list
+ * spacing of already well-formed sources stays unchanged.
+ */
+export function isolateBlockCommands(source: string): string {
+  let output = "";
+  let cursor = 0;
+  const pattern = /\\(?:(begin|end)\s*\{([^}]*)\}|(item)(?![A-Za-z@]))/g;
+
+  for (const match of source.matchAll(pattern)) {
+    const start = match.index;
+    if (start < cursor || backslashesBefore(source, start) % 2 !== 0) continue;
+    let end = start + match[0].length;
+
+    if (match[1] === "begin") {
+      const name = match[2].replace(/\*$/, "");
+      let position = end;
+      for (;;) {
+        let probe = position;
+        while (source[probe] === " " || source[probe] === "\t") probe += 1;
+        const bracket = source[probe];
+        if (bracket === "[" || (bracket === "{" && BRACED_ARGUMENT_ENVIRONMENTS.has(name))) {
+          const close = findClosing(source, probe, bracket, bracket === "[" ? "]" : "}");
+          if (close < 0) break;
+          position = close + 1;
+          continue;
+        }
+        break;
+      }
+      end = position;
+    }
+
+    output += source.slice(cursor, start);
+    const lineStart = output.lastIndexOf("\n") + 1;
+    const sharesLineBefore = output.slice(lineStart).trim().length > 0;
+    output += `${sharesLineBefore ? "\n" : ""}${source.slice(start, end)}`;
+    cursor = end;
+
+    if (match[3] === "item") continue;
+    const lineEnd = source.indexOf("\n", end);
+    const remainder = source.slice(end, lineEnd < 0 ? undefined : lineEnd);
+    if (remainder.trim().length > 0 && !/^\s*\\item(?![A-Za-z@])/.test(remainder)) {
+      output += "\n";
+      cursor += remainder.length - remainder.trimStart().length;
+    }
+  }
+  return output + source.slice(cursor);
 }
 
 function documentBody(source: string): string {

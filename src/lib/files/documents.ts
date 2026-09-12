@@ -2,24 +2,36 @@ import { sameDocumentPath } from "./tabs";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm, open, save } from "@tauri-apps/plugin-dialog";
 import {
+  SUPPORTED_BINARY_EXTENSIONS,
   SUPPORTED_FILE_EXTENSIONS,
+  SUPPORTED_TEXT_EXTENSIONS,
   detectFileType,
   fileNameFromPath,
+  isBinaryKind,
 } from "./fileTypes";
 import type {
+  BinaryDocumentPayload,
   DocumentPayload,
   LineEnding,
   OpenDocument,
   SaveResult,
 } from "./types";
 
-const DOCUMENT_FILTERS = [
-  {
-    name: "Text, Code und Dokumente",
-    extensions: [...SUPPORTED_FILE_EXTENSIONS],
-  },
-  { name: "Alle Dateien", extensions: ["*"] },
+const TEXT_FILTER = {
+  name: "Text, Code und Dokumente",
+  extensions: [...SUPPORTED_TEXT_EXTENSIONS],
+};
+const ALL_FILES_FILTER = { name: "Alle Dateien", extensions: ["*"] };
+
+const OPEN_FILTERS = [
+  { name: "Alle unterstützten Dateien", extensions: [...SUPPORTED_FILE_EXTENSIONS] },
+  TEXT_FILTER,
+  { name: "Bilder und PDF", extensions: [...SUPPORTED_BINARY_EXTENSIONS] },
+  ALL_FILES_FILTER,
 ];
+
+// Only text documents can be written; images and PDF are read-only viewers.
+const SAVE_FILTERS = [TEXT_FILTER, ALL_FILES_FILTER];
 
 function inTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -57,12 +69,17 @@ export function createUntitledDocument(name = "Unbenannt.txt"): OpenDocument {
   };
 }
 
+/** Characters held in memory for a tab: text content plus any base64 binary payload. */
+export function documentWeight(document: Pick<OpenDocument, "content" | "binary">): number {
+  return document.content.length + (document.binary?.base64.length ?? 0);
+}
+
 export async function chooseAndOpenDocument(): Promise<OpenDocument | null> {
   requireDesktop();
   const selected = await open({
     multiple: false,
     directory: false,
-    filters: DOCUMENT_FILTERS,
+    filters: OPEN_FILTERS,
   });
 
   if (typeof selected !== "string") return null;
@@ -71,6 +88,26 @@ export async function chooseAndOpenDocument(): Promise<OpenDocument | null> {
 
 export async function openDocumentPath(path: string, encoding?: string): Promise<OpenDocument> {
   requireDesktop();
+  const kind = detectFileType(fileNameFromPath(path)).kind;
+  if (isBinaryKind(kind)) {
+    const payload = await invoke<BinaryDocumentPayload>("read_binary_document", { path, kind });
+    return {
+      path: payload.path,
+      name: payload.name,
+      content: "",
+      savedContent: "",
+      encoding: "Binär",
+      hasBom: false,
+      lineEnding: "lf",
+      size: payload.size,
+      lossy: false,
+      untitled: false,
+      metadataDirty: false,
+      fileType: detectFileType(payload.name),
+      binary: { mime: payload.mime, base64: payload.base64 },
+    };
+  }
+
   const payload = await invoke<DocumentPayload>("read_document", { path, encoding: encoding ?? null });
   return {
     ...payload,
@@ -87,13 +124,14 @@ export async function saveDocument(
   validatePath?: (path: string) => void,
 ): Promise<OpenDocument | null> {
   requireDesktop();
+  if (document.binary) throw new Error("Bilder und PDF-Dokumente werden nur angezeigt und können in P-Viewer nicht gespeichert werden.");
   if (document.lossy && !forceDialog) throw new Error("Diese Datei wurde mit Ersatzzeichen gelesen. Bitte die Kodierung in der Statusleiste korrigieren oder die bearbeitete Kopie mit Speichern unter sichern.");
   let path = document.path;
 
   if (forceDialog || document.untitled || !path) {
     const selected = await save({
       defaultPath: document.name || "Unbenannt.txt",
-      filters: DOCUMENT_FILTERS,
+      filters: SAVE_FILTERS,
     });
     if (!selected) return null;
     path = selected;

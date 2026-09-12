@@ -61,14 +61,19 @@ describe("Jupyter notebook parsing", () => {
             cell_type: "code",
             outputs: [
               { output_type: "display_data", data: { "image/png": "not base64!" } },
-              { output_type: "display_data", data: { "image/svg+xml": "<svg/>" } },
+              { output_type: "display_data", data: { "image/svg+xml": "<svg xmlns=\"http://www.w3.org/2000/svg\"><script>x</script></svg>" } },
+              { output_type: "display_data", data: { "image/svg+xml": "<b>kein svg</b>" } },
             ],
           },
         ],
       }),
     );
-    expect(parsed.cells[0].outputs).toEqual([]);
+    // SVG output becomes an opaque <img> data URL: no markup or script reaches the DOM.
+    expect(parsed.cells[0].outputs).toHaveLength(1);
+    expect(parsed.cells[0].outputs[0]).toMatchObject({ kind: "image", alt: "svg-Ausgabe" });
+    expect((parsed.cells[0].outputs[0] as { dataUrl: string }).dataUrl).toMatch(/^data:image\/svg\+xml;charset=utf-8;base64,[A-Za-z0-9+/=]+$/);
     expect(JSON.stringify(parsed)).not.toContain("<svg");
+    expect(JSON.stringify(parsed)).not.toContain("<script");
   });
 
   it("rejects non-notebook JSON with a readable error", () => {

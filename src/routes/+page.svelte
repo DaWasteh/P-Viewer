@@ -25,6 +25,7 @@
     confirmDiscardChanges,
     confirmDiscardDocuments,
     createUntitledDocument,
+    documentWeight,
     openDocumentPath,
     saveDocument,
   } from "$lib/files/documents";
@@ -93,6 +94,8 @@
   const activeTab = $derived(tabs.find((tab) => tab.id === activeTabId) ?? tabs[0]);
   const document = $derived(activeTab!.document);
   const dirty = $derived(documentIsDirty(document));
+  // Images and PDF are read-only viewers without an editor or save path.
+  const binaryDocument = $derived(Boolean(document.binary));
   const dirtyCount = $derived(tabs.filter((tab) => documentIsDirty(tab.document)).length);
   const tabItems = $derived(
     tabs.map((tab) => ({
@@ -277,7 +280,7 @@
       return;
     }
 
-    if (tabs.length >= 32 || tabs.reduce((size, tab) => size + tab.document.content.length, opened.content.length) > 64_000_000) {
+    if (tabs.length >= 32 || tabs.reduce((size, tab) => size + documentWeight(tab.document), documentWeight(opened)) > 64_000_000) {
       throw new Error("Zu viele offene Dokumente (maximal 32 Tabs / 64 Millionen Zeichen). Bitte zuerst Tabs schließen.");
     }
     const current = tabs.find((tab) => tab.id === activeTabId);
@@ -495,7 +498,7 @@
   }
 
   function updateFileType(fileName: string): void {
-    if (fileName === document.name) return;
+    if (fileName === document.name || binaryDocument) return;
     document.name = fileName;
     document.fileType = detectFileType(fileName);
     document.metadataDirty = true;
@@ -539,7 +542,7 @@
       void openDocument();
     } else if (key === "s") {
       event.preventDefault();
-      void saveCurrent(event.shiftKey);
+      if (!binaryDocument) void saveCurrent(event.shiftKey);
     } else if (key === "e" && event.shiftKey) {
       event.preventDefault();
       mode = "edit";
@@ -563,6 +566,12 @@
   function handleBeforeUnload(event: BeforeUnloadEvent): void {
     if (dirtyCount === 0) return;
     event.preventDefault();
+  }
+
+  function formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toLocaleString("de-DE", { maximumFractionDigits: 1 })} KiB`;
+    return `${(bytes / 1024 / 1024).toLocaleString("de-DE", { maximumFractionDigits: 2 })} MiB`;
   }
 
   function lineEndingLabel(value: string): string {
@@ -606,26 +615,26 @@
         <FolderOpen size={17} aria-hidden="true" />
         <span class="sr-only">Dokument öffnen</span>
       </button>
-      <button class="icon-button" title="Speichern (Strg/Cmd+S)" onclick={() => void saveCurrent()} disabled={busy || (!dirty && !document.untitled)}>
+      <button class="icon-button" title="Speichern (Strg/Cmd+S)" onclick={() => void saveCurrent()} disabled={busy || binaryDocument || (!dirty && !document.untitled)}>
         <Save size={17} aria-hidden="true" />
         <span class="sr-only">Dokument speichern</span>
       </button>
-      <button class="icon-button" title="Speichern unter (Strg/Cmd+Umschalt+S)" onclick={() => void saveCurrent(true)} disabled={busy}>
+      <button class="icon-button" title={binaryDocument ? "Bilder und PDF werden nur angezeigt" : "Speichern unter (Strg/Cmd+Umschalt+S)"} onclick={() => void saveCurrent(true)} disabled={busy || binaryDocument}>
         <FileOutput size={17} aria-hidden="true" />
         <span class="sr-only">Dokument speichern unter</span>
       </button>
     </div>
 
     <div class="mode-switch" aria-label="Ansichtsmodus">
-      <button class:active={mode === "edit"} aria-pressed={mode === "edit"} onclick={() => (mode = "edit")} title="Bearbeiten (Strg/Cmd+Umschalt+E)">
+      <button class:active={mode === "edit" && !binaryDocument} aria-pressed={mode === "edit" && !binaryDocument} onclick={() => (mode = "edit")} title="Bearbeiten (Strg/Cmd+Umschalt+E)" disabled={binaryDocument}>
         <Pencil size={15} aria-hidden="true" />
         <span>Edit</span>
       </button>
-      <button class:active={mode === "view"} aria-pressed={mode === "view"} onclick={() => (mode = "view")} title="Ansehen (Strg/Cmd+Umschalt+R)">
+      <button class:active={mode === "view" || binaryDocument} aria-pressed={mode === "view" || binaryDocument} onclick={() => (mode = "view")} title="Ansehen (Strg/Cmd+Umschalt+R)" disabled={binaryDocument}>
         <Eye size={15} aria-hidden="true" />
         <span>View</span>
       </button>
-      <button class:active={mode === "split"} aria-pressed={mode === "split"} onclick={() => (mode = "split")} title="Geteilt (Strg/Cmd+Umschalt+P)">
+      <button class:active={mode === "split" && !binaryDocument} aria-pressed={mode === "split" && !binaryDocument} onclick={() => (mode = "split")} title="Geteilt (Strg/Cmd+Umschalt+P)" disabled={binaryDocument}>
         <Columns2 size={15} aria-hidden="true" />
         <span>Split</span>
       </button>
@@ -633,7 +642,7 @@
 
     <FileTypeSelector
       fileName={document.name}
-      disabled={busy}
+      disabled={busy || binaryDocument}
       onChange={updateFileType}
     />
     <button
@@ -675,11 +684,30 @@
 
   <div
     id="document-workspace"
-    class:split={mode === "split"}
+    class:split={mode === "split" && !binaryDocument}
     class="workspace"
     role="tabpanel"
     aria-label={document.name}
   >
+    {#if binaryDocument}
+      <!-- Images and PDF have no editable text: the viewer takes the whole workspace. -->
+      <div class="pane viewer-pane" aria-label="Betrachter">
+        {#key `${activeTabId}:${activeTab!.revision}`}
+        <PreviewPane
+          content=""
+          fileName={document.name}
+          path={document.path}
+          fileType={document.fileType}
+          binary={document.binary}
+          theme={activeTheme}
+          editorFontSize={settings.editorFontSize}
+          previewFontSize={settings.previewFontSize}
+          wordWrap={settings.wordWrap}
+          onOpenPath={(path) => void openExternalDocuments([path])}
+        />
+        {/key}
+      </div>
+    {:else}
     <div class:hidden={mode === "view"} class="pane editor-pane" aria-label="Editor">
       {#key `${activeTabId}:${activeTab!.revision}`}
         <EditorPane
@@ -715,6 +743,7 @@
         {/key}
       </div>
     {/if}
+    {/if}
   </div>
 
   {#if dragActive}
@@ -725,6 +754,12 @@
   {/if}
 
   <footer class="statusbar">
+    {#if binaryDocument}
+      <span>{document.fileType.label}</span>
+      <span>{formatBytes(document.size)}</span>
+      <span>{document.binary?.mime}</span>
+      <span>Schreibgeschützt</span>
+    {:else}
     <span>{lineCount.toLocaleString("de-DE")} Zeilen</span>
     <span>{wordCount.toLocaleString("de-DE")} Wörter</span>
     <span>Ln {cursorLine}, Sp {cursorColumn}</span>
@@ -740,6 +775,7 @@
     </label>
     <span>{lineEndingLabel(document.lineEnding)}</span>
     {#if document.lossy}<span class="warning">Kodierung mit Ersatzzeichen</span>{/if}
+    {/if}
     {#if settings.debugMode}
       <span class="debug-badge" title={runtimeInfo.userAgent}>DEBUG v{APP_VERSION}</span>
       <span title={runtimeInfo.userAgent}>{runtimeInfo.platform} · {runtimeInfo.engine}</span>
