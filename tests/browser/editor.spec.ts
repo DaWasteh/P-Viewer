@@ -124,9 +124,14 @@ test("SVG zoom exceeds the pane width and keeps the left edge reachable", async 
   expect(fitted).toBeLessThanOrEqual(paneWidth);
   for (let i = 0; i < 4; i++) await page.getByRole("button", { name: "Vergrößern" }).click();
   await expect(page.locator(".svg-preview .zoom-value")).toHaveText("244 %");
-  await expect.poll(() => frame.locator("img").evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(paneWidth * 1.5);
-  expect(await frame.locator("img").evaluate((element) => element.getBoundingClientRect().left)).toBeGreaterThanOrEqual(0);
-  expect(await frame.locator("body").evaluate((body) => body.scrollWidth > body.clientWidth)).toBe(true);
+  // The sandboxed iframe re-navigates its srcdoc on every zoom step; an evaluate that
+  // lands mid-navigation throws instead of failing, so measure until the frame settles.
+  const measure = async <T,>(read: () => Promise<T>, fallback: T): Promise<T> => {
+    try { return await read(); } catch { return fallback; }
+  };
+  await expect.poll(() => measure(() => frame.locator("img").evaluate((element) => element.getBoundingClientRect().width), 0)).toBeGreaterThan(paneWidth * 1.5);
+  await expect.poll(() => measure(() => frame.locator("img").evaluate((element) => element.getBoundingClientRect().left), -1)).toBeGreaterThanOrEqual(0);
+  await expect.poll(() => measure(() => frame.locator("body").evaluate((body) => body.scrollWidth > body.clientWidth), false)).toBe(true);
   await page.screenshot({ path: "test-results/svg-zoom.png" });
 });
 
