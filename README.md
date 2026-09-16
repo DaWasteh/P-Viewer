@@ -5,12 +5,13 @@ P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter f
 [![Tests](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml/badge.svg)](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-blue.svg)](LICENSE)
 
-> **Status:** aktueller Entwicklungsstand `v0.1.3`.
+> **Status:** aktueller Entwicklungsstand `v0.1.4`.
 
 ## Aktueller Funktionsumfang
 
 - Text- und Code-Dateien encoding-sicher lesen (UTF-8, UTF-16 mit und ohne BOM, Legacy-Kodierungen), atomar speichern, erstellen und bearbeiten
 - mehrere Dokumente parallel in einer kompakten Tab-Leiste öffnen und sicher schließen, mit eigener Undo-Historie, Auswahl und Scrollposition pro Tab
+- eine laufende Instanz für alle Dateien: extern geöffnete Dokumente landen als Tab im zuletzt benutzten Fenster; Tabs lassen sich per Maus umsortieren, zwischen P-Viewer-Fenstern verschieben oder in ein neues Fenster ziehen (Strg/Cmd+Umschalt+N öffnet ein leeres Fenster), und der letzte Tab schließt sein Fenster
 - Speicherkonflikte bei externen Änderungen erkennen; bei mehrdeutigen Dateien die Kodierung in der Statusleiste explizit neu wählen
 - Dateityp direkt in der Werkzeugleiste aus allen unterstützten Formaten, speziellen Dateinamen oder über eine eigene Endung wählen
 - breite Syntaxhervorhebung für 295 Text-Dateiendungen und 131 spezielle Dateinamen mit sicherem Plaintext-Fallback, inklusive gemischter Astro-, Svelte- und Vue-Syntax sowie eigener Modi für Batch, Makefile, GraphQL, Elixir, BibTeX, Ignore-Dateien, CSV, Terraform/HCL, Nix und Vim Script
@@ -112,9 +113,9 @@ Installer registrieren alle 306 unterstützten Dateiendungen als mögliche P-Vie
 
 `npm run test:browser` prüft den Produktionsbuild mit Playwright (Windows: vorhandenes Edge; Linux: vorher `npx playwright install --with-deps chromium`). `node scripts/smoke-local-launcher.mjs` prüft unter Windows zusätzlich die tatsächlich gebaute Root-EXE mit temporären Dokumenten und einem eigenen WebView-Profil. Dazu wird nur für diesen Testprozess ein lokaler Debug-Port aktiviert.
 
-Vorschaugrenzen halten die App bei sehr großen/komplexen Dateien bedienbar; sie sind keine Beschränkung auf ebenso kleine Editorquellen. Markdown begrenzt Quelltext, Zeilen und Strukturmarker, Notebooks kombinieren Zell-/Text-/Ausgabelimits. Die PDF-Ansicht hält nur eine Seite mit begrenzter Bitmap-Größe vor. View ist über **Strg/Cmd+Umschalt+R** erreichbar, Split über **Strg/Cmd+Umschalt+P**.
+Vorschaugrenzen halten die App bei sehr großen/komplexen Dateien bedienbar; sie sind keine Beschränkung auf ebenso kleine Editorquellen. Markdown begrenzt Quelltext, Zeilen und Strukturmarker, Notebooks kombinieren Zell-/Text-/Ausgabelimits. Die PDF-Ansicht hält nur eine Seite mit begrenzter Bitmap-Größe vor. View ist über **Strg/Cmd+Umschalt+R** erreichbar, Split über **Strg/Cmd+Umschalt+P**, ein weiteres Fenster über **Strg/Cmd+Umschalt+N**. Tabs wandern per Drag-and-drop zwischen Fenstern; beim Verschieben bleibt die Undo-Historie im Ursprungsfenster zurück.
 
-Testumfang, bekannte Grenzen und noch offene plattformspezifische Release-Abnahmen stehen in [`docs/QUALITY-v0.1.3.md`](docs/QUALITY-v0.1.3.md). Eine vollständige Fehlerfreiheit aller Dateiformate wird nicht behauptet.
+Testumfang, bekannte Grenzen und noch offene plattformspezifische Release-Abnahmen stehen in [`docs/QUALITY-v0.1.4.md`](docs/QUALITY-v0.1.4.md). Eine vollständige Fehlerfreiheit aller Dateiformate wird nicht behauptet.
 
 ## Versionierung
 

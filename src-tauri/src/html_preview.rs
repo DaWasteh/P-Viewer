@@ -14,7 +14,7 @@ use std::{
 };
 use tauri::{
     webview::{DownloadEvent, NewWindowResponse, WebviewWindowBuilder},
-    Manager, WebviewUrl, WindowEvent,
+    AppHandle, Manager, Runtime, WebviewUrl, WindowEvent,
 };
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 use url::Url;
@@ -43,6 +43,9 @@ struct PreviewEntry {
     content_type: String,
     root: Option<PathBuf>,
     window_label: String,
+    /// Label of the document window that opened this preview; the preview is
+    /// torn down together with it.
+    owner_label: String,
     revision: u64,
 }
 
@@ -120,6 +123,7 @@ impl Drop for PreviewServer {
 impl FullHtmlPreviewState {
     fn prepare(
         &self,
+        owner_label: &str,
         document_path: &str,
         file_name: &str,
         content: String,
@@ -136,6 +140,7 @@ impl FullHtmlPreviewState {
             content_type,
             root,
             window_label: window_label.clone(),
+            owner_label: owner_label.to_string(),
             revision: 0,
         }));
 
@@ -221,6 +226,27 @@ impl FullHtmlPreviewState {
             entries.remove(token);
         }
     }
+
+    /// Closes every preview that was opened from the given document window.
+    pub(crate) fn close_owned_by<R: Runtime>(&self, app: &AppHandle<R>, owner_label: &str) {
+        let owned: Vec<(String, String)> = match self.entries.lock() {
+            Ok(entries) => entries
+                .iter()
+                .filter_map(|(token, session)| {
+                    let entry = session.entry.lock().ok()?;
+                    (entry.owner_label == owner_label)
+                        .then(|| (token.clone(), entry.window_label.clone()))
+                })
+                .collect(),
+            Err(_) => return,
+        };
+        for (token, window_label) in owned {
+            if let Some(window) = app.get_webview_window(&window_label) {
+                let _ = window.destroy();
+            }
+            self.release(&token);
+        }
+    }
 }
 
 #[tauri::command]
@@ -228,12 +254,13 @@ impl FullHtmlPreviewState {
 // command, leaving an uncloseable white WebView2 window.
 pub async fn open_full_html_preview(
     app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
     state: tauri::State<'_, FullHtmlPreviewState>,
     document_path: String,
     file_name: String,
     content: String,
 ) -> Result<FullHtmlPreviewSession, String> {
-    let prepared = state.prepare(&document_path, &file_name, content)?;
+    let prepared = state.prepare(window.label(), &document_path, &file_name, content)?;
     let expected_host = prepared.host.clone();
     let expected_port = prepared.port;
     let expected_origin = format!("http://{expected_host}:{expected_port}");
@@ -803,6 +830,7 @@ mod tests {
             content_type: "text/html; charset=utf-8".into(),
             root: Some(root.canonicalize().unwrap()),
             window_label: "test".into(),
+            owner_label: "main".into(),
             revision: 0,
         };
 
@@ -833,6 +861,7 @@ mod tests {
         let state = FullHtmlPreviewState::default();
         let prepared = state
             .prepare(
+                "main",
                 document.to_str().unwrap(),
                 "index.html",
                 "<!doctype html><script src=\"app.js\"></script>".into(),
@@ -884,10 +913,20 @@ mod tests {
         fs::write(directory.path().join("asset.txt"), "asset").unwrap();
         let state = FullHtmlPreviewState::default();
         let a = state
-            .prepare(document.to_str().unwrap(), "index.html", "first".into())
+            .prepare(
+                "main",
+                document.to_str().unwrap(),
+                "index.html",
+                "first".into(),
+            )
             .unwrap();
         let b = state
-            .prepare(document.to_str().unwrap(), "index.html", "second".into())
+            .prepare(
+                "main",
+                document.to_str().unwrap(),
+                "index.html",
+                "second".into(),
+            )
             .unwrap();
         let cookies = format!("PViewerPreview_{}=1; PViewerPreview_{}=1", a.token, b.token);
         for preview in [&a, &b] {

@@ -1,6 +1,6 @@
 [package]
 name = "p-viewer"
-version = "0.1.3"
+version = "0.1.4"
 description = "A fast, focused cross-platform editor and document viewer"
 authors = ["P-Viewer contributors"]
 license = "MIT"
@@ -35,6 +35,7 @@ percent-encoding = "2"
 tauri-plugin-store = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-single-instance = "2"
 url = "2"
 mime_guess = "2"
 tiny_http = "0.12"

@@ -1,7 +1,7 @@
 # Architekturentscheidung
 
 **Status:** angenommen  
-**Version:** v0.1.3
+**Version:** v0.1.4
 
 ## Entscheidung
 
@@ -13,7 +13,7 @@ Diese Kombination liefert native, kleine Desktop-Pakete und direkten, kontrollie
 
 | Bereich | Entscheidung |
 | --- | --- |
-| Desktop-Shell | Tauri 2 |
+| Desktop-Shell | Tauri 2, eine Prozessinstanz mit beliebig vielen Dokumentfenstern (`main`, `main-2`, …) |
 | Native Logik | Rust |
 | Oberfläche | Svelte 5, TypeScript, Vite |
 | Editor | CodeMirror 6, Sprachen bei Bedarf geladen; eigene Stream-Modi für Formate ohne Paketunterstützung |
@@ -35,6 +35,7 @@ Diese Kombination liefert native, kleine Desktop-Pakete und direkten, kontrollie
 
 1. **Schnell öffnen:** unbekannte Textformate fallen auf Plaintext zurück; schwere Renderer werden erst bei Bedarf geladen.
 2. **Mehrere Dokumente, wenig Ablenkung:** Immutable CodeMirror-Zustände bleiben pro Tab erhalten; nur der aktive Editor ist gemountet. Vorschauen sind an die Tab-Identität gebunden.  Eine kompakte Tab-Leiste hält mehrere Dateien parallel offen; Edit-, View- und Split-Modus bleiben im Mittelpunkt.
+   **Ein Prozess, viele Fenster:** Ein zweiter Start reicht seine Argumente über `tauri-plugin-single-instance` an die laufende Instanz weiter. Rust entscheidet über das Zielfenster (zuletzt fokussiert), puffert Pfade und übergebene Tabs pro Fensterlabel und signalisiert nur; jedes Fenster holt seine Warteschlange selbst ab, damit weder Start-Races noch große Dokumente über `eval` entstehen. Tabs werden als opake JSON-Zeichenkette übergeben, die Rust nicht interpretiert; Editor-Undo bleibt im Quellfenster. Der letzte Tab schließt sein Fenster, aktive HTML-Vorschauen sind an ihr Besitzerfenster gebunden.
 3. **Keine implizite Ausführung von Dokumentcode:** Markdown-HTML wird sanitisiert, HTML läuft standardmäßig nur statisch in einem Iframe ohne Sandbox-Rechte und SVG wird ausschließlich als Bild dargestellt. Notebook-Ausgaben vom Typ `text/html` bleiben deaktiviert. Aktives HTML erfordert eine ausdrückliche Warnungsbestätigung und öffnet ausschließlich in einem getrennten WebView ohne App-Capabilities; Astro-/Svelte-/Vue-Projektcode bleibt Quelltext.
 4. **Minimale native Rechte:** Datei-Reads sind am geöffneten Handle begrenzt. Reguläre Saves vergleichen die beim Lesen/Speichern ermittelte SHA-256-Version unmittelbar vor dem atomaren Commit (optimistische Konflikterkennung, kein betriebssystemweiter Lock).  Dateioperationen laufen über eng begrenzte Rust-Commands statt pauschaler Dateisystemfreigaben.
 5. **Einstellungen getrennt vom Programm:** Updates ersetzen nur Anwendungsartefakte. Einstellungen bleiben in `%APPDATA%`, `~/Library/Application Support` beziehungsweise `$XDG_DATA_HOME` erhalten.
@@ -74,6 +75,7 @@ src-tauri/src/
   html_preview.rs  isolierter Loopback-Server und Fenster-Lifecycle für aktives HTML
   latex.rs         isolierte Compilersteuerung mit Timeouts
   updater.rs       HTTPS-, Signatur- und Installationsgrenze
+  windows.rs       Single-Instance-Weiterleitung, Fensterregistry, Pfad-/Tab-Warteschlangen und Tab-Transfer
 ```
 
 ## Verworfene Alternativen

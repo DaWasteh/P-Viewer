@@ -6,6 +6,8 @@ import { createServer } from "node:net";
 import { chromium, expect } from "@playwright/test";
 
 if (process.platform !== "win32") throw new Error("This smoke exercises the native Windows launcher/WebView2 only.");
+// P-Viewer is single-instance: with another P-Viewer running, the spawned
+// launcher would forward its documents to that instance and exit immediately.
 const binary = resolve(process.argv[2] ?? "P-Viewer.exe");
 const metadata = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 const temporary = await mkdtemp(join(tmpdir(), "p-viewer-smoke-"));
@@ -32,6 +34,18 @@ const child = spawn(binary, [textPath, dataPath, imagePath], {
   stdio: ["ignore", "pipe", "pipe"],
 });
 let log = "";
+/** Starts another launcher process; the running instance must take over its arguments so it exits at once. */
+async function runSecondInstance(args) {
+  const second = spawn(binary, args, { cwd: temporary, env: { ...process.env, WEBVIEW2_USER_DATA_FOLDER: join(temporary, "webview-second") }, stdio: ["ignore", "pipe", "pipe"] });
+  second.stdout.on("data", (data) => { log = (log + data).slice(-8000); });
+  second.stderr.on("data", (data) => { log = (log + data).slice(-8000); });
+  const exited = await Promise.race([
+    new Promise((accept) => second.once("exit", () => accept(true))),
+    new Promise((accept) => { const timer = setTimeout(() => accept(false), 15_000); timer.unref(); }),
+  ]);
+  if (!exited) { second.kill(); throw new Error("Second P-Viewer instance kept running instead of forwarding to the first one."); }
+  return second;
+}
 child.stdout.on("data", (data) => { log = (log + data).slice(-8000); });
 child.stderr.on("data", (data) => { log = (log + data).slice(-8000); });
 let spawnError;
@@ -67,10 +81,12 @@ try {
   await page.keyboard.insertText("Saved ä 😀\nSecond line\n");
   await page.keyboard.press("Control+s");
   await expect.poll(() => readFile(textPath, "utf8")).toBe("Saved ä 😀\r\nSecond line\r\n");
-  // Real native events must wait while a modal is open and deduplicate paths.
+  // Real single-instance forwarding: a second process hands its files to this
+  // window and exits. The window must wait while a modal is open and deduplicate paths.
   await page.getByRole("button", { name: "Einstellungen öffnen" }).click();
   await expect(page.getByRole("dialog", { name: "Einstellungen" })).toBeVisible();
-  await page.evaluate((path) => window.__TAURI_INTERNALS__.invoke("plugin:event|emit", { event: "open-documents", payload: [path, path] }), queuedPath);
+  const forwarder = await runSecondInstance([queuedPath, queuedPath]);
+  expect(forwarder.exitCode).toBe(0);
   await expect(page.getByRole("tab")).toHaveCount(3);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("tab")).toHaveCount(4);
@@ -90,6 +106,26 @@ try {
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "Einstellungen" })).toHaveCount(0);
   await page.screenshot({ path: resolve("test-results/native-windows-smoke.png") });
+
+  // A launch without files opens a second window inside the running process.
+  const opener = await runSecondInstance([]);
+  expect(opener.exitCode).toBe(0);
+  const pages = () => browser.contexts().flatMap((context) => context.pages());
+  await expect.poll(() => pages().length, { timeout: 20_000 }).toBe(2);
+  const second = pages().find((candidate) => candidate !== page);
+  const secondLabel = await second.evaluate(() => window.__TAURI_INTERNALS__.metadata.currentWindow.label);
+  expect(secondLabel).toMatch(/^main-[0-9]+$/);
+  await expect(second.getByRole("tab", { name: "Unbenannt.txt", exact: true })).toBeVisible();
+  // An explicit hand-over goes through the Rust queue, the signal and the pull of the target window.
+  const handover = { version: 1, mode: "edit", document: { path: "", name: "Handover.txt", content: "Moved between windows", savedContent: "Moved between windows", encoding: "UTF-8", hasBom: false, lineEnding: "lf", size: 0, lossy: false, untitled: true, metadataDirty: false, fileType: { kind: "text", language: "plaintext", label: "Text" } } };
+  await page.evaluate(([tab, target]) => window.__TAURI_INTERNALS__.invoke("move_tab_to_window", { tab, target, insideSource: false, allowNewWindow: false }), [JSON.stringify(handover), secondLabel]);
+  await expect(second.getByRole("tab", { name: "Handover.txt", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(second.locator(".editor-pane .cm-content")).toHaveText("Moved between windows");
+  await expect(second.getByRole("tab")).toHaveCount(1);
+  // Closing the last (clean) tab closes that window; the first window stays.
+  await second.getByRole("button", { name: "„Handover.txt“ schließen" }).click();
+  await expect.poll(() => pages().filter((candidate) => !candidate.isClosed()).length, { timeout: 20_000 }).toBe(1);
+  await expect(page.getByRole("tab")).toHaveCount(4);
   expect(errors).toEqual([]);
   // Discard ONLY this script's disposable edits; never address another app window.
   await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("plugin:window|destroy", { label: "main" })).catch((error) => {
@@ -97,7 +133,7 @@ try {
     if (!page.isClosed()) throw error;
   });
   succeeded = true;
-  console.log(`PASS native Windows v${metadata.version}: startup files, PNG viewer, JSONL, Unicode/CRLF save, queued/deduplicated open during modal, external conflict, explicit UTF-16LE reopen, modal UI; ${binary}`);
+  console.log(`PASS native Windows v${metadata.version}: startup files, PNG viewer, JSONL, Unicode/CRLF save, single-instance forwarding during modal, external conflict, explicit UTF-16LE reopen, modal UI, second window with tab hand-over and last-tab close; ${binary}`);
 } finally {
   await browser?.close().catch(() => undefined);
   if (child.exitCode === null) {

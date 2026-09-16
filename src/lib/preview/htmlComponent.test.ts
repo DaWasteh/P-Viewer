@@ -43,7 +43,12 @@ describe("HTML preview containment wiring", () => {
   });
 
   it("does not grant the isolated preview window any configured Tauri permissions", () => {
-    expect(capability.windows).toEqual(["main"]);
+    // Document windows are `main`, `main-2`, …; a preview label must never match.
+    expect(capability.windows).toEqual(["main", "main-*"]);
+    const previewLabel = `html-preview-${"0".repeat(32)}`;
+    const matches = (pattern: string) => new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`).test(previewLabel);
+    expect(capability.windows.some(matches)).toBe(false);
+    expect(backendSource).toContain('format!("html-preview-{token}")');
     expect(capability.permissions.length).toBeGreaterThan(0);
     expect(backendSource).toContain('const PREVIEW_HOST: &str = "127.0.0.1"');
     expect(backendSource).toContain("url.host_str() == Some(host)");

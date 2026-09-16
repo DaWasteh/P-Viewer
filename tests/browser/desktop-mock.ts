@@ -9,7 +9,14 @@ export async function mockDesktop(page: Page, name: string, content: string) {
     const listeners = new Map<string, number[]>();
     const control = w.__testNative = { calls: [] as any[], pending: {} as Record<string, (value: unknown) => void>, deferred: ["compile_latex", "open_full_html_preview", "download_and_install_update"], emit(event: string, payload: unknown) {
       for (const id of listeners.get(event) ?? []) callbacks.get(id)?.({ event, payload, id });
-    } };
+    },
+    // Per-window queues mirroring windows.rs: windows pull their own work after a signal.
+    pendingPaths: [`C:/fixtures/${name}`] as string[],
+    transferredTabs: [] as Array<{ tab: string; dropX: number | null; dropY: number | null }>,
+    moveResult: { moved: true, window: "main-2", created: true } as unknown,
+    dialogAnswer: undefined as string | undefined,
+    openDocuments(paths: string[]) { control.pendingPaths.push(...paths); control.emit("open-documents", null); },
+    transferTabs(tabs: Array<{ tab: string; dropX: number | null; dropY: number | null }>) { control.transferredTabs.push(...tabs); control.emit("tabs-transferred", null); } };
     w.__TAURI_INTERNALS__ = {
       metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main", windowLabel: "main" } },
       transformCallback(callback: (event: unknown) => void) { callbacks.set(++sequence, callback); return sequence; },
@@ -19,7 +26,10 @@ export async function mockDesktop(page: Page, name: string, content: string) {
         if (control.deferred.includes(command)) return new Promise((accept) => { control.pending[command] = accept; });
         if (command === "plugin:event|listen") { listeners.set(args.event, [...(listeners.get(args.event) ?? []), args.handler]); return args.handler; }
         if (command === "plugin:event|unlisten") return null;
-        if (command === "take_pending_document_paths") return [`C:/fixtures/${name}`];
+        if (command === "take_pending_document_paths") return control.pendingPaths.splice(0);
+        if (command === "take_transferred_tabs") return control.transferredTabs.splice(0);
+        if (command === "move_tab_to_window") return control.moveResult;
+        if (command === "open_new_window") return "main-2";
         if (command === "read_document") return { path: args.path, name: args.path.split("/").pop(), content, encoding: "UTF-8", hasBom: false, lineEnding: "lf", size: content.length, lossy: false, version: "fixture-version" };
         // A 2×2 PNG (red/blue checker) so the image viewer reports real dimensions.
         if (command === "read_binary_document") return { path: args.path, name: args.path.split("/").pop(), size: 87, mime: args.kind === "pdf" ? "application/pdf" : "image/png", base64: args.kind === "pdf" ? content : "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVQIW2P8z8Dwn4GBgYGJAQoAADgVAgLkOfJKAAAAAElFTkSuQmCC" };
@@ -28,9 +38,10 @@ export async function mockDesktop(page: Page, name: string, content: string) {
         if (command === "plugin:store|get") return null;
         if (command === "plugin:path|resolve_directory") return "C:/test-profile";
         if (command === "detect_latex_engines") return [{ id: "test", label: "Mock compiler", available: true }];
-        if (command === "plugin:dialog|message") return args.buttons?.OkCancelCustom?.[0] ?? "Ok";
-        if (command === "updater_configuration") return { configured: true, currentVersion: "0.1.3" };
-        if (command === "check_for_update") return { configured: true, currentVersion: "0.1.3", available: true, version: "0.1.4" };
+        // `confirm()` compares the returned label with its OK label; `dialogAnswer` lets a test decline.
+        if (command === "plugin:dialog|message") return control.dialogAnswer ?? args.buttons?.OkCancelCustom?.[0] ?? "Ok";
+        if (command === "updater_configuration") return { configured: true, currentVersion: "0.1.4" };
+        if (command === "check_for_update") return { configured: true, currentVersion: "0.1.4", available: true, version: "0.1.5" };
         return null;
       },
     };

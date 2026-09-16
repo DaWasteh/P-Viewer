@@ -3,9 +3,13 @@ import { createUntitledDocument } from "./documents";
 import {
   documentIsDirty,
   findTabByPath,
+  insertionIndex,
   isPristineUntitled,
   nextUntitledName,
+  parseTabTransfer,
+  reorderTabs,
   sameDocumentPath,
+  serializeTabTransfer,
 } from "./tabs";
 
 describe("document tabs", () => {
@@ -55,5 +59,55 @@ describe("document tabs", () => {
       "second",
     );
     expect(findTabByPath(tabs, "C:\\Notes\\first.txt", "first")).toBeUndefined();
+  });
+
+  it("finds the insertion index from tab midpoints", () => {
+    const rects = [
+      { left: 0, width: 100 },
+      { left: 100, width: 100 },
+      { left: 200, width: 100 },
+    ];
+    expect(insertionIndex(-5, rects)).toBe(0);
+    expect(insertionIndex(49, rects)).toBe(0);
+    expect(insertionIndex(51, rects)).toBe(1);
+    expect(insertionIndex(250, rects)).toBe(3);
+    expect(insertionIndex(999, rects)).toBe(3);
+    expect(insertionIndex(10, [])).toBe(0);
+  });
+
+  it("reorders tabs in place and clamps the target index", () => {
+    const tabs = [{ id: "a" }, { id: "b" }, { id: "c" }];
+    expect(reorderTabs(tabs, "a", 2)).toBe(true);
+    expect(tabs.map((tab) => tab.id)).toEqual(["b", "c", "a"]);
+    expect(reorderTabs(tabs, "c", 0)).toBe(true);
+    expect(tabs.map((tab) => tab.id)).toEqual(["c", "b", "a"]);
+    expect(reorderTabs(tabs, "b", 1)).toBe(false);
+    expect(reorderTabs(tabs, "a", 99)).toBe(false);
+    expect(reorderTabs(tabs, "missing", 0)).toBe(false);
+    expect(tabs.map((tab) => tab.id)).toEqual(["c", "b", "a"]);
+  });
+
+  it("round-trips a tab transfer including unsaved edits and rejects damaged payloads", () => {
+    const document = createUntitledDocument("notes.md");
+    document.path = "C:\\Notes\\notes.md";
+    document.untitled = false;
+    document.savedContent = "# Notes";
+    document.content = "# Notes\n\nEdited";
+    document.version = "abc";
+
+    const parsed = parseTabTransfer(serializeTabTransfer(document, "split"));
+    expect(parsed?.mode).toBe("split");
+    expect(parsed?.document).toEqual(document);
+    expect(parsed && documentIsDirty(parsed.document)).toBe(true);
+
+    const binary = createUntitledDocument("photo.png");
+    binary.binary = { mime: "image/png", base64: "AAAA" };
+    expect(parseTabTransfer(serializeTabTransfer(binary, "view"))?.document.binary).toEqual(binary.binary);
+
+    expect(parseTabTransfer("not json")).toBeNull();
+    expect(parseTabTransfer(JSON.stringify({ version: 2, document }))).toBeNull();
+    expect(parseTabTransfer(JSON.stringify({ version: 1, document: { ...document, content: 5 } }))).toBeNull();
+    expect(parseTabTransfer(JSON.stringify({ version: 1, document: { ...document, binary: { mime: "x" } } }))).toBeNull();
+    expect(parseTabTransfer(JSON.stringify({ version: 1, document, mode: "bogus" }))?.mode).toBe("edit");
   });
 });

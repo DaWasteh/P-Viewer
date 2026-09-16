@@ -3,23 +3,30 @@ mod document;
 mod html_preview;
 mod latex;
 mod updater;
-
-#[cfg(target_os = "macos")]
-use tauri::{Emitter, Manager};
+mod windows;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
-        .manage(document::PendingDocumentPaths::from_startup_arguments())
+        // Must stay the first plugin: a second process forwards its arguments
+        // to the running instance and exits before anything else initializes.
+        .plugin(tauri_plugin_single_instance::init(|app, arguments, cwd| {
+            windows::handle_second_instance(app, arguments, cwd);
+        }))
+        .manage(windows::WindowRouter::from_startup_arguments())
         .manage(html_preview::FullHtmlPreviewState::default())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .on_window_event(windows::handle_window_event)
         .invoke_handler(tauri::generate_handler![
             associations::apply_default_file_associations,
-            document::take_pending_document_paths,
+            windows::take_pending_document_paths,
+            windows::take_transferred_tabs,
+            windows::open_new_window,
+            windows::move_tab_to_window,
             document::read_document,
             document::read_binary_document,
             document::read_local_images,
@@ -46,13 +53,8 @@ pub fn run() {
                 .filter(|path| path.is_file())
                 .map(|path| path.to_string_lossy().into_owned())
                 .collect();
-            if paths.is_empty() {
-                return;
-            }
-
-            let pending = app_handle.state::<document::PendingDocumentPaths>();
-            if pending.add_paths(paths.clone()).is_ok() {
-                let _ = app_handle.emit("open-documents", &paths);
+            if !paths.is_empty() {
+                windows::dispatch_documents(app_handle.clone(), paths);
             }
         }
 

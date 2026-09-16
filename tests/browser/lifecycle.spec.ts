@@ -49,7 +49,7 @@ test("external opens queue and deduplicate during an in-flight save", async ({ p
   await page.evaluate(() => (window as any).__testNative.deferred.push("write_document"));
   await page.keyboard.press("ControlOrMeta+s");
   await expect.poll(() => page.evaluate(() => typeof (window as any).__testNative.pending.write_document)).toBe("function");
-  await page.evaluate(() => (window as any).__testNative.emit("open-documents", ["C:/fixtures/queued.txt", "C:/fixtures/queued.txt"]));
+  await page.evaluate(() => (window as any).__testNative.openDocuments(["C:/fixtures/queued.txt", "C:/fixtures/queued.txt"]));
   await expect(page.getByRole("tab")).toHaveCount(1);
   await page.evaluate(() => (window as any).__testNative.pending.write_document({ path: "C:/fixtures/saved.txt", size: 5, version: "new-version" }));
   await expect(page.getByRole("tab")).toHaveCount(2);
@@ -101,4 +101,86 @@ test("images open as a read-only viewer without editor, save or type switch", as
   await expect(page.locator(".workspace")).not.toHaveClass(/split/);
   const workspaceWidth = (await page.locator(".workspace").boundingBox())!.width;
   expect((await page.locator(".viewer-pane").boundingBox())!.width).toBeCloseTo(workspaceWidth, 0);
+});
+
+test("closing the last tab closes the window instead of spawning an untitled tab", async ({ page }) => {
+  await mockDesktop(page, "only.txt", "Only document");
+  await page.goto("/");
+  await expect(page.getByRole("tab", { name: "only.txt", exact: true })).toBeVisible();
+  await page.locator(".editor-pane .cm-content").click();
+  await page.keyboard.insertText("!");
+  // Unsaved changes: the declined confirmation must protect the window.
+  await page.evaluate(() => { (window as any).__testNative.dialogAnswer = "Abbrechen"; });
+  await page.getByRole("button", { name: "„only.txt“ schließen" }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__testNative.calls.some((call: any) => call.command === "plugin:dialog|message"))).toBe(true);
+  await expect(page.getByRole("tab", { name: "only.txt Ungespeichert", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__testNative.calls.some((call: any) => call.command === "plugin:window|destroy"))).toBe(false);
+  // Back to the saved text: the tab is clean again and may close without a prompt.
+  await page.locator(".editor-pane .cm-content").click();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.insertText("Only document");
+  await expect(page.locator(".tab-shell.active .dirty-indicator")).toHaveCount(0);
+  await page.getByRole("button", { name: "„only.txt“ schließen" }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__testNative.calls.filter((call: any) => call.command === "plugin:window|destroy").length)).toBe(1);
+  await expect(page.getByRole("tab")).toHaveCount(1);
+  await expect(page.getByRole("tab", { name: "Unbenannt.txt", exact: true })).toHaveCount(0);
+  await page.keyboard.press("ControlOrMeta+Shift+n");
+  await expect.poll(() => page.evaluate(() => (window as any).__testNative.calls.some((call: any) => call.command === "open_new_window"))).toBe(true);
+});
+
+test("tabs reorder by dragging and move between windows", async ({ page }) => {
+  await mockDesktop(page, "first.md", "# First");
+  await page.goto("/");
+  await expect(page.getByRole("tab", { name: "first.md", exact: true })).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+n");
+  await expect(page.getByRole("tab")).toHaveCount(2);
+  await expect(page.getByRole("tab").nth(1)).toHaveText(/Unbenannt\.txt/);
+
+  // Drag the first tab past the second one: order flips, nothing detaches.
+  const first = (await page.getByRole("tab", { name: "first.md", exact: true }).boundingBox())!;
+  const second = (await page.getByRole("tab", { name: "Unbenannt.txt", exact: true }).boundingBox())!;
+  await page.mouse.move(first.x + 20, first.y + first.height / 2);
+  await page.mouse.down();
+  for (let step = 1; step <= 8; step++) {
+    await page.mouse.move(first.x + 20 + ((second.x + second.width - first.x) * step) / 8, first.y + first.height / 2);
+  }
+  await page.mouse.up();
+  await expect(page.getByRole("tab").nth(0)).toHaveText(/Unbenannt\.txt/);
+  await expect(page.getByRole("tab").nth(1)).toHaveText(/first\.md/);
+  expect(await page.evaluate(() => (window as any).__testNative.calls.some((call: any) => call.command === "move_tab_to_window"))).toBe(false);
+
+  // Dropping far below the strip hands the tab to Rust, which decides on the target window.
+  const moving = (await page.getByRole("tab", { name: "first.md", exact: true }).boundingBox())!;
+  await page.mouse.move(moving.x + 20, moving.y + moving.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(moving.x + 40, moving.y + 120);
+  await page.mouse.move(moving.x + 60, moving.y + 260);
+  await page.mouse.up();
+  await expect(page.getByRole("tab")).toHaveCount(1);
+  await expect(page.getByRole("tab", { name: "first.md", exact: true })).toHaveCount(0);
+  const move = await page.evaluate(() => (window as any).__testNative.calls.find((call: any) => call.command === "move_tab_to_window").args);
+  expect(move.insideSource).toBe(true);
+  expect(move.allowNewWindow).toBe(true);
+  const transfer = JSON.parse(move.tab);
+  expect(transfer.document.name).toBe("first.md");
+  expect(transfer.document.content).toBe("# First");
+  expect(transfer.document.path).toBe("C:/fixtures/first.md");
+
+  // A tab arriving from another window shows up selected with its unsaved edits.
+  await page.evaluate((tab) => (window as any).__testNative.transferTabs([{ tab, dropX: null, dropY: null }]), JSON.stringify({ ...transfer, document: { ...transfer.document, name: "moved.md", path: "C:/fixtures/moved.md", content: "# Moved (edited)" }, mode: "split" }));
+  await expect(page.getByRole("tab", { name: "moved.md Ungespeichert", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".editor-pane .cm-content")).toHaveText("# Moved (edited)");
+  await expect(page.locator(".tab-shell.active .dirty-indicator")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Split", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+  // The pristine untitled tab was replaced, so the moved document is the only tab left;
+  // the last remaining tab is never moved into a new window from inside its own window.
+  await expect(page.getByRole("tab")).toHaveCount(1);
+  const last = (await page.getByRole("tab", { name: "moved.md Ungespeichert", exact: true }).boundingBox())!;
+  await page.mouse.move(last.x + 20, last.y + last.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(last.x + 40, last.y + 260);
+  await page.mouse.up();
+  await expect(page.getByRole("tab")).toHaveCount(1);
+  expect(await page.evaluate(() => (window as any).__testNative.calls.filter((call: any) => call.command === "move_tab_to_window").length)).toBe(1);
 });

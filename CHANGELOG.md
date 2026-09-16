@@ -2,6 +2,15 @@
 
 Alle Entwicklungsstufen folgen semantischer Vorabversionierung.
 
+## 0.1.4
+
+- P-Viewer läuft als eine Instanz: Dateien, die per Doppelklick, „Öffnen mit“, Kommandozeile oder Drag-and-drop bei laufender App geöffnet werden, erscheinen als Tab im zuletzt benutzten Fenster statt in einem weiteren Programmfenster; ein Start ohne Datei öffnet bewusst ein zusätzliches Fenster
+- Tabs lassen sich mit der Maus in der Leiste umsortieren und zwischen P-Viewer-Fenstern verschieben: über ein anderes Fenster gezogen wechseln sie dorthin, über den Fensterrand oder weit unter die Leiste gezogen öffnen sie ein neues Fenster; Inhalt, ungespeicherte Änderungen, Kodierung und Ansichtsmodus reisen mit, die Undo-Historie bleibt fensterbezogen
+- neues Fenster über Strg/Cmd+Umschalt+N oder die Werkzeugleiste; Tabs werden nie verworfen, sondern bei vollem Zielfenster in ein frisches Fenster weitergereicht
+- der letzte Tab schließt sein Fenster, statt ein leeres „Unbenannt.txt“ zu erzeugen; ungespeicherte Änderungen werden weiterhin vorher bestätigt, und aktive HTML-Vorschauen schließen zusammen mit ihrem Fenster
+- externe Öffnungsanforderungen werden pro Fenster gepuffert und von jedem Fenster selbst abgeholt, sodass beim Start weder Dateien verloren gehen noch doppelt geöffnet werden
+- Regressionstests für Fensterzuordnung, Tab-Warteschlangen, Tab-Drag, Fenstertransfer und das Schließen des letzten Tabs ergänzt
+
 ## 0.1.3
 
 - schreibgeschützte Bildansicht (PNG, APNG, JPEG, GIF, WebP, BMP, ICO, AVIF) mit Zoom, Einpassen, Pixelraster und Transparenzraster sowie integrierte PDF-Ansicht für eigenständige PDF-Dateien; Inhalte werden per Dateisignatur geprüft, nie als Text gelesen und nie gespeichert oder umbenannt

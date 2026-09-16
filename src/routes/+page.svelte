@@ -5,6 +5,7 @@
   import { listen } from "@tauri-apps/api/event";
   import type { Window as TauriWindow } from "@tauri-apps/api/window";
   import {
+    AppWindow,
     CircleArrowUp,
     Columns2,
     Eye,
@@ -18,7 +19,7 @@
   } from "@lucide/svelte";
   import EditorPane from "$lib/editor/EditorPane.svelte";
   import PreviewPane from "$lib/preview/PreviewPane.svelte";
-  import DocumentTabs from "$lib/files/DocumentTabs.svelte";
+  import DocumentTabs, { type TabDropPoint } from "$lib/files/DocumentTabs.svelte";
   import FileTypeSelector from "$lib/files/FileTypeSelector.svelte";
   import {
     chooseAndOpenDocument,
@@ -34,8 +35,12 @@
   import {
     documentIsDirty,
     findTabByPath,
+    insertionIndex,
     isPristineUntitled,
     nextUntitledName,
+    parseTabTransfer,
+    reorderTabs,
+    serializeTabTransfer,
     type DocumentTab,
   } from "$lib/files/tabs";
   import type { OpenDocument, ViewMode } from "$lib/files/types";
@@ -58,6 +63,20 @@
     return session;
   }
   let tabSequence = 0;
+  const MAX_TABS = 32;
+  const MAX_TAB_WEIGHT = 64_000_000;
+
+  /** A tab queued for this window by another P-Viewer window (see windows.rs). */
+  interface QueuedTab {
+    tab: string;
+    dropX: number | null;
+    dropY: number | null;
+  }
+  interface TabMoveResult {
+    moved: boolean;
+    window: string | null;
+    created: boolean;
+  }
 
   function createTab(document: OpenDocument): DocumentTab {
     tabSequence += 1;
@@ -251,14 +270,22 @@
           }
         }),
       );
+      // Other windows and second process instances only signal; this window
+      // pulls what is queued for it, so nothing is lost if a signal arrives
+      // before these listeners exist.
       cleanups.push(
-        await listen<string[]>("open-documents", (event) => {
-          void openExternalDocuments(event.payload);
+        await listen("open-documents", () => {
+          void pullQueuedDocuments();
+        }),
+      );
+      cleanups.push(
+        await listen("tabs-transferred", () => {
+          void acceptTransferredTabs();
         }),
       );
 
-      const initialPaths = await invoke<string[]>("take_pending_document_paths");
-      await openExternalDocuments(initialPaths, true);
+      await acceptTransferredTabs();
+      await pullQueuedDocuments();
     })().catch((error) => {
       errorMessage = messageFrom(error);
     });
@@ -280,8 +307,8 @@
       return;
     }
 
-    if (tabs.length >= 32 || tabs.reduce((size, tab) => size + documentWeight(tab.document), documentWeight(opened)) > 64_000_000) {
-      throw new Error("Zu viele offene Dokumente (maximal 32 Tabs / 64 Millionen Zeichen). Bitte zuerst Tabs schließen.");
+    if (!canHostAnotherTab(opened)) {
+      throw new Error(`Zu viele offene Dokumente (maximal ${MAX_TABS} Tabs / 64 Millionen Zeichen). Bitte zuerst Tabs schließen.`);
     }
     const current = tabs.find((tab) => tab.id === activeTabId);
     if (replacePristine && current && isPristineUntitled(current.document)) {
@@ -298,7 +325,7 @@
 
   function newDocument(): void {
     if (busy || installingUpdate) return;
-    if (tabs.length >= 32) { errorMessage = "Maximal 32 offene Tabs. Bitte zuerst einen Tab schließen."; return; }
+    if (tabs.length >= MAX_TABS) { errorMessage = `Maximal ${MAX_TABS} offene Tabs. Bitte zuerst einen Tab schließen.`; return; }
     const name = nextUntitledName(tabs.map((tab) => tab.document));
     const tab = createTab(createUntitledDocument(name));
     tabs.push(tab);
@@ -314,6 +341,117 @@
     try {
       const opened = await chooseAndOpenDocument();
       if (opened) showDocument(opened, true);
+    } catch (error) {
+      errorMessage = messageFrom(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function canHostAnotherTab(document: OpenDocument): boolean {
+    if (tabs.length >= MAX_TABS) return false;
+    const weight = tabs.reduce((size, tab) => size + documentWeight(tab.document), documentWeight(document));
+    return weight <= MAX_TAB_WEIGHT;
+  }
+
+  async function pullQueuedDocuments(): Promise<void> {
+    try {
+      const paths = await invoke<string[]>("take_pending_document_paths");
+      await openExternalDocuments(paths, true);
+    } catch (error) {
+      errorMessage = messageFrom(error);
+    }
+  }
+
+  /** Where a tab dropped at window coordinates belongs in this strip; appended when off the strip. */
+  function dropIndexFor(x: number | null, y: number | null): number {
+    if (x === null || y === null) return tabs.length;
+    const shells = Array.from(window.document.querySelectorAll<HTMLElement>(".tab-list .tab-shell"));
+    const strip = window.document.querySelector(".tab-list")?.getBoundingClientRect();
+    if (!strip || y < strip.top - 24 || y > strip.bottom + 24) return tabs.length;
+    return insertionIndex(x, shells.map((shell) => shell.getBoundingClientRect()));
+  }
+
+  async function acceptTransferredTabs(): Promise<void> {
+    let queued: QueuedTab[];
+    try {
+      queued = await invoke<QueuedTab[]>("take_transferred_tabs");
+    } catch (error) {
+      errorMessage = messageFrom(error);
+      return;
+    }
+    for (const entry of queued) {
+      const transfer = parseTabTransfer(entry.tab);
+      if (!transfer) {
+        errorMessage = "Ein aus einem anderen Fenster übergebener Tab war beschädigt und wurde verworfen.";
+        continue;
+      }
+      const incoming = transfer.document;
+      const existing = incoming.path ? findTabByPath(tabs, incoming.path) : undefined;
+      const onlyPristine = tabs.length === 1 && isPristineUntitled(tabs[0].document);
+      if (existing && !documentIsDirty(incoming)) {
+        // Same file already open here and nothing unsaved travels with it.
+        activeTabId = existing.id;
+        continue;
+      }
+      if (!onlyPristine && (existing || !canHostAnotherTab(incoming))) {
+        // Never drop a document: bounce it into a fresh window instead.
+        try {
+          await invoke("move_tab_to_window", { tab: entry.tab, target: null, insideSource: true, allowNewWindow: true });
+        } catch (error) {
+          errorMessage = messageFrom(error);
+        }
+        continue;
+      }
+      const tab = createTab(incoming);
+      if (onlyPristine) {
+        editorSessions.delete(`${tabs[0].id}:${tabs[0].revision}`);
+        tabs.splice(0, 1, tab);
+      } else {
+        tabs.splice(dropIndexFor(entry.dropX, entry.dropY), 0, tab);
+      }
+      activeTabId = tab.id;
+      if (!incoming.binary) mode = transfer.mode;
+      cursorLine = 1;
+      cursorColumn = 1;
+      selectedCharacters = 0;
+      errorMessage = "";
+    }
+  }
+
+  async function openNewWindow(): Promise<void> {
+    if (busy || installingUpdate) return;
+    if (!desktop) { errorMessage = "Weitere Fenster sind nur in der P-Viewer-Desktop-App verfügbar."; return; }
+    try {
+      await invoke<string>("open_new_window");
+    } catch (error) {
+      errorMessage = messageFrom(error);
+    }
+  }
+
+  function reorderTab(tabId: string, index: number): void {
+    if (busy) return;
+    reorderTabs(tabs, tabId, index);
+  }
+
+  /** Hands a dragged tab to the window under the pointer or to a new window. */
+  async function detachTab(tabId: string, point: TabDropPoint): Promise<void> {
+    if (busy || installingUpdate || !desktop) return;
+    const tab = tabs.find((candidate) => candidate.id === tabId);
+    if (!tab) return;
+    const onlyTab = tabs.length === 1;
+    // The only tab dropped over its own window has nowhere else to go.
+    if (onlyTab && point.insideWindow) return;
+    busy = true;
+    errorMessage = "";
+    try {
+      const result = await invoke<TabMoveResult>("move_tab_to_window", {
+        tab: serializeTabTransfer(tab.document, mode),
+        target: null,
+        insideSource: point.insideWindow,
+        allowNewWindow: !onlyTab,
+      });
+      if (result.moved) removeTab(tabId);
     } catch (error) {
       errorMessage = messageFrom(error);
     } finally {
@@ -384,8 +522,25 @@
       if (index < 0) return null;
     }
 
-    editorSessions.delete(`${closing.id}:${closing.revision}`);
+    removeTab(tabId);
+    return activeTabId;
+  }
+
+  /** Removes a tab whose fate is settled; closing the last one closes this window. */
+  function removeTab(tabId: string): void {
+    const index = tabs.findIndex((tab) => tab.id === tabId);
+    if (index < 0) return;
+    const removed = tabs[index];
+    editorSessions.delete(`${removed.id}:${removed.revision}`);
     if (tabs.length === 1) {
+      if (appWindow) {
+        // Keep the tab mounted until the window is gone; nothing may render
+        // an empty tab list in between.
+        void appWindow.destroy().catch((error) => {
+          errorMessage = `Fenster konnte nicht geschlossen werden: ${messageFrom(error)}`;
+        });
+        return;
+      }
       const replacement = createTab(createUntitledDocument());
       tabs.splice(0, 1, replacement);
       activeTabId = replacement.id;
@@ -400,7 +555,6 @@
     selectedCharacters = 0;
     errorMessage = "";
     focusDocumentTab(activeTabId);
-    return activeTabId;
   }
 
   function activateTab(tabId: string): void {
@@ -534,6 +688,9 @@
     } else if (key === "w" && !event.shiftKey) {
       event.preventDefault();
       void closeTab(activeTabId);
+    } else if (key === "n" && event.shiftKey) {
+      event.preventDefault();
+      void openNewWindow();
     } else if (key === "n") {
       event.preventDefault();
       newDocument();
@@ -611,6 +768,10 @@
         <FilePlus2 size={17} aria-hidden="true" />
         <span class="sr-only">Neues Dokument</span>
       </button>
+      <button class="icon-button" title="Neues Fenster (Strg/Cmd+Umschalt+N)" onclick={() => void openNewWindow()} disabled={busy}>
+        <AppWindow size={17} aria-hidden="true" />
+        <span class="sr-only">Neues Fenster</span>
+      </button>
       <button class="icon-button" title="Öffnen (Strg/Cmd+O)" onclick={() => void openDocument()} disabled={busy}>
         <FolderOpen size={17} aria-hidden="true" />
         <span class="sr-only">Dokument öffnen</span>
@@ -673,6 +834,8 @@
     onActivate={activateTab}
     onClose={(tabId) => void closeTab(tabId)}
     onNew={newDocument}
+    onReorder={reorderTab}
+    onDetach={(tabId, point) => void detachTab(tabId, point)}
   />
 
   {#if errorMessage}
