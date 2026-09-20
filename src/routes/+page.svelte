@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import type { EditorSession } from "$lib/editor/session";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -106,9 +106,26 @@
   let settingsOpen = $state(false);
   let updateOpen = $state(false);
   let settingsReady = $state(false);
+  const desktop =
+    typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  // The native window starts hidden (windows.rs). It is revealed once the stored
+  // theme is applied and the documents queued for start-up are open, so the
+  // user never sees a blank or wrongly themed frame; Rust shows it anyway after
+  // a timeout, so a slow document only delays the reveal, never blocks it.
+  let startupPulled = $state(!desktop);
+  let revealed = false;
+  $effect(() => {
+    if (!desktop || revealed) return;
+    if (!settingsReady || !startupPulled || busy || pendingOpens.length > 0) return;
+    revealed = true;
+    untrack(() => void revealWindow());
+  });
   let systemDark = $state(true);
   let runtimeInfo = $state(currentRuntimeInfo());
   let appWindow = $state.raw<TauriWindow | null>(null);
+  // Set when this code decided the window may close, so the close-requested
+  // handler lets the native close through without asking again.
+  let windowCloseApproved = false;
 
   const activeTab = $derived(tabs.find((tab) => tab.id === activeTabId) ?? tabs[0]);
   const document = $derived(activeTab!.document);
@@ -129,8 +146,6 @@
   const activeTheme = $derived(
     settings.theme === "system" ? (systemDark ? "dark" : "light") : settings.theme,
   );
-  const desktop =
-    typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
   $effect(() => {
     if (!appWindow) return;
@@ -248,6 +263,7 @@
       appWindow = getCurrentWindow();
       cleanups.push(
         await appWindow.onCloseRequested(async (event) => {
+          if (windowCloseApproved) return;
           if (busy || installingUpdate) { event.preventDefault(); return; }
           const dirtyNames = tabs
             .filter((tab) => documentIsDirty(tab.document))
@@ -286,9 +302,13 @@
 
       await acceptTransferredTabs();
       await pullQueuedDocuments();
-    })().catch((error) => {
-      errorMessage = messageFrom(error);
-    });
+    })()
+      .catch((error) => {
+        errorMessage = messageFrom(error);
+      })
+      .finally(() => {
+        startupPulled = true;
+      });
 
     return () => {
       disposed = true;
@@ -298,6 +318,15 @@
 
   function messageFrom(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+  }
+
+  async function revealWindow(): Promise<void> {
+    await tick();
+    try {
+      await invoke("reveal_window");
+    } catch (error) {
+      console.warn("Fenster konnte nicht angezeigt werden.", error);
+    }
   }
 
   function showDocument(opened: OpenDocument, replacePristine: boolean): void {
@@ -535,8 +564,11 @@
     if (tabs.length === 1) {
       if (appWindow) {
         // Keep the tab mounted until the window is gone; nothing may render
-        // an empty tab list in between.
-        void appWindow.destroy().catch((error) => {
+        // an empty tab list in between. A regular close (not destroy) lets the
+        // native side record the window geometry before the window goes away.
+        windowCloseApproved = true;
+        void appWindow.close().catch((error) => {
+          windowCloseApproved = false;
           errorMessage = `Fenster konnte nicht geschlossen werden: ${messageFrom(error)}`;
         });
         return;

@@ -5,6 +5,8 @@ mod latex;
 mod updater;
 mod windows;
 
+use tauri_plugin_window_state::StateFlags;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
@@ -20,12 +22,26 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        // Remembers where the last used document window was. Visibility stays
+        // ours: windows are shown once their frontend has painted.
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
+                .map_label(windows::window_state_key)
+                .with_filter(windows::is_document_window)
+                .build(),
+        )
+        .setup(|app| {
+            windows::prepare_main_window(app.handle());
+            Ok(())
+        })
         .on_window_event(windows::handle_window_event)
         .invoke_handler(tauri::generate_handler![
             associations::apply_default_file_associations,
             windows::take_pending_document_paths,
             windows::take_transferred_tabs,
             windows::open_new_window,
+            windows::reveal_window,
             windows::move_tab_to_window,
             document::read_document,
             document::read_binary_document,

@@ -2,6 +2,14 @@
 
 Alle Entwicklungsstufen folgen semantischer Vorabversionierung.
 
+## 0.1.5
+
+- P-Viewer merkt sich Größe, Position und Maximierung des zuletzt benutzten Dokumentfensters (`tauri-plugin-window-state`) und öffnet dort wieder; liegt die gespeicherte Position auf einem nicht mehr vorhandenen Monitor, entscheidet das System über die Platzierung
+- neue Fenster (Strg/Cmd+Umschalt+N, zweiter Start ohne Datei) erscheinen um 40 px versetzt neben dem zuletzt benutzten Fenster, solange sie so vollständig auf dessen Bildschirm passen; per Tab-Drag abgelöste Fenster bleiben unter dem Zeiger und werden nie maximiert geöffnet
+- kein weißer Startbildschirm mehr: Fenster starten unsichtbar, erhalten die Hintergrundfarbe des gespeicherten Designs (dunkel, hell oder System) und werden erst angezeigt, wenn Einstellungen und Startdokumente gezeichnet sind; spätestens nach 1,5 s zeigt Rust das Fenster auch ohne Rückmeldung der Oberfläche
+- das Schließen des letzten Tabs läuft über eine reguläre Schließanfrage statt eines harten `destroy`, damit Fenstergröße, -position und Maximierung auch auf diesem Weg gespeichert werden
+- Regressionstests für Fensterzustandsschlüssel, Starthintergrund, Einstellungslesen, Kaskadierung und den Zeitpunkt des Sichtbarmachens ergänzt; der native Windows-Smoke prüft zusätzlich, dass das Fenster tatsächlich sichtbar wird
+
 ## 0.1.4
 
 - P-Viewer läuft als eine Instanz: Dateien, die per Doppelklick, „Öffnen mit“, Kommandozeile oder Drag-and-drop bei laufender App geöffnet werden, erscheinen als Tab im zuletzt benutzten Fenster statt in einem weiteren Programmfenster; ein Start ohne Datei öffnet bewusst ein zusätzliches Fenster

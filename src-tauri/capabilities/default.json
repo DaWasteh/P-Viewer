@@ -5,6 +5,7 @@
   "windows": ["main", "main-*"],
   "permissions": [
     "core:default",
+    "core:window:allow-close",
     "core:window:allow-destroy",
     "core:window:allow-set-theme",
     "core:window:allow-set-title",

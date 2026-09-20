@@ -27,6 +27,8 @@ const port = server.address().port;
 await new Promise((accept) => server.close(accept));
 // Test-only CDP and a disposable WebView profile. The native app may read its
 // normal preferences; this smoke does not edit settings or touch existing windows.
+// Like any regular run it may update the remembered window geometry
+// (.window-state.json) with where its own window ended up.
 // No global environment or installed application is changed.
 const child = spawn(binary, [textPath, dataPath, imagePath], {
   cwd: temporary,
@@ -65,6 +67,9 @@ try {
   page.on("pageerror", (error) => errors.push(error.message));
   await expect(page.locator(".version")).toHaveText(`v${metadata.version}`);
   await expect(page.getByRole("tab")).toHaveCount(3);
+  // The window starts hidden and is shown by the frontend once it has painted.
+  // WebView2 reports the page hidden while its window is hidden.
+  await expect.poll(() => page.evaluate(() => document.visibilityState), { timeout: 10_000 }).toBe("visible");
   await page.getByRole("tab", { name: "pixel.png", exact: true }).click();
   await expect(page.getByRole("img", { name: "pixel.png" })).toBeVisible();
   await expect(page.locator(".image-preview .dimensions")).toContainText("2 × 2 px");

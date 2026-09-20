@@ -9,6 +9,13 @@
 //! only signalled with payload-free events, so a window that has not yet
 //! registered its listeners still receives everything on start-up, and a window
 //! that is already running is never sent large documents through `eval`.
+//!
+//! Document windows are created hidden. They get the background colour of the
+//! stored theme and are shown by [`reveal_window`] once the frontend has painted
+//! its UI, so no white or wrongly themed frame ever appears; a fallback timer
+//! shows a window whose frontend never reports readiness. Size, position and
+//! maximised state of the last used document window are remembered by
+//! `tauri-plugin-window-state` under the shared key [`MAIN_WINDOW_LABEL`].
 
 use serde::Serialize;
 use std::{
@@ -18,10 +25,11 @@ use std::{
         atomic::{AtomicU64, Ordering},
         Mutex,
     },
+    time::Duration,
 };
 use tauri::{
-    AppHandle, Emitter, Manager, PhysicalPosition, Runtime, WebviewWindow, WebviewWindowBuilder,
-    Window, WindowEvent,
+    webview::Color, AppHandle, Emitter, Manager, PhysicalPosition, Runtime, Theme, WebviewWindow,
+    WebviewWindowBuilder, Window, WindowEvent,
 };
 
 pub const MAIN_WINDOW_LABEL: &str = "main";
@@ -32,6 +40,17 @@ const MAX_QUEUED_TABS: usize = 32;
 /// Offset (CSS pixels) between the cursor and the origin of a window created by
 /// dragging a tab out, so the dropped tab appears roughly under the pointer.
 const DETACHED_WINDOW_OFFSET: (f64, f64) = (60.0, 140.0);
+/// Offset (CSS pixels) between the most recently used window and a new window
+/// opened without an explicit position, so the new window is visibly separate.
+const CASCADE_OFFSET: f64 = 40.0;
+/// A window whose frontend has not called [`reveal_window`] by then is shown
+/// anyway, so a broken or very slow frontend never leaves an invisible app.
+const REVEAL_FALLBACK: Duration = Duration::from_millis(1500);
+/// Store file of `tauri-plugin-store` holding the frontend preferences.
+const SETTINGS_FILE: &str = "settings.json";
+/// `--background` of the dark and light UI theme in `app.css`.
+const DARK_BACKGROUND: Color = Color(0x11, 0x13, 0x18, 0xff);
+const LIGHT_BACKGROUND: Color = Color(0xfb, 0xfb, 0xfc, 0xff);
 
 pub const OPEN_DOCUMENTS_EVENT: &str = "open-documents";
 pub const TABS_TRANSFERRED_EVENT: &str = "tabs-transferred";
@@ -86,6 +105,109 @@ pub(crate) fn is_document_window(label: &str) -> bool {
         || label
             .strip_prefix(WINDOW_LABEL_PREFIX)
             .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|byte| byte.is_ascii_digit()))
+}
+
+/// Key under which `tauri-plugin-window-state` remembers a window. All document
+/// windows share one entry, so every new window opens where the last used
+/// document window was; other windows keep their own label.
+pub(crate) fn window_state_key(label: &str) -> &str {
+    if is_document_window(label) {
+        MAIN_WINDOW_LABEL
+    } else {
+        label
+    }
+}
+
+/// Colour the native window and webview paint before the frontend renders.
+/// `system` is the OS theme, used when the preference follows the system.
+pub(crate) fn background_for(theme_preference: Option<&str>, system: Option<Theme>) -> Color {
+    match theme_preference {
+        Some("light") => LIGHT_BACKGROUND,
+        Some("dark") => DARK_BACKGROUND,
+        _ if matches!(system, Some(Theme::Light)) => LIGHT_BACKGROUND,
+        _ => DARK_BACKGROUND,
+    }
+}
+
+/// Theme preference from the serialized settings store (`preferences.theme`).
+pub(crate) fn theme_preference_from_settings(text: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(text).ok()?;
+    value
+        .get("preferences")?
+        .get("theme")?
+        .as_str()
+        .map(str::to_owned)
+}
+
+fn stored_theme_preference<R: Runtime>(app: &AppHandle<R>) -> Option<String> {
+    let path = app.path().app_data_dir().ok()?.join(SETTINGS_FILE);
+    theme_preference_from_settings(&std::fs::read_to_string(path).ok()?)
+}
+
+/// Prepares a freshly created, still hidden document window: a theme-matching
+/// background so nothing white is ever painted, and a safety net that shows the
+/// window even if the frontend never reports readiness.
+pub(crate) fn prepare_document_window<R: Runtime>(app: &AppHandle<R>, window: &WebviewWindow<R>) {
+    let color = background_for(stored_theme_preference(app).as_deref(), window.theme().ok());
+    let _ = window.set_background_color(Some(color));
+    let fallback = window.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(REVEAL_FALLBACK);
+        reveal(&fallback);
+    });
+}
+
+/// The main window is created from the configuration before `setup` runs.
+pub(crate) fn prepare_main_window<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        prepare_document_window(app, &window);
+    }
+}
+
+fn reveal<R: Runtime>(window: &WebviewWindow<R>) {
+    if window.is_visible().unwrap_or(false) {
+        return;
+    }
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
+/// Origin of a window cascaded from `origin` by `offset`, if a window of `size`
+/// still fits entirely inside `area` (`x`, `y`, `width`, `height`) there.
+pub(crate) fn cascaded_origin(
+    origin: (f64, f64),
+    size: (f64, f64),
+    area: (f64, f64, f64, f64),
+    offset: f64,
+) -> Option<(f64, f64)> {
+    let candidate = (origin.0 + offset, origin.1 + offset);
+    let fits = candidate.0 + size.0 <= area.0 + area.2 && candidate.1 + size.1 <= area.1 + area.3;
+    fits.then_some(candidate)
+}
+
+/// Where a new window should appear relative to `reference`, the most recently
+/// used window. `None` keeps the remembered position, e.g. for a maximised
+/// reference or when the cascade would leave the monitor's work area.
+fn cascade_position<R: Runtime>(reference: &WebviewWindow<R>) -> Option<PhysicalPosition<f64>> {
+    if reference.is_maximized().ok()? || reference.is_minimized().ok()? {
+        return None;
+    }
+    let origin = reference.outer_position().ok()?;
+    let size = reference.outer_size().ok()?;
+    let monitor = reference.current_monitor().ok()??;
+    let area = monitor.work_area();
+    cascaded_origin(
+        (f64::from(origin.x), f64::from(origin.y)),
+        (f64::from(size.width), f64::from(size.height)),
+        (
+            f64::from(area.position.x),
+            f64::from(area.position.y),
+            f64::from(area.size.width),
+            f64::from(area.size.height),
+        ),
+        CASCADE_OFFSET * monitor.scale_factor(),
+    )
+    .map(|(x, y)| PhysicalPosition::new(x, y))
 }
 
 impl WindowRouter {
@@ -307,11 +429,22 @@ pub(crate) fn create_document_window<R: Runtime>(
         .ok_or_else(|| "Die Hauptfensterkonfiguration fehlt.".to_string())?;
     let label = router.next_label(&existing);
     config.label = label.clone();
-    // Shown only after positioning so a detached tab does not flash at the centre.
+    // Stays hidden until the frontend has painted (see `reveal_window`).
     config.visible = false;
     if position.is_some() {
         config.center = false;
     }
+    // Without an explicit position the window is cascaded from the most
+    // recently used window instead of covering it exactly.
+    let live: Vec<String> = document_windows(app)
+        .iter()
+        .map(|window| window.label().to_string())
+        .collect();
+    let reference = position
+        .is_none()
+        .then(|| router.preferred_target(&live))
+        .flatten()
+        .and_then(|label| app.get_webview_window(&label));
 
     before_show(&label)?;
     let window = WebviewWindowBuilder::from_config(app, &config)
@@ -323,10 +456,14 @@ pub(crate) fn create_document_window<R: Runtime>(
             router.forget_window(&label);
             format!("Das neue P-Viewer-Fenster kann nicht geöffnet werden: {error}")
         })?;
+    // The window-state plugin has restored the remembered geometry by now.
     if let Some(position) = position {
+        let _ = window.unmaximize();
+        let _ = window.set_position(position);
+    } else if let Some(position) = reference.as_ref().and_then(cascade_position) {
         let _ = window.set_position(position);
     }
-    bring_to_front(&window);
+    prepare_document_window(app, &window);
     Ok(label)
 }
 
@@ -455,6 +592,13 @@ pub fn take_transferred_tabs<R: Runtime>(
 // Async on purpose: window creation from a synchronous command deadlocks WebView2.
 pub async fn open_new_window<R: Runtime>(app: AppHandle<R>) -> Result<String, String> {
     create_document_window(&app, None, |_| Ok(()))
+}
+
+/// Shows the calling window. The frontend calls this once its stored theme and
+/// start-up documents are rendered; calling it again is harmless.
+#[tauri::command]
+pub async fn reveal_window<R: Runtime>(window: WebviewWindow<R>) {
+    reveal(&window);
 }
 
 /// Moves a serialized tab to another window.
@@ -603,6 +747,82 @@ mod tests {
         assert!(!is_document_window("main-x"));
         assert!(!is_document_window("html-preview-abc"));
         assert!(!is_document_window(""));
+    }
+
+    #[test]
+    fn document_windows_share_one_remembered_window_state() {
+        assert_eq!(window_state_key("main"), "main");
+        assert_eq!(window_state_key("main-7"), "main");
+        assert_eq!(window_state_key("html-preview-abc"), "html-preview-abc");
+    }
+
+    #[test]
+    fn start_background_follows_the_stored_theme_then_the_system() {
+        assert_eq!(
+            background_for(Some("dark"), Some(Theme::Light)),
+            DARK_BACKGROUND
+        );
+        assert_eq!(
+            background_for(Some("light"), Some(Theme::Dark)),
+            LIGHT_BACKGROUND
+        );
+        assert_eq!(
+            background_for(Some("system"), Some(Theme::Light)),
+            LIGHT_BACKGROUND
+        );
+        assert_eq!(
+            background_for(Some("system"), Some(Theme::Dark)),
+            DARK_BACKGROUND
+        );
+        assert_eq!(background_for(None, None), DARK_BACKGROUND);
+        assert_eq!(background_for(Some("neon"), None), DARK_BACKGROUND);
+    }
+
+    #[test]
+    fn reads_the_theme_preference_from_the_settings_store() {
+        assert_eq!(
+            theme_preference_from_settings(r#"{"preferences":{"theme":"light","iconSize":17}}"#)
+                .as_deref(),
+            Some("light")
+        );
+        assert_eq!(
+            theme_preference_from_settings(r#"{"preferences":{}}"#),
+            None
+        );
+        assert_eq!(
+            theme_preference_from_settings(r#"{"preferences":{"theme":3}}"#),
+            None
+        );
+        assert_eq!(theme_preference_from_settings("not json"), None);
+    }
+
+    #[test]
+    fn cascades_new_windows_only_while_they_fit_the_work_area() {
+        let area = (0.0, 0.0, 1920.0, 1040.0);
+        assert_eq!(
+            cascaded_origin((100.0, 80.0), (1280.0, 820.0), area, 40.0),
+            Some((140.0, 120.0))
+        );
+        // Would run past the right edge.
+        assert_eq!(
+            cascaded_origin((620.0, 80.0), (1280.0, 820.0), area, 40.0),
+            None
+        );
+        // Would run past the bottom edge.
+        assert_eq!(
+            cascaded_origin((100.0, 200.0), (1280.0, 820.0), area, 40.0),
+            None
+        );
+        // Secondary monitor to the left of the primary one.
+        assert_eq!(
+            cascaded_origin(
+                (-1900.0, 10.0),
+                (800.0, 600.0),
+                (-1920.0, 0.0, 1920.0, 1080.0),
+                40.0
+            ),
+            Some((-1860.0, 50.0))
+        );
     }
 
     #[test]

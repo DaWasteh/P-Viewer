@@ -122,6 +122,8 @@ test("closing the last tab closes the window instead of spawning an untitled tab
   await expect(page.locator(".tab-shell.active .dirty-indicator")).toHaveCount(0);
   await page.getByRole("button", { name: "„only.txt“ schließen" }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__testNative.calls.filter((call: any) => call.command === "plugin:window|destroy").length)).toBe(1);
+  // The window went through a regular close request (geometry is recorded there), not a bare destroy.
+  expect(await page.evaluate(() => (window as any).__testNative.calls.filter((call: any) => call.command === "plugin:window|close").length)).toBe(1);
   await expect(page.getByRole("tab")).toHaveCount(1);
   await expect(page.getByRole("tab", { name: "Unbenannt.txt", exact: true })).toHaveCount(0);
   await page.keyboard.press("ControlOrMeta+Shift+n");
@@ -183,4 +185,19 @@ test("tabs reorder by dragging and move between windows", async ({ page }) => {
   await page.mouse.up();
   await expect(page.getByRole("tab")).toHaveCount(1);
   expect(await page.evaluate(() => (window as any).__testNative.calls.filter((call: any) => call.command === "move_tab_to_window").length)).toBe(1);
+});
+
+test("the hidden native window is revealed once settings and start-up documents are rendered", async ({ page }) => {
+  await mockDesktop(page, "first.txt", "First document");
+  await page.goto("/");
+  await expect(page.getByRole("tab", { name: "first.txt", exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as any).__testNative.calls.filter((call: any) => call.command === "reveal_window").length)).toBe(1);
+  // The reveal came after the stored settings were read and the queued document was opened.
+  const order = await page.evaluate(() => (window as any).__testNative.calls.map((call: any) => call.command));
+  expect(order.indexOf("reveal_window")).toBeGreaterThan(order.indexOf("plugin:store|get"));
+  expect(order.indexOf("reveal_window")).toBeGreaterThan(order.indexOf("read_document"));
+  // Later documents and settings changes never hide or re-reveal the window.
+  await page.evaluate(() => (window as any).__testNative.openDocuments(["C:/fixtures/second.txt"]));
+  await expect(page.getByRole("tab", { name: "second.txt", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__testNative.calls.filter((call: any) => call.command === "reveal_window").length)).toBe(1);
 });

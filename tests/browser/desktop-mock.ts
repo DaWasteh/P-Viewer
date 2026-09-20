@@ -26,6 +26,8 @@ export async function mockDesktop(page: Page, name: string, content: string) {
         if (control.deferred.includes(command)) return new Promise((accept) => { control.pending[command] = accept; });
         if (command === "plugin:event|listen") { listeners.set(args.event, [...(listeners.get(args.event) ?? []), args.handler]); return args.handler; }
         if (command === "plugin:event|unlisten") return null;
+        // Like Tauri: a close request is delegated to the window's own listener, which destroys it unless prevented.
+        if (command === "plugin:window|close") { control.emit("tauri://close-requested", null); return null; }
         if (command === "take_pending_document_paths") return control.pendingPaths.splice(0);
         if (command === "take_transferred_tabs") return control.transferredTabs.splice(0);
         if (command === "move_tab_to_window") return control.moveResult;
