@@ -16,6 +16,8 @@ jobs:
   verify:
     name: Verify release candidate
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
 
     steps:
       - name: Check out source
@@ -92,6 +94,26 @@ jobs:
 
       - name: Lint Rust
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      # The draft is created here, once, before any platform build. tauri-action
+      # then only finds it and uploads; its own create-release call was refused
+      # with "Resource not accessible by integration" for v0.1.6 although the
+      # token could create the very same release via the REST API.
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --json isDraft --jq .isDraft >/dev/null 2>&1; then
+            echo "Release $TAG already exists."
+            exit 0
+          fi
+          gh release create "$TAG" --draft --verify-tag --title "P-Viewer $TAG" --generate-notes \
+            --notes "$(printf '%s\n\n%s' \
+              'Signierte Desktop-Builds für Windows, Linux sowie macOS auf Intel und Apple Silicon.' \
+              'Änderungen stehen im Changelog. Der Release wird erst veröffentlicht, wenn alle vier Plattformpakete samt Signaturen und `latest.json` vorliegen.')"
 
   release:
     name: Build ${{ matrix.name }}

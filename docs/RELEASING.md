@@ -66,8 +66,11 @@ Standard-Builds benötigen deshalb keinen privaten Key.
 3. Unter Windows den portablen Root-Build über `npm run build:launcher` bauen und mit `node scripts/smoke-local-launcher.mjs` gegen WebView2 prüfen. Das Smoke-Skript verwendet ausschließlich eigene temporäre Dokumente und einen testprozesslokalen Debug-Port; es ist kein Installer-Test. Vorher alle laufenden P-Viewer-Fenster schließen: seit v0.1.4 reicht ein zweiter Prozess seine Dateien an die laufende Instanz weiter und beendet sich sofort.
 4. Commit und Branch zu GitHub pushen; den erfolgreichen `Tests`-Workflow für exakt diesen Commit abwarten. Erst danach das passende Tag erstellen, zum Beispiel `v0.1.3`.
 5. Das geprüfte Tag zu GitHub pushen. `.github/workflows/release.yml` wiederholt die
-   Qualitätsprüfungen, baut Windows, Linux sowie macOS für Intel und Apple Silicon,
-   signiert die Pakete und erzeugt `latest.json`.
+   Qualitätsprüfungen, legt den Draft Release mit generierten Release-Notes an,
+   baut Windows, Linux sowie macOS für Intel und Apple Silicon, signiert die Pakete
+   und erzeugt `latest.json`. Der Entwurf entsteht bewusst im Verify-Job über die
+   GitHub-CLI, weil das Anlegen aus tauri-action heraus bei v0.1.6 mit „Resource not
+   accessible by integration“ abgelehnt wurde; die Plattform-Jobs laden nur noch hoch.
 6. Die Plattform-Builds laden in einen **Draft Release**, damit der Update-Endpunkt
    nie einen halbfertigen Release sieht. Der abschließende Job `Publish release`
    prüft, dass alle vierzehn Pakete und Signaturen sowie eine `latest.json` mit den
