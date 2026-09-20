@@ -68,11 +68,15 @@ Standard-Builds benötigen deshalb keinen privaten Key.
 5. Das geprüfte Tag zu GitHub pushen. `.github/workflows/release.yml` wiederholt die
    Qualitätsprüfungen, baut Windows, Linux sowie macOS für Intel und Apple Silicon,
    signiert die Pakete und erzeugt `latest.json`.
-6. Der Workflow erstellt absichtlich einen **Draft Release**. Installer auf allen drei
-   Plattformen testen, Signaturdateien und `latest.json` kontrollieren und erst danach
-   den Entwurf manuell veröffentlichen. Der Windows-Smoke-Test umfasst zusätzlich:
-   P-Viewer erscheint unter „Öffnen mit“, Installation und Deinstallation verändern
-   weder Extension-Defaults noch `UserChoice`, die geschützte P-Viewer-Seite unter
+6. Die Plattform-Builds laden in einen **Draft Release**, damit der Update-Endpunkt
+   nie einen halbfertigen Release sieht. Der abschließende Job `Publish release`
+   prüft, dass alle vierzehn Pakete und Signaturen sowie eine `latest.json` mit den
+   vier Plattformschlüsseln vorliegen, und veröffentlicht den Entwurf dann
+   automatisch als aktuellen Release. Schlägt ein Build fehl, bleibt der Entwurf
+   unveröffentlicht und kann nach einem Fix über ein neues Tag ersetzt werden.
+   Die Installer-Abnahme erfolgt am veröffentlichten Release: P-Viewer erscheint
+   unter „Öffnen mit“, Installation und Deinstallation verändern weder
+   Extension-Defaults noch `UserChoice`, die geschützte P-Viewer-Seite unter
    „Standard-Apps“ öffnet sich, und die Deinstallation entfernt nur P-Viewer-Einträge.
 
 Die Browserregressionen bauen und testen den Produktionsbuild. Unter Linux benötigen sie `npx playwright install --with-deps chromium`; Windows verwendet vorhandenes Edge. Gemockte IPC-Lifecycle-Tests ersetzen weder einen echten TeX-Compiler noch einen signierten Update-Installationslauf. Der versionsbezogene Prüfbericht `docs/QUALITY-v0.1.6.md` trennt diese Nachweise.
@@ -94,4 +98,4 @@ nicht migriert. Updates ab v0.0.7 löschen oder überschreiben die Einstellungsd
 - Jeder Download wird vor der Installation mit dem eingebetteten Public Key geprüft.
 - Teilweise konfigurierte Release-Builds werden als Fehler behandelt.
 - Vor einem Neustart muss das aktuelle Dokument gespeichert sein.
-- Release-Entwürfe nie veröffentlichen, bevor Installations-Smoke-Tests abgeschlossen sind.
+- Der Workflow veröffentlicht nur vollständige, signierte Releases; ein fehlgeschlagener Plattform-Build lässt den Entwurf unveröffentlicht.

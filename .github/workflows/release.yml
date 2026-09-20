@@ -165,10 +165,47 @@ jobs:
           releaseBody: |
             Signierte Desktop-Builds für Windows, Linux sowie macOS auf Intel und Apple Silicon.
 
-            Änderungen stehen im Changelog. Vor der Veröffentlichung werden die erzeugten Pakete, Signaturen und `latest.json` geprüft.
+            Änderungen stehen im Changelog. Der Release wird erst veröffentlicht, wenn alle vier Plattformpakete samt Signaturen und `latest.json` vorliegen.
           releaseDraft: true
           prerelease: false
           generateReleaseNotes: true
           updaterJsonPreferNsis: true
           retryAttempts: 2
           args: --config src-tauri/tauri.release.conf.json ${{ matrix.args }}
+
+  publish:
+    name: Publish release
+    # The matrix jobs upload into a draft so the updater endpoint never sees a
+    # half-finished release; once every platform succeeded the draft goes live.
+    needs: release
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Verify release assets and updater manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --json assets --jq '.assets[].name' | tee assets.txt
+          for suffix in \
+            _x64-setup.exe _x64-setup.exe.sig \
+            _amd64.AppImage _amd64.AppImage.sig _amd64.deb _amd64.deb.sig .x86_64.rpm .x86_64.rpm.sig \
+            _aarch64.dmg _aarch64.app.tar.gz _aarch64.app.tar.gz.sig \
+            _x64.dmg _x64.app.tar.gz _x64.app.tar.gz.sig; do
+            grep -q -- "${suffix}\$" assets.txt || { echo "Missing release asset *${suffix}" >&2; exit 1; }
+          done
+          gh release download "$TAG" --pattern latest.json --output latest.json
+          jq -e --arg version "${TAG#v}" \
+            '.version == $version and (.platforms | has("windows-x86_64") and has("linux-x86_64") and has("darwin-x86_64") and has("darwin-aarch64"))' \
+            latest.json
+
+      - name: Publish the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: gh release edit "$TAG" --draft=false --latest
