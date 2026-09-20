@@ -116,7 +116,7 @@ Installer registrieren alle 306 unterstützten Dateiendungen als mögliche P-Vie
 
 Vorschaugrenzen halten die App bei sehr großen/komplexen Dateien bedienbar; sie sind keine Beschränkung auf ebenso kleine Editorquellen. Markdown begrenzt Quelltext, Zeilen und Strukturmarker, Notebooks kombinieren Zell-/Text-/Ausgabelimits. Die PDF-Ansicht hält nur eine Seite mit begrenzter Bitmap-Größe vor. View ist über **Strg/Cmd+Umschalt+R** erreichbar, Split über **Strg/Cmd+Umschalt+P**, ein weiteres Fenster über **Strg/Cmd+Umschalt+N**. Tabs wandern per Drag-and-drop zwischen Fenstern; beim Verschieben bleibt die Undo-Historie im Ursprungsfenster zurück.
 
-Testumfang, bekannte Grenzen und noch offene plattformspezifische Release-Abnahmen stehen in [`docs/QUALITY-v0.1.5.md`](docs/QUALITY-v0.1.5.md). Eine vollständige Fehlerfreiheit aller Dateiformate wird nicht behauptet.
+Testumfang, bekannte Grenzen und noch offene plattformspezifische Release-Abnahmen stehen in [`docs/QUALITY-v0.1.6.md`](docs/QUALITY-v0.1.6.md). Eine vollständige Fehlerfreiheit aller Dateiformate wird nicht behauptet.
 
 ## Versionierung
 

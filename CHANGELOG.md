@@ -2,6 +2,11 @@
 
 Alle Entwicklungsstufen folgen semantischer Vorabversionierung.
 
+## 0.1.6
+
+- Editor in v0.1.5 unlesbar: das in v0.1.5 ergänzte Inline-`<style>` in `app.html` ließ Tauri einen Hash in die CSP schreiben, wodurch `'unsafe-inline'` ignoriert und die zur Laufzeit eingefügten CodeMirror-Stylesheets blockiert wurden (Text in Root-Farbe, Zeilennummern über statt neben dem Inhalt); der Inline-Style ist entfernt, die Fensterhintergrundfarbe kommt allein aus Rust
+- Vitest prüft, dass `app.html` keine Inline-Styles oder -Skripte enthält; der native Windows-Smoke prüft, dass der Editor unter der echten CSP gestylt ist (Flex-Layout und Monospace-Schrift)
+
 ## 0.1.5
 
 - P-Viewer merkt sich Größe, Position und Maximierung des zuletzt benutzten Dokumentfensters (`tauri-plugin-window-state`) und öffnet dort wieder; liegt die gespeicherte Position auf einem nicht mehr vorhandenen Monitor, entscheidet das System über die Platzierung

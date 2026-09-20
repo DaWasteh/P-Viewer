@@ -9,12 +9,12 @@
       content="P-Viewer – schneller Editor und Dokumentbetrachter für Text, Code, Markdown und LaTeX"
     />
     <title>P-Viewer</title>
-    <!-- Matches the native window background until app.css takes over. -->
-    <style>
-      html {
-        background: #111318;
-      }
-    </style>
+    <!--
+      Keep this shell free of inline style and script elements: Tauri adds
+      their hashes to the CSP, which makes browsers ignore 'unsafe-inline' and
+      blocks the style elements CodeMirror injects at runtime. The native window
+      background comes from windows.rs instead (see src/app.test.ts).
+    -->
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">

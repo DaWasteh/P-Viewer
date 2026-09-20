@@ -81,6 +81,10 @@ try {
   await expect(page.getByRole("region", { name: "JSON-Struktur" })).toContainText("Beta");
   await page.getByRole("tab", { name: "smoke.txt", exact: true }).click();
   const editor = page.locator(".editor-pane .cm-content");
+  // CodeMirror injects its styles at runtime; under the real Tauri CSP they must
+  // still apply (v0.1.5 lost them to CSP hashes for an inline <style> in app.html).
+  expect(await page.locator(".editor-pane .cm-editor").evaluate((element) => getComputedStyle(element).display)).toBe("flex");
+  expect(await editor.evaluate((element) => getComputedStyle(element).fontFamily)).toContain("JetBrains Mono");
   await editor.click();
   await page.keyboard.press("Control+a");
   await page.keyboard.insertText("Saved ä 😀\nSecond line\n");
