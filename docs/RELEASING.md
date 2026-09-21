@@ -82,7 +82,7 @@ Standard-Builds benötigen deshalb keinen privaten Key.
    Extension-Defaults noch `UserChoice`, die geschützte P-Viewer-Seite unter
    „Standard-Apps“ öffnet sich, und die Deinstallation entfernt nur P-Viewer-Einträge.
 
-Die Browserregressionen bauen und testen den Produktionsbuild. Unter Linux benötigen sie `npx playwright install --with-deps chromium`; Windows verwendet vorhandenes Edge. Gemockte IPC-Lifecycle-Tests ersetzen weder einen echten TeX-Compiler noch einen signierten Update-Installationslauf. Der versionsbezogene Prüfbericht `docs/QUALITY-v0.1.7.md` trennt diese Nachweise.
+Die Browserregressionen bauen und testen den Produktionsbuild. Unter Linux benötigen sie `npx playwright install --with-deps chromium`; Windows verwendet vorhandenes Edge. Gemockte IPC-Lifecycle-Tests ersetzen weder einen echten TeX-Compiler noch einen signierten Update-Installationslauf. Der versionsbezogene Prüfbericht `docs/QUALITY-v0.1.8.md` trennt diese Nachweise.
 
 Der Workflow bricht ab, wenn Tag und Metadaten nicht übereinstimmen oder Key-Variablen
 fehlen. Windows-Builds sind bewusst auf NSIS begrenzt, damit Candidate-Registrierung und Deinstallation über dieselben geprüften Installer-Hooks laufen, ohne vorhandene Benutzerstandards zu schreiben oder wiederherzustellen.

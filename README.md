@@ -5,7 +5,7 @@ P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter f
 [![Tests](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml/badge.svg)](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-blue.svg)](LICENSE)
 
-> **Status:** aktueller Entwicklungsstand `v0.1.4`.
+> **Status:** aktueller Entwicklungsstand `v0.1.8`.
 
 ## Aktueller Funktionsumfang
 
@@ -17,7 +17,7 @@ P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter f
 - Dateityp direkt in der Werkzeugleiste aus allen unterstützten Formaten, speziellen Dateinamen oder über eine eigene Endung wählen
 - breite Syntaxhervorhebung für 295 Text-Dateiendungen und 131 spezielle Dateinamen mit sicherem Plaintext-Fallback, inklusive gemischter Astro-, Svelte- und Vue-Syntax sowie eigener Modi für Batch, Makefile, GraphQL, Elixir, BibTeX, Ignore-Dateien, CSV, Terraform/HCL, Nix und Vim Script
 - schreibgeschützte Bildansicht für PNG, JPEG, GIF, WebP, BMP, ICO und AVIF mit Zoom, Einpassen und Transparenzraster sowie eine integrierte PDF-Ansicht; beide werden per Dateisignatur geprüft, nie als Text gelesen und nie überschrieben
-- Edit-, View- und Split-Ansicht
+- Edit-, View- und Split-Ansicht mit gespeichertem Standardmodus und Ausnahmen pro Dateiendung; manuelle Moduswechsel bleiben pro Tab erhalten
 - sichere statische HTML-/HTM-/XHTML-Vorschau sowie eine explizit bestätigte vollständige Vorschau mit Skripten, Stylesheets und lokalen Ressourcen
 - Markdown mit GFM, Gliederung, Folding, Tabellen, Aufgabenlisten, Fußnoten, Callouts, Syntaxhervorhebung in Codeblöcken und KaTeX-Mathematik
 - einklappbare JSON-Strukturansicht für JSON, JSONC, JSON5, JSON-LD, GeoJSON, Source Maps und Web-Manifeste sowie zeilenweise JSONL-/NDJSON-Datensätze; Werkzeugdateien wie `tsconfig.json`, `.babelrc` oder VS-Code-Einstellungen gelten als JSONC, Syntaxfehler werden auf Deutsch mit Zeile und Spalte gemeldet
@@ -105,6 +105,14 @@ Für einen typografisch exakten **PDF**-Build kann P-Viewer zusätzlich eine lok
 - Linux: TeX Live
 
 Die externe Distribution ist optional; Shell-Escape bleibt deaktiviert.
+
+## Standard-Anzeigemodus
+
+Unter **Einstellungen → Anzeigemodus** lässt sich **Edit**, **View** oder **Split** als Standard für den Start sowie neue und neu geöffnete Dokumente festlegen. Unter **Erweitert** können einzelne Dateiendungen einen abweichenden Modus erhalten, z. B. `.md → Split` oder `.json → View`. Endungen sind unabhängig von Groß-/Kleinschreibung; bei zusammengesetzten Endungen hat die längste passende Regel Vorrang (`.d.ts` vor `.ts`). Ohne passende Regel gilt der Standard, auch bei Dateien ohne Endung.
+
+Änderungen werden automatisch in den bestehenden Einstellungen gespeichert. Bereits geöffnete Tabs behalten ihre aktuelle Ansicht, auch beim Tabwechsel, Speichern oder Ändern des Dateityps. Beim Verschieben in ein anderes Fenster reist der Tab-Modus mit. Entfernen einer Regel stellt für künftiges Öffnen den Standard wieder her. Bilder und PDFs bleiben unabhängig von diesen Vorgaben schreibgeschützte Viewer. System-Dateizuordnungen werden dadurch nicht verändert.
+
+Die Zeilennummernleiste hebt sich im dunklen Design mit einer dunkleren Fläche vom Text ab; das helle Design bleibt unverändert.
 
 ## Dateizuordnungen
 

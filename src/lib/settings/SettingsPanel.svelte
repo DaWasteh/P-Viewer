@@ -19,7 +19,8 @@
     FILE_ASSOCIATION_GROUPS,
     FILE_ASSOCIATION_IDS,
   } from "$lib/files/associations";
-  import type { AppSettings, ThemePreference } from "./settings";
+  import { normalizeExtension, type AppSettings, type ThemePreference } from "./settings";
+  import type { ViewMode } from "$lib/files/types";
 
   interface AssociationApplyResult {
     platform: string;
@@ -43,6 +44,28 @@
   let applyingAssociations = $state(false);
   let associationMessage = $state("");
   let associationError = $state(false);
+  let extensionInput = $state("");
+  let extensionMode = $state<ViewMode>("view");
+  let extensionError = $state("");
+  const viewModes = [{ id: "edit", label: "Edit" }, { id: "view", label: "View" }, { id: "split", label: "Split" }] as const;
+
+  function addExtensionMode(event: SubmitEvent): void {
+    event.preventDefault();
+    const extension = normalizeExtension(extensionInput);
+    if (!extension) {
+      extensionError = "Bitte eine einzelne Dateiendung eingeben, z. B. .md oder .d.ts (max. 64 Zeichen).";
+      return;
+    }
+    update("extensionViewModes", { ...settings.extensionViewModes, [extension]: extensionMode });
+    extensionInput = "";
+    extensionError = "";
+  }
+
+  function removeExtensionMode(extension: string): void {
+    const next = { ...settings.extensionViewModes };
+    delete next[extension];
+    update("extensionViewModes", next);
+  }
 
   const selectedAssociationCount = $derived(settings.defaultAppAssociations.length);
 
@@ -156,6 +179,44 @@
             </button>
           {/each}
         </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Anzeigemodus</legend>
+        <label class="mode-setting">
+          <span>Standard-Anzeigemodus</span>
+          <select aria-label="Standard-Anzeigemodus" value={settings.defaultViewMode} onchange={(event) => update("defaultViewMode", event.currentTarget.value as ViewMode)}>
+            {#each viewModes as mode}<option value={mode.id}>{mode.label}</option>{/each}
+          </select>
+        </label>
+        <p class="group-description">Gilt beim Start sowie für neue und neu geöffnete Dokumente. Bereits geöffnete Tabs behalten ihren Modus.</p>
+        <details class="advanced-modes">
+          <summary>Erweitert</summary>
+          <p class="group-description">Abweichenden Modus pro Dateiendung festlegen. Die längste passende Endung hat Vorrang. Bilder und PDFs bleiben schreibgeschützte Viewer. Diese Regeln ändern keine System-Dateizuordnungen.</p>
+          <form class="extension-form" onsubmit={addExtensionMode}>
+            <label>Dateiendung<input bind:value={extensionInput} placeholder="z. B. .md" maxlength="65" /></label>
+            <label>Anzeigemodus für Endung<select aria-label="Anzeigemodus für Endung" bind:value={extensionMode}>
+              {#each viewModes as mode}<option value={mode.id}>{mode.label}</option>{/each}
+            </select></label>
+            <button type="submit">Hinzufügen / ersetzen</button>
+          </form>
+          {#if extensionError}<p class="association-message error" role="alert">{extensionError}</p>{/if}
+          <div class="extension-rules">
+            {#each Object.entries(settings.extensionViewModes).sort(([a], [b]) => a.localeCompare(b)) as [extension, selectedMode] (extension)}
+              <div class="extension-rule">
+                <label class="mode-setting">
+                  <span>.{extension}</span>
+                  <select aria-label={`Anzeigemodus für .${extension}`} value={selectedMode} onchange={(event) => update("extensionViewModes", { ...settings.extensionViewModes, [extension]: event.currentTarget.value as ViewMode })}>
+                    {#each viewModes as mode}<option value={mode.id}>{mode.label}</option>{/each}
+                  </select>
+                </label>
+                <button aria-label={`Regel für .${extension} entfernen`} title="Entfernen: Standardmodus verwenden" onclick={() => removeExtensionMode(extension)}><X size={14} aria-hidden="true" /></button>
+              </div>
+            {:else}
+              <p class="group-description">Keine Ausnahmen – alle Endungen verwenden den Standardmodus.</p>
+            {/each}
+          </div>
+        </details>
       </fieldset>
 
       <fieldset>
@@ -467,6 +528,41 @@
     background: #222943;
     box-shadow: inset 0 0 0 1px rgb(105 124 226 / 25%);
   }
+
+  .mode-setting {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+    font-size: 11px;
+  }
+
+  .mode-setting span { overflow-wrap: anywhere; }
+
+  select, .extension-form input {
+    min-width: 0;
+    padding: 7px;
+    border: 1px solid #434b5c;
+    border-radius: 5px;
+    color: inherit;
+    background: #13161b;
+    font: inherit;
+  }
+
+  .advanced-modes summary { cursor: pointer; font-size: 11px; }
+  .extension-form { display: grid; gap: 8px; }
+  .extension-form label { display: grid; gap: 4px; font-size: 10px; }
+  .extension-form button, .extension-rule button {
+    padding: 7px;
+    border-radius: 5px;
+    color: #fff;
+    background: #4b5ebd;
+    font-size: 10px;
+  }
+  .extension-rules { margin-top: 12px; }
+  .extension-rule { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 6px; }
+  .light select, .light .extension-form input { color: #262b35; background: #f6f7f9; border-color: #b3bac8; }
 
   .range-setting {
     display: grid;

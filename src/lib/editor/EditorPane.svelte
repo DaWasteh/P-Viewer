@@ -115,7 +115,13 @@
   }
 
   function themeExtensions(mode: "dark" | "light", size: number) {
-    return mode === "dark" ? [oneDark, editorTheme(mode, size)] : [editorTheme(mode, size)];
+    // First theme wins at equal specificity. Keep One Dark's syntax/content palette,
+    // but give the line-number rail its own darker, readable surface.
+    const darkGutter = EditorView.theme({
+      ".cm-gutters": { backgroundColor: "#1e2229", color: "#929bab", borderRight: "1px solid #303640" },
+      ".cm-activeLineGutter": { backgroundColor: "#252a33", color: "#c5ccd8" },
+    }, { dark: true });
+    return mode === "dark" ? [darkGutter, oneDark, editorTheme(mode, size)] : [editorTheme(mode, size)];
   }
 
   function reportCursor(editor: EditorView): void {

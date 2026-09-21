@@ -2,6 +2,16 @@
 
 Alle Entwicklungsstufen folgen semantischer Vorabversionierung.
 
+## 0.1.8
+
+- Standard-Anzeigemodus **Edit**, **View** oder **Split** in den Einstellungen wählbar; wird beim Start sowie für neue und neu geöffnete Dokumente automatisch übernommen
+- unter **Anzeigemodus → Erweitert** eigene Regeln pro Dateiendung hinzufügen, ändern und entfernen; Groß-/Kleinschreibung und führender Punkt werden normalisiert, zusammengesetzte Endungen wie `.d.ts` haben Vorrang vor `.ts`
+- beide Vorgaben werden im vorhandenen Einstellungsbestand gespeichert; ältere Einstellungen erhalten rückwärtskompatibel den Standard **Edit** ohne Ausnahmen
+- manuelle Ansicht bleibt pro Tab erhalten und reist bei Fenstertransfers mit; Startdateien und eingehende Tabs warten auf geladene Einstellungen, damit langsam geladene Defaults keinen übertragenen Modus überschreiben
+- Bilder und PDFs bleiben unabhängig von den Vorgaben reine Viewer; Änderungen der Vorgaben beeinflussen keine bereits geöffneten Tabs und keine System-Dateizuordnungen
+- dunklere, kontrastreiche Zeilennummernleiste im Dark Mode entsprechend dem Nutzerfeedback; Syntaxfarben und Light Mode bleiben unverändert
+- Regressionstests für Persistenz, Migration, Endungsregeln, verzögerten Start, Tabwechsel/-transfer und tatsächliche CodeMirror-Farben ergänzt
+
 ## 0.1.7
 
 - Dateien auf Netzlaufwerken und NAS-Freigaben: Textdateien, Bilder und PDFs werden direkt über den gewählten Pfad gelesen; eine fehlgeschlagene kanonische Pfadauflösung (`GetFinalPathNameByHandle` unter Windows, etwa `os error 2`) verhindert das Öffnen einer tatsächlich lesbaren Datei nicht mehr

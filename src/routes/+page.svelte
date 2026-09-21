@@ -51,6 +51,7 @@
     DEFAULT_SETTINGS,
     loadSettings,
     nativeThemeFor,
+    preferredViewMode,
     resetSettings,
     saveSettings,
     type AppSettings,
@@ -78,20 +79,23 @@
     created: boolean;
   }
 
-  function createTab(document: OpenDocument): DocumentTab {
+  function createTab(document: OpenDocument, mode: ViewMode = "edit"): DocumentTab {
     tabSequence += 1;
-    return { id: `tab-${tabSequence}`, document, revision: 0 };
+    return { id: `tab-${tabSequence}`, document, revision: 0, mode };
   }
 
   const initialTab = createTab(createUntitledDocument());
   let tabs = $state<DocumentTab[]>([initialTab]);
   let activeTabId = $state(initialTab.id);
-  let mode = $state<ViewMode>("edit");
+  function setMode(next: ViewMode): void {
+    if (!binaryDocument) activeTab!.mode = next;
+  }
+  let settingsLoadPromise: Promise<void> = Promise.resolve();
   let busy = $state(false);
   let installingUpdate = $state(false);
   let pendingOpens = $state<Array<{ path: string; replacePristine: boolean }>>([]);
   $effect(() => {
-    if (busy || installingUpdate || settingsOpen || updateOpen || pendingOpens.length === 0) return;
+    if (!settingsReady || busy || installingUpdate || settingsOpen || updateOpen || pendingOpens.length === 0) return;
     untrack(() => {
       const next = pendingOpens.shift();
       if (next) void openDroppedDocument(next.path, next.replacePristine);
@@ -128,6 +132,7 @@
   let windowCloseApproved = false;
 
   const activeTab = $derived(tabs.find((tab) => tab.id === activeTabId) ?? tabs[0]);
+  const mode = $derived(activeTab?.mode ?? "edit");
   const document = $derived(activeTab!.document);
   const dirty = $derived(documentIsDirty(document));
   // Images and PDF are read-only viewers without an editor or save path.
@@ -206,6 +211,7 @@
     const snapshot = {
       ...settings,
       defaultAppAssociations: [...settings.defaultAppAssociations],
+      extensionViewModes: { ...settings.extensionViewModes },
     };
     if (!settingsReady) return;
     const timer = window.setTimeout(() => {
@@ -227,9 +233,10 @@
       media.addListener(updateSystemTheme);
     }
 
-    void loadSettings()
+    settingsLoadPromise = loadSettings()
       .then((loaded) => {
         settings = loaded;
+        activeTab!.mode = preferredViewMode(loaded, document.name);
       })
       .catch((error) => {
         errorMessage = `Einstellungen konnten nicht geladen werden: ${messageFrom(error)}`;
@@ -254,6 +261,8 @@
     const cleanups: Array<() => void> = [];
 
     void (async () => {
+      // Defaults must be ready before startup files or transferred modes are applied.
+      await settingsLoadPromise;
       const [{ getCurrentWindow }, { getCurrentWebview }] = await Promise.all([
         import("@tauri-apps/api/window"),
         import("@tauri-apps/api/webview"),
@@ -343,11 +352,12 @@
     if (replacePristine && current && isPristineUntitled(current.document)) {
       editorSessions.delete(`${current.id}:${current.revision}`);
       current.document = opened;
+      current.mode = preferredViewMode(settings, opened.name);
       current.revision += 1;
       return;
     }
 
-    const tab = createTab(opened);
+    const tab = createTab(opened, preferredViewMode(settings, opened.name));
     tabs.push(tab);
     activeTabId = tab.id;
   }
@@ -356,10 +366,9 @@
     if (busy || installingUpdate) return;
     if (tabs.length >= MAX_TABS) { errorMessage = `Maximal ${MAX_TABS} offene Tabs. Bitte zuerst einen Tab schließen.`; return; }
     const name = nextUntitledName(tabs.map((tab) => tab.document));
-    const tab = createTab(createUntitledDocument(name));
+    const tab = createTab(createUntitledDocument(name), preferredViewMode(settings, name));
     tabs.push(tab);
     activeTabId = tab.id;
-    mode = "edit";
     errorMessage = "";
   }
 
@@ -432,7 +441,7 @@
         }
         continue;
       }
-      const tab = createTab(incoming);
+      const tab = createTab(incoming, transfer.mode);
       if (onlyPristine) {
         editorSessions.delete(`${tabs[0].id}:${tabs[0].revision}`);
         tabs.splice(0, 1, tab);
@@ -440,7 +449,6 @@
         tabs.splice(dropIndexFor(entry.dropX, entry.dropY), 0, tab);
       }
       activeTabId = tab.id;
-      if (!incoming.binary) mode = transfer.mode;
       cursorLine = 1;
       cursorColumn = 1;
       selectedCharacters = 0;
@@ -475,7 +483,7 @@
     errorMessage = "";
     try {
       const result = await invoke<TabMoveResult>("move_tab_to_window", {
-        tab: serializeTabTransfer(tab.document, mode),
+        tab: serializeTabTransfer(tab.document, tab.mode ?? "edit"),
         target: null,
         insideSource: point.insideWindow,
         allowNewWindow: !onlyTab,
@@ -573,7 +581,8 @@
         });
         return;
       }
-      const replacement = createTab(createUntitledDocument());
+      const replacementDocument = createUntitledDocument();
+      const replacement = createTab(replacementDocument, preferredViewMode(settings, replacementDocument.name));
       tabs.splice(0, 1, replacement);
       activeTabId = replacement.id;
     } else {
@@ -734,13 +743,13 @@
       if (!binaryDocument) void saveCurrent(event.shiftKey);
     } else if (key === "e" && event.shiftKey) {
       event.preventDefault();
-      mode = "edit";
+      setMode("edit");
     } else if (key === "r" && event.shiftKey) {
       event.preventDefault();
-      mode = "view";
+      setMode("view");
     } else if (key === "p" && event.shiftKey) {
       event.preventDefault();
-      mode = "split";
+      setMode("split");
     } else if (key === ",") {
       event.preventDefault();
       updateOpen = false;
@@ -819,15 +828,15 @@
     </div>
 
     <div class="mode-switch" aria-label="Ansichtsmodus">
-      <button class:active={mode === "edit" && !binaryDocument} aria-pressed={mode === "edit" && !binaryDocument} onclick={() => (mode = "edit")} title="Bearbeiten (Strg/Cmd+Umschalt+E)" disabled={binaryDocument}>
+      <button class:active={mode === "edit" && !binaryDocument} aria-pressed={mode === "edit" && !binaryDocument} onclick={() => setMode("edit")} title="Bearbeiten (Strg/Cmd+Umschalt+E)" disabled={binaryDocument}>
         <Pencil size={15} aria-hidden="true" />
         <span>Edit</span>
       </button>
-      <button class:active={mode === "view" || binaryDocument} aria-pressed={mode === "view" || binaryDocument} onclick={() => (mode = "view")} title="Ansehen (Strg/Cmd+Umschalt+R)" disabled={binaryDocument}>
+      <button class:active={mode === "view" || binaryDocument} aria-pressed={mode === "view" || binaryDocument} onclick={() => setMode("view")} title="Ansehen (Strg/Cmd+Umschalt+R)" disabled={binaryDocument}>
         <Eye size={15} aria-hidden="true" />
         <span>View</span>
       </button>
-      <button class:active={mode === "split" && !binaryDocument} aria-pressed={mode === "split" && !binaryDocument} onclick={() => (mode = "split")} title="Geteilt (Strg/Cmd+Umschalt+P)" disabled={binaryDocument}>
+      <button class:active={mode === "split" && !binaryDocument} aria-pressed={mode === "split" && !binaryDocument} onclick={() => setMode("split")} title="Geteilt (Strg/Cmd+Umschalt+P)" disabled={binaryDocument}>
         <Columns2 size={15} aria-hidden="true" />
         <span>Split</span>
       </button>

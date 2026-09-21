@@ -4,6 +4,8 @@ export interface DocumentTab {
   id: string;
   document: OpenDocument;
   revision: number;
+  /** Session-only mode; transferred with the tab, not persisted as a preference. */
+  mode?: ViewMode;
 }
 
 export function documentIsDirty(document: OpenDocument): boolean {

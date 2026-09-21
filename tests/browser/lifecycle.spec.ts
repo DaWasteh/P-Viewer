@@ -151,6 +151,11 @@ test("tabs reorder by dragging and move between windows", async ({ page }) => {
   await expect(page.getByRole("tab").nth(1)).toHaveText(/first\.md/);
   expect(await page.evaluate(() => (window as any).__testNative.calls.some((call: any) => call.command === "move_tab_to_window"))).toBe(false);
 
+  // An inactive tab must carry its own mode, not the active tab's mode.
+  await page.getByRole("tab", { name: "first.md", exact: true }).click();
+  await page.getByRole("button", { name: "View", exact: true }).click();
+  await page.getByRole("tab", { name: "Unbenannt.txt", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveAttribute("aria-pressed", "true");
   // Dropping far below the strip hands the tab to Rust, which decides on the target window.
   const moving = (await page.getByRole("tab", { name: "first.md", exact: true }).boundingBox())!;
   await page.mouse.move(moving.x + 20, moving.y + moving.height / 2);
@@ -164,6 +169,7 @@ test("tabs reorder by dragging and move between windows", async ({ page }) => {
   expect(move.insideSource).toBe(true);
   expect(move.allowNewWindow).toBe(true);
   const transfer = JSON.parse(move.tab);
+  expect(transfer.mode).toBe("view");
   expect(transfer.document.name).toBe("first.md");
   expect(transfer.document.content).toBe("# First");
   expect(transfer.document.path).toBe("C:/fixtures/first.md");
