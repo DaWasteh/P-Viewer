@@ -1,6 +1,6 @@
 [package]
 name = "p-viewer"
-version = "0.1.6"
+version = "0.1.7"
 description = "A fast, focused cross-platform editor and document viewer"
 authors = ["P-Viewer contributors"]
 license = "MIT"

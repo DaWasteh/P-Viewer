@@ -2,6 +2,12 @@
 
 Alle Entwicklungsstufen folgen semantischer Vorabversionierung.
 
+## 0.1.7
+
+- Dateien auf Netzlaufwerken und NAS-Freigaben: Textdateien, Bilder und PDFs werden direkt über den gewählten Pfad gelesen; eine fehlgeschlagene kanonische Pfadauflösung (`GetFinalPathNameByHandle` unter Windows, etwa `os error 2`) verhindert das Öffnen einer tatsächlich lesbaren Datei nicht mehr
+- wenn die Pfadnormalisierung fehlschlägt, bleibt der absolute Originalpfad für erneutes Öffnen und Speichern erhalten; Größenlimits, Dateitypprüfung und Speicherkonflikterkennung bleiben aktiv, ebenso die strikt kanonischen Sicherheitsgrenzen für eingebettete Vorschau-Ressourcen
+- Regressionstests für simulierte Netzwerkprovider-Fehler, UNC-/Extended-/Laufwerkspfade, relative Rückfallpfade, Speicherkonflikte und weiterhin abgewiesene fehlende Dateien, Ordner sowie übergroße Dateien ergänzt; unter Unix wird zusätzlich das Lesen und Speichern über Symlinks geprüft
+
 ## 0.1.6
 
 - Editor in v0.1.5 unlesbar: das in v0.1.5 ergänzte Inline-`<style>` in `app.html` ließ Tauri einen Hash in die CSP schreiben, wodurch `'unsafe-inline'` ignoriert und die zur Laufzeit eingefügten CodeMirror-Stylesheets blockiert wurden (Text in Root-Farbe, Zeilennummern über statt neben dem Inhalt); der Inline-Style ist entfernt, die Fensterhintergrundfarbe kommt allein aus Rust

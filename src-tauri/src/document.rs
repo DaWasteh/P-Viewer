@@ -74,10 +74,7 @@ struct DecodedText {
 
 #[tauri::command]
 pub fn read_document(path: String, encoding: Option<String>) -> Result<DocumentPayload, String> {
-    let path = checked_path(&path)?
-        .canonicalize()
-        .map_err(|error| format!("Dateipfad kann nicht aufgelöst werden: {error}"))?;
-    let bytes = read_bounded_file(&path, MAX_DOCUMENT_BYTES)?;
+    let (path, bytes) = read_document_file(&path, MAX_DOCUMENT_BYTES, Path::canonicalize)?;
     let decoded = match encoding.as_deref() {
         Some(name) => decode_text_as(&bytes, name)?,
         None => decode_text(&bytes)?,
@@ -101,23 +98,12 @@ pub fn read_document(path: String, encoding: Option<String>) -> Result<DocumentP
 /// shown with its real type or rejected.
 #[tauri::command]
 pub fn read_binary_document(path: String, kind: String) -> Result<BinaryDocumentPayload, String> {
-    let path = checked_path(&path)?
-        .canonicalize()
-        .map_err(|error| format!("Dateipfad kann nicht aufgelöst werden: {error}"))?;
-    let (limit, label) = match kind.as_str() {
-        "image" => (MAX_IMAGE_DOCUMENT_BYTES, "Das Bild"),
-        "pdf" => (MAX_PDF_DOCUMENT_BYTES, "Das PDF-Dokument"),
+    let limit = match kind.as_str() {
+        "image" => MAX_IMAGE_DOCUMENT_BYTES,
+        "pdf" => MAX_PDF_DOCUMENT_BYTES,
         _ => return Err("Unbekannte Binärdokumentart.".into()),
     };
-    let metadata = fs::metadata(&path)
-        .map_err(|error| format!("Dateimetadaten können nicht gelesen werden: {error}"))?;
-    if metadata.len() > limit {
-        return Err(format!(
-            "{label} ist größer als {} MiB und wird nicht dargestellt.",
-            limit / 1024 / 1024
-        ));
-    }
-    let bytes = read_bounded_file(&path, limit)?;
+    let (path, bytes) = read_document_file(&path, limit, Path::canonicalize)?;
     let mime = if kind == "pdf" {
         if !bytes.starts_with(b"%PDF-") {
             return Err(
@@ -210,6 +196,28 @@ fn check_file_version(path: &Path, expected: Option<&str>) -> Result<(), String>
         }
     }
     Ok(())
+}
+
+/// Opening an explicitly selected document must not depend on canonicalization:
+/// Windows network providers can read a file but fail GetFinalPathNameByHandle
+/// (used by canonicalize), e.g. on SMB/NAS or virtual mapped drives. Read through
+/// the supplied path first, then use the canonical path only when available.
+/// Keep an absolute fallback so subsequent saves do not depend on the cwd.
+///
+/// This is NOT a containment check. Preview resource loaders must still require
+/// canonical paths before checking their document-directory security boundary.
+/// The resolver is injectable so tests can reproduce provider failures without
+/// requiring a particular NAS, credentials or a globally mapped drive.
+fn read_document_file(
+    value: &str,
+    limit: u64,
+    canonicalize: impl FnOnce(&Path) -> std::io::Result<PathBuf>,
+) -> Result<(PathBuf, Vec<u8>), String> {
+    let path = std::path::absolute(checked_path(value)?)
+        .map_err(|error| format!("Dateipfad kann nicht aufgelöst werden: {error}"))?;
+    let bytes = read_bounded_file(&path, limit)?;
+    let path = canonicalize(&path).unwrap_or(path);
+    Ok((path, bytes))
 }
 
 pub(crate) fn read_bounded_file(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
@@ -753,6 +761,156 @@ mod tests {
             simplify_extended_path(r"\\?\Volume{guid}\x"),
             r"\\?\Volume{guid}\x"
         );
+    }
+
+    #[test]
+    fn document_reads_survive_provider_canonicalization_errors() {
+        let directory = tempfile::tempdir().unwrap();
+        // These are real reads; only the provider's final-path query is mocked.
+        for (name, content) in [
+            ("Notizen ä.txt", b"hello\r\n".as_slice()),
+            ("photo.png", b"\x89PNG\r\n\x1a\ncontent".as_slice()),
+            ("paper.pdf", b"%PDF-1.7\n".as_slice()),
+        ] {
+            let path = directory.path().join(name);
+            fs::write(&path, content).unwrap();
+            for code in [2, 3, 5, 50] {
+                let (opened_path, bytes) =
+                    read_document_file(&path.to_string_lossy(), 1024, |_| {
+                        Err(std::io::Error::from_raw_os_error(code))
+                    })
+                    .unwrap();
+                assert_eq!(bytes, content);
+                assert_eq!(opened_path, std::path::absolute(&path).unwrap());
+                assert!(opened_path.is_absolute());
+                assert_eq!(fs::read(&opened_path).unwrap(), content);
+            }
+        }
+    }
+
+    #[test]
+    fn fallback_path_supports_conditional_save_and_conflict_detection() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("save.txt");
+        fs::write(&path, "original").unwrap();
+        let (opened_path, bytes) = read_document_file(&path.to_string_lossy(), 1024, |_| {
+            Err(std::io::Error::from_raw_os_error(2))
+        })
+        .unwrap();
+        let name = display_path(&opened_path);
+        let saved = write_document(
+            name.clone(),
+            "changed".into(),
+            "UTF-8".into(),
+            false,
+            "lf".into(),
+            Some(content_version(&bytes)),
+        )
+        .unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"changed");
+        fs::write(&path, "external").unwrap();
+        assert!(write_document(
+            name,
+            "mine".into(),
+            "UTF-8".into(),
+            false,
+            "lf".into(),
+            Some(saved.version),
+        )
+        .unwrap_err()
+        .contains("außerhalb"));
+        assert_eq!(fs::read(&path).unwrap(), b"external");
+    }
+
+    #[test]
+    fn document_read_still_requires_a_regular_existing_file_within_limit() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("bounded.txt");
+        fs::write(&path, b"12345").unwrap();
+        for (value, limit) in [
+            (path.to_string_lossy().into_owned(), 4),
+            (directory.path().to_string_lossy().into_owned(), 1024),
+            (
+                directory
+                    .path()
+                    .join("missing")
+                    .to_string_lossy()
+                    .into_owned(),
+                1024,
+            ),
+            (" ".into(), 1024),
+        ] {
+            assert!(read_document_file(&value, limit, |_| {
+                panic!("invalid input must fail before optional canonicalization")
+            })
+            .is_err());
+        }
+    }
+
+    #[test]
+    fn document_read_keeps_canonical_identity_when_available() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("document.txt");
+        fs::write(&path, "content").unwrap();
+        let (opened_path, _) =
+            read_document_file(&path.to_string_lossy(), 1024, Path::canonicalize).unwrap();
+        assert_eq!(opened_path, path.canonicalize().unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn document_symlink_keeps_target_identity_and_save_behavior() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("target.txt");
+        let link = directory.path().join("link.txt");
+        fs::write(&target, "original").unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let opened = read_document(link.to_string_lossy().into_owned(), None).unwrap();
+        assert_eq!(opened.path, display_path(&target.canonicalize().unwrap()));
+        write_document(
+            opened.path,
+            "changed".into(),
+            "UTF-8".into(),
+            false,
+            "lf".into(),
+            Some(opened.version),
+        )
+        .unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"changed");
+        assert!(fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+    }
+
+    #[test]
+    fn relative_document_fallback_is_absolute_without_changing_cwd() {
+        let directory = tempfile::tempdir_in(std::env::current_dir().unwrap()).unwrap();
+        let path = directory.path().join("relative.txt");
+        fs::write(&path, "relative").unwrap();
+        let relative = path.strip_prefix(std::env::current_dir().unwrap()).unwrap();
+        let (opened_path, bytes) = read_document_file(&relative.to_string_lossy(), 1024, |_| {
+            Err(std::io::Error::from_raw_os_error(2))
+        })
+        .unwrap();
+        assert_eq!(opened_path, path);
+        assert_eq!(bytes, b"relative");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn absolute_windows_paths_preserve_network_roots() {
+        // Pure path handling does not access these fictitious shares/drives.
+        for value in [
+            r"\\server\share\Folder ä\notes.txt",
+            r"\\?\UNC\server\share\Folder ä\notes.txt",
+            r"Z:\Folder ä\notes.txt",
+            r"\\?\Z:\Folder ä\notes.txt",
+        ] {
+            let path = std::path::absolute(checked_path(value).unwrap()).unwrap();
+            assert_eq!(path, PathBuf::from(value));
+            assert_eq!(display_path(&path), simplify_extended_path(value));
+        }
     }
 
     #[test]
