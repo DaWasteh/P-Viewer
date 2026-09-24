@@ -9,6 +9,7 @@
     CircleArrowUp,
     Columns2,
     ArrowDownUp,
+    ChevronDown,
     Eye,
     FileOutput,
     FilePlus2,
@@ -17,12 +18,14 @@
     LoaderCircle,
     Pencil,
     Save,
+    Search,
     Settings2,
     TriangleAlert,
   } from "@lucide/svelte";
   import EditorPane from "$lib/editor/EditorPane.svelte";
   import PreviewPane from "$lib/preview/PreviewPane.svelte";
   import { PreviewSyncController, type SyncMode } from "$lib/preview/sync";
+  import { openBatch, openFind, openReplacePanel } from "$lib/editor/findReplace";
   import ContextMenu, { type MenuEntry } from "$lib/ContextMenu.svelte";
   import DocumentTabs, { type TabDropPoint } from "$lib/files/DocumentTabs.svelte";
   import CloseTabsDialog, {
@@ -247,6 +250,35 @@
   $effect(() => {
     previewSync.configure({ active: syncAvailable, mode: effectiveSyncMode, clickNavigation: settings.previewClickNavigation });
   });
+
+  // Find and replace is reachable from the toolbar, not only by shortcut.
+  let searchMenu = $state<{ x: number; y: number } | null>(null);
+  const searchAvailable = $derived(!binaryDocument && !restoring);
+
+  async function startSearch(kind: "find" | "replace" | "batch"): Promise<void> {
+    if (!searchAvailable || !activeTab) return;
+    // The editor is hidden in View: switch to Split so the results stay visible.
+    if (mode === "view") {
+      setMode("split");
+      await tick();
+    }
+    const view = editorSessions.get(sessionKey(activeTab))?.view;
+    if (!view) return;
+    view.focus();
+    if (kind === "find") openFind(view);
+    else if (kind === "replace") openReplacePanel(view);
+    else openBatch(view);
+  }
+
+  function searchMenuEntries(): MenuEntry[] {
+    const primary = isMac ? "Cmd" : "Strg";
+    return [
+      { label: "Suchen", shortcut: `${primary}+F`, action: () => void startSearch("find") },
+      { label: "Ersetzen", shortcut: isMac ? "Cmd+Alt+F" : "Strg+H", action: () => void startSearch("replace") },
+      { separator: true },
+      { label: "Mehrfach ersetzen und Makros …", shortcut: `${primary}+Umschalt+H`, action: () => void startSearch("batch") },
+    ];
+  }
 
   function togglePreviewSync(): void {
     if (!activeTab) return;
@@ -1797,6 +1829,23 @@
       </button>
     </div>
 
+    <button
+      class="search-button"
+      class:active={Boolean(searchMenu)}
+      aria-haspopup="menu"
+      aria-expanded={Boolean(searchMenu)}
+      title="Suchen und Ersetzen (Strg/Cmd+F, Strg+H)"
+      disabled={!searchAvailable}
+      onclick={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        searchMenu = searchMenu ? null : { x: rect.left, y: rect.bottom + 4 };
+      }}
+    >
+      <Search size={14} aria-hidden="true" />
+      <span>Suchen</span>
+      <ChevronDown size={11} aria-hidden="true" />
+    </button>
+
     {#if syncAvailable}
       <button
         class="sync-toggle"
@@ -2036,6 +2085,17 @@
     />
   {/if}
 
+  {#if searchMenu}
+    <ContextMenu
+      items={searchMenuEntries()}
+      x={searchMenu.x}
+      y={searchMenu.y}
+      label="Suchen und Ersetzen"
+      light={activeTheme === "light"}
+      onClose={() => (searchMenu = null)}
+    />
+  {/if}
+
   {#if closeDialog}
     <CloseTabsDialog request={closeDialog} light={activeTheme === "light"} />
   {/if}
@@ -2259,6 +2319,25 @@
   .mode-switch button.active {
     background: var(--surface-raised);
     box-shadow: 0 1px 4px rgb(0 0 0 / 24%);
+  }
+
+  .search-button {
+    display: flex;
+    height: 30px;
+    align-items: center;
+    gap: 6px;
+    margin-left: -4px;
+    padding: 0 9px 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-muted);
+    background: var(--inset);
+    font-size: 11px;
+  }
+
+  .search-button:hover:not(:disabled),
+  .search-button.active {
+    color: var(--text);
   }
 
   .sync-toggle {
@@ -2547,6 +2626,8 @@
     }
 
     .mode-switch span,
+    .search-button span,
+    .sync-toggle span,
     .statusbar span:nth-child(2) {
       display: none;
     }

@@ -299,3 +299,22 @@ test("list replacements and JavaScript macros run as one undo step and stay avai
   await dialog.getByRole("button", { name: "Abbrechen", exact: true }).click();
   await expect(editor(page)).toHaveText("||ads.example.org^Frühschicht Frühschicht");
 });
+
+test("the toolbar offers find, replace and the macro dialog, also from the View mode", async ({ page }) => {
+  await mockDesktop(page, "notes.txt", "alpha beta alpha");
+  await page.goto("/");
+  await expect(page.getByRole("tab", { name: "notes.txt", exact: true })).toBeVisible();
+  const search = page.getByRole("button", { name: "Suchen", exact: true });
+  await search.click();
+  await page.getByRole("menuitem", { name: /^Ersetzen/ }).click();
+  await expect(page.getByLabel("Ersetzen", { exact: true })).toBeVisible();
+  await page.getByLabel("Suchen", { exact: true }).fill("alpha");
+  await expect(page.locator(".pv-find-count")).toHaveText("1 von 2");
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "View", exact: true }).click();
+  await search.click();
+  await page.getByRole("menuitem", { name: /^Mehrfach ersetzen/ }).click();
+  await expect(page.getByRole("dialog", { name: "Mehrfach ersetzen und Makros" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Split", exact: true })).toHaveAttribute("aria-pressed", "true");
+});

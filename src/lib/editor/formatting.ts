@@ -596,19 +596,32 @@ export function setAlignment(alignment: Alignment, dialect: FormatDialect): Form
   };
 }
 
+/**
+ * GitHub alert box on lines of its own. A selection becomes its text (whole
+ * lines); without one a placeholder is inserted and selected, never spliced
+ * into the middle of the current line.
+ */
 export function insertCallout(): FormatCommand {
   return (state) => {
     const range = state.selection.main;
-    const selected = state.sliceDoc(range.from, range.to) || "Hinweis";
-    const body = selected
+    const lines = selectedLines(state);
+    const text = range.empty ? "Hinweis" : state.sliceDoc(lines[0].from, lines[lines.length - 1].to);
+    const body = text
       .split("\n")
-      .map((line) => `> ${line}`)
+      .map((line) => (line ? `> ${line}` : ">"))
       .join("\n");
-    const insert = `> [!NOTE]\n${body}`;
-    return spec(state, {
-      changes: { from: range.from, to: range.to, insert },
-      selection: EditorSelection.single(range.from + insert.length),
-    });
+    const block = `> [!NOTE]\n${body}`;
+    const bodyStart = "> [!NOTE]\n> ".length;
+    // Without a selection the box goes below the current paragraph (or quote)
+    // instead of splitting a line or an existing box.
+    let end = state.doc.lineAt(range.head);
+    while (end.text.trim() && end.number < state.doc.lines && state.doc.line(end.number + 1).text.trim()) {
+      end = state.doc.line(end.number + 1);
+    }
+    const target = range.empty
+      ? state.update({ selection: EditorSelection.cursor(end.to) }).state
+      : state.update({ selection: EditorSelection.range(lines[0].from, lines[lines.length - 1].to) }).state;
+    return insertBlock(target, block, bodyStart, range.empty ? bodyStart + text.length : block.length);
   };
 }
 

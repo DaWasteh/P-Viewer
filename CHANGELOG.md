@@ -2,6 +2,14 @@
 
 Alle Entwicklungsstufen folgen semantischer Vorabversionierung.
 
+## 0.2.0
+
+Erste Version der 0.2-Reihe: bündelt die Funktionen aus v0.1.9 (Formatierungsleiste, Suchen und Ersetzen, Mehrfach-Ersetzen und Makros, Editor ↔ Vorschau-Synchronisation, Sitzungswiederherstellung, Tab-Verwaltung, Overflow-Menü und Windows-Dateityp-Symbole) und macht sie leichter auffindbar.
+
+- Neuer Knopf **Suchen** in der Werkzeugleiste neben Edit/View/Split mit „Suchen“ (Strg/Cmd+F), „Ersetzen“ (Strg+H, macOS Cmd+Alt+F) und „Mehrfach ersetzen und Makros …“ (Strg/Cmd+Umschalt+H); aus der reinen Leseansicht wechselt er in die geteilte Ansicht, damit die Treffer sichtbar sind
+- Hinweisbox-Knopf der Formatierungsleiste: fügt die GitHub-Hinweisbox jetzt als eigenen Block unter dem aktuellen Absatz ein, statt sie mitten in die Zeile zu setzen; mehrfaches Klicken erzeugt dadurch keine verschachtelten Zeilen wie `> Hinweis> [!NOTE]` mehr, und eine Auswahl wird vollständig zum Hinweistext
+- Regressionstests für beide Fälle ergänzt
+
 ## 0.1.9
 
 Umsetzung der Verbesserungsvorschläge aus den Issues #1–#5 sowie Suchen und Ersetzen.

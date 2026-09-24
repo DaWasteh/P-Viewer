@@ -5,7 +5,7 @@ P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter f
 [![Tests](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml/badge.svg)](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-blue.svg)](LICENSE)
 
-> **Status:** aktueller Entwicklungsstand `v0.1.9`.
+> **Status:** aktueller Entwicklungsstand `v0.2.0`.
 
 ## Aktueller Funktionsumfang
 
@@ -13,7 +13,7 @@ P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter f
 - mehrere Dokumente parallel in einer kompakten Tab-Leiste öffnen und sicher schließen, mit eigener Undo-Historie, Auswahl, Faltungen, Editor- und Vorschau-Scrollposition, Ansicht und Split-Breite pro Tab
 - Sitzungswiederherstellung nach einem Neustart: Tabs, Reihenfolge, angeheftete und aktiver Tab sowie ungespeicherte Änderungen kehren zurück; Dateien laden erst beim Anzeigen, extern geänderte Dateien werden nie überschrieben
 - Tab-Kontextmenü mit Schließen (andere, rechts, links, alle, gespeicherte, gleiche Endung, gleicher Ordner), Anheften, Verschieben, Sortieren, Pfad kopieren, Im Explorer anzeigen, Terminal öffnen, Neu laden und „Geschlossenen Tab wieder öffnen“ (Strg/Cmd+Umschalt+T); zu viele Tabs wandern in ein durchsuchbares Overflow-Menü
-- Formatierungsleiste für Markdown und HTML (Fett, Kursiv, Überschriften, Listen, Aufgaben, Zitate, Codeblöcke, Links, Bilder, Tabellen, Trennlinien, Ausrichtung, Einrücken) sowie Suchen und Ersetzen wie in VS Code (Strg/Cmd+F, Strg+H) mit Trefferzähler, Groß-/Kleinschreibung, ganzem Wort und regulären Ausdrücken
+- Formatierungsleiste für Markdown und HTML (Fett, Kursiv, Überschriften, Listen, Aufgaben, Zitate, Codeblöcke, Links, Bilder, Tabellen, Trennlinien, Ausrichtung, Einrücken) sowie Suchen und Ersetzen wie in VS Code (Knopf „Suchen“ in der Werkzeugleiste, Strg/Cmd+F, Strg+H) mit Trefferzähler, Groß-/Kleinschreibung, ganzem Wort und regulären Ausdrücken
 - Mehrfach ersetzen mit Regellisten und Mustern sowie gespeicherte Makros (auch als abgeschottetes JavaScript) mit Verlauf, z. B. für wiederkehrende Pflege von Adblock-Listen (Strg/Cmd+Umschalt+H)
 - Editor und Markdown-Vorschau scrollen in der geteilten Ansicht quellzeilengenau gemeinsam; ein Klick in die Vorschau springt zur Quellzeile
 - Windows-Explorer zeigt für mit P-Viewer verknüpfte Dateien Dateityp-Symbole (wahlweise das App-Symbol)
@@ -140,7 +140,7 @@ Jede Endung besitzt unter Windows eine eigene ProgID mit eigenem Dateityp-Symbol
 
 Vorschaugrenzen halten die App bei sehr großen/komplexen Dateien bedienbar; sie sind keine Beschränkung auf ebenso kleine Editorquellen. Markdown begrenzt Quelltext, Zeilen und Strukturmarker, Notebooks kombinieren Zell-/Text-/Ausgabelimits. Die PDF-Ansicht hält nur eine Seite mit begrenzter Bitmap-Größe vor. View ist über **Strg/Cmd+Umschalt+R** erreichbar, Split über **Strg/Cmd+Umschalt+P**, ein weiteres Fenster über **Strg/Cmd+Umschalt+N**. Tabs wandern per Drag-and-drop zwischen Fenstern; beim Verschieben bleibt die Undo-Historie im Ursprungsfenster zurück.
 
-Testumfang, bekannte Grenzen und noch offene plattformspezifische Release-Abnahmen stehen in [`docs/QUALITY-v0.1.9.md`](docs/QUALITY-v0.1.9.md). Eine vollständige Fehlerfreiheit aller Dateiformate wird nicht behauptet.
+Testumfang, bekannte Grenzen und noch offene plattformspezifische Release-Abnahmen stehen in [`docs/QUALITY-v0.2.0.md`](docs/QUALITY-v0.2.0.md). Eine vollständige Fehlerfreiheit aller Dateiformate wird nicht behauptet.
 
 ## Versionierung
 

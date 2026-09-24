@@ -11,7 +11,7 @@ import {
   setSearchQuery,
 } from "@codemirror/search";
 import { EditorSelection, Prec, type Extension } from "@codemirror/state";
-import { EditorView, keymap, runScopeHandlers, type Panel, type ViewUpdate } from "@codemirror/view";
+import { EditorView, ViewPlugin, keymap, runScopeHandlers, type Panel, type ViewUpdate } from "@codemirror/view";
 
 /**
  * VS Code style find and replace for the editor: a compact widget in the top
@@ -318,6 +318,19 @@ export function openReplacePanel(view: EditorView): boolean {
   return true;
 }
 
+/** Options of each editor with find and replace, for commands started outside the editor. */
+const registered = new WeakMap<EditorView, FindReplaceOptions>();
+
+/** Toolbar entry points: find, replace and the list replacement / macro dialog. */
+export function openFind(view: EditorView): boolean {
+  return openFindPanel(view);
+}
+
+export function openBatch(view: EditorView): boolean {
+  const options = registered.get(view);
+  return options ? openBatchDialog(options)(view) : false;
+}
+
 function openFindPanel(view: EditorView): boolean {
   const opened = openSearchPanel(view);
   panels.get(view)?.focusSearch();
@@ -422,6 +435,10 @@ function openBatchDialog(options: FindReplaceOptions): (view: EditorView) => boo
 export function findReplace(options: FindReplaceOptions = {}): Extension {
   return [
     search({ top: true, literal: true, createPanel: (view) => new FindReplacePanel(view, options) }),
+    ViewPlugin.define((view) => {
+      registered.set(view, options);
+      return { destroy: () => registered.delete(view) };
+    }),
     theme,
     Prec.high(
       keymap.of([

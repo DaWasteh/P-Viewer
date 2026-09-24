@@ -3,6 +3,7 @@ import { EditorSelection, EditorState } from "@codemirror/state";
 import { history, undo } from "@codemirror/commands";
 import {
   indentSelection,
+  insertCallout,
   insertHorizontalRule,
   insertImage,
   insertLink,
@@ -206,5 +207,17 @@ describe("blocks and insertions", () => {
     const indented = run(state("a\nb", [0, 3]), indentSelection("more"));
     expect(indented.doc.toString()).toBe("  a\n  b");
     expect(run(indented, indentSelection("less")).doc.toString()).toBe("a\nb");
+  });
+
+  it("puts alert boxes on lines of their own, also when clicked repeatedly", () => {
+    const once = run(state("> [!NOTE]\n> Hinweis", [0, 0]), insertCallout());
+    expect(once.doc.toString()).toBe("> [!NOTE]\n> Hinweis\n\n> [!NOTE]\n> Hinweis");
+    expect(selected(once)).toEqual(["Hinweis"]);
+    const middle = run(state("Text davor", [4, 4]), insertCallout());
+    expect(middle.doc.toString()).toBe("Text davor\n\n> [!NOTE]\n> Hinweis");
+    const paragraph = run(state("Absatz\nzweite Zeile\n\nDanach", [2, 2]), insertCallout());
+    expect(paragraph.doc.toString()).toBe("Absatz\nzweite Zeile\n\n> [!NOTE]\n> Hinweis\n\nDanach");
+    const wrapped = run(state("Zeile 1\n\nZeile 2", [2, 14]), insertCallout());
+    expect(wrapped.doc.toString()).toBe("> [!NOTE]\n> Zeile 1\n>\n> Zeile 2");
   });
 });
