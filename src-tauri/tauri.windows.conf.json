@@ -4,6 +4,10 @@
     "targets": [
       "nsis"
     ],
-    "fileAssociations": []
+    "fileAssociations": [],
+    "resources": [
+      "../THIRD_PARTY_NOTICES.md",
+      "assets/file-icons/*"
+    ]
   }
 }

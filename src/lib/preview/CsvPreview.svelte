@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { rememberScroll } from "./scrollMemory";
   import { Hash, Table2 } from "@lucide/svelte";
   import {
     delimiterLabel,
@@ -12,9 +13,10 @@
     fileName: string;
     fontSize?: number;
     theme?: "dark" | "light";
+    scrollMemory?: { top: number };
   }
 
-  let { content, fileName, fontSize = 14, theme = "dark" }: Props = $props();
+  let { content, fileName, fontSize = 14, theme = "dark", scrollMemory }: Props = $props();
 
   let table = $state<CsvTable | null>(null);
   let delimiterChoice = $state<CsvDelimiterChoice>("auto");
@@ -73,7 +75,7 @@
     {/if}
   </div>
 
-  <div class="csv-scroll">
+  <div class="csv-scroll" use:rememberScroll={scrollMemory}>
     {#if table?.warning}<div class="csv-notice" role="status">{table.warning}</div>{/if}
     {#if table && table.rows.length > 0}
       {#if table.truncatedRows || table.truncatedColumns}

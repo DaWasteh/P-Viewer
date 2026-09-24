@@ -36,7 +36,7 @@ pub const MAIN_WINDOW_LABEL: &str = "main";
 const WINDOW_LABEL_PREFIX: &str = "main-";
 const MAX_DOCUMENT_WINDOWS: usize = 16;
 const MAX_QUEUED_PATHS: usize = 256;
-const MAX_QUEUED_TABS: usize = 32;
+const MAX_QUEUED_TABS: usize = 128;
 /// Offset (CSS pixels) between the cursor and the origin of a window created by
 /// dragging a tab out, so the dropped tab appears roughly under the pointer.
 const DETACHED_WINDOW_OFFSET: (f64, f64) = (60.0, 140.0);
@@ -330,7 +330,7 @@ impl WindowRouter {
     }
 }
 
-fn label_order(label: &str) -> u64 {
+pub(crate) fn label_order(label: &str) -> u64 {
     if label == MAIN_WINDOW_LABEL {
         return 1;
     }
@@ -534,6 +534,10 @@ pub(crate) fn handle_window_event<R: Runtime>(window: &Window<R>, event: &Window
     match event {
         WindowEvent::Focused(true) => app.state::<WindowRouter>().note_focus(label),
         WindowEvent::Destroyed => {
+            let others_open = document_windows(app)
+                .iter()
+                .any(|window| window.label() != label);
+            crate::session::forget_window(app, label, others_open);
             let orphaned = app.state::<WindowRouter>().forget_window(label);
             app.state::<crate::html_preview::FullHtmlPreviewState>()
                 .close_owned_by(app, label);
@@ -607,8 +611,11 @@ pub async fn reveal_window<R: Runtime>(window: WebviewWindow<R>) {
 ///   is used. `inside_source` tells us the pointer is still over the source
 ///   window, in which case no other window can be under it.
 /// * Without a target window a new window is created unless `allow_new_window`
-///   is false (the source would otherwise be left empty).
+///   is false (the source would otherwise be left empty). It appears under the
+///   cursor for a dragged tab and cascaded otherwise (`at_cursor: false`, used
+///   by the context menu and by session restore).
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn move_tab_to_window<R: Runtime>(
     app: AppHandle<R>,
     window: WebviewWindow<R>,
@@ -617,6 +624,7 @@ pub async fn move_tab_to_window<R: Runtime>(
     target: Option<String>,
     inside_source: bool,
     allow_new_window: bool,
+    at_cursor: Option<bool>,
 ) -> Result<TabMoveResult, String> {
     let source = window.label().to_string();
     if !is_document_window(&source) {
@@ -697,7 +705,7 @@ pub async fn move_tab_to_window<R: Runtime>(
         });
     }
 
-    let position = cursor.map(|cursor| {
+    let position = cursor.filter(|_| at_cursor.unwrap_or(true)).map(|cursor| {
         let scale = app
             .monitor_from_point(cursor.x, cursor.y)
             .ok()

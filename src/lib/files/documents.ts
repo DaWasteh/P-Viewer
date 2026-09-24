@@ -176,6 +176,19 @@ export async function confirmDiscardChanges(name: string): Promise<boolean> {
   });
 }
 
+export async function confirmReload(name: string): Promise<boolean> {
+  if (!inTauri()) {
+    return window.confirm(`„${name}“ neu laden? Ungespeicherte Änderungen gehen verloren.`);
+  }
+
+  return confirm(`Neu laden verwirft die ungespeicherten Änderungen an „${name}“.`, {
+    title: "Datei neu laden?",
+    kind: "warning",
+    okLabel: "Neu laden",
+    cancelLabel: "Abbrechen",
+  });
+}
+
 export async function confirmDiscardDocuments(names: string[]): Promise<boolean> {
   if (names.length <= 1) return confirmDiscardChanges(names[0] ?? "dem Dokument");
 

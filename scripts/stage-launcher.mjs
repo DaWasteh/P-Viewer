@@ -1,4 +1,4 @@
-import { access, chmod, copyFile, stat } from "node:fs/promises";
+import { access, chmod, copyFile, cp, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { resolve } from "node:path";
 
@@ -37,6 +37,11 @@ try {
     `Launcher konnte nicht aktualisiert werden. P-Viewer gegebenenfalls schließen.\n${error}`,
   );
   process.exit(1);
+}
+
+// Windows Explorer icons for associated files live next to the EXE (issue #3).
+if (windows) {
+  await cp(resolve("src-tauri", "assets", "file-icons"), resolve("assets", "file-icons"), { recursive: true, force: true });
 }
 
 const { size } = await stat(destination);

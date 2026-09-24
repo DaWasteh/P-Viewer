@@ -19,3 +19,25 @@ describe("per-tab editor sessions", () => {
     expect(undoDepth(restored)).toBe(0);
   });
 });
+
+describe("restored editor view state", () => {
+  it("applies a clamped selection and folds to a freshly created state", async () => {
+    const { codeFolding, foldedRanges } = await import("@codemirror/language");
+    const { captureEditorView } = await import("./session");
+    const text = "line 1\nline 2\nline 3\nline 4";
+    const state = restoreEditorState({ restore: { selection: { anchor: 3, head: 999 }, folds: [[6, 20], [50, 60]] } }, text, [codeFolding()]);
+    expect(state.selection.main.anchor).toBe(3);
+    expect(state.selection.main.head).toBe(text.length);
+    const folded: Array<[number, number]> = [];
+    foldedRanges(state).between(0, text.length, (from, to) => { folded.push([from, to]); });
+    expect(folded).toEqual([[6, 20]]);
+    const captured = captureEditorView({ state, scrollTop: 42 });
+    expect(captured).toEqual({ selection: { anchor: 3, head: text.length }, editorScroll: 42, folds: [[6, 20]] });
+  });
+
+  it("ignores restore data when a retained state matches the document", () => {
+    const state = restoreEditorState(undefined, "same", []).update({ selection: EditorSelection.cursor(2) }).state;
+    const restored = restoreEditorState({ state, restore: { selection: { anchor: 0, head: 0 } } }, "same", []);
+    expect(restored.selection.main.head).toBe(2);
+  });
+});

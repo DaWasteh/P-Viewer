@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { rememberScroll } from "./scrollMemory";
   import { Eye, EyeOff, Hash } from "@lucide/svelte";
   import "katex/dist/katex.min.css";
   import "highlight.js/styles/github-dark-dimmed.css";
@@ -11,9 +12,10 @@
     fileName: string;
     fontSize?: number;
     theme?: "dark" | "light";
+    scrollMemory?: { top: number };
   }
 
-  let { content, fileName, fontSize = 16, theme = "dark" }: Props = $props();
+  let { content, fileName, fontSize = 16, theme = "dark", scrollMemory }: Props = $props();
 
   let notebook = $state<NotebookDocument | null>(null);
   let parseError = $state("");
@@ -96,7 +98,7 @@
     {/if}
   </div>
 
-  <div class="notebook-scroll">
+  <div class="notebook-scroll" use:rememberScroll={scrollMemory}>
     {#if parseError}
       <div class="notebook-state error" role="alert">
         <strong>Notebook konnte nicht gelesen werden</strong>

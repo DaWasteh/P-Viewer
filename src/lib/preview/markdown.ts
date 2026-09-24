@@ -1,6 +1,7 @@
 import GithubSlugger from "github-slugger";
 import { toString } from "mdast-util-to-string";
-import type { Blockquote, Paragraph, Root, Text } from "mdast";
+import type { Blockquote, Content, Html, Paragraph, Parent, Root, Text } from "mdast";
+import type { Element, Root as HastRoot } from "hast";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex, { type Options as KatexOptions } from "rehype-katex";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
@@ -112,6 +113,104 @@ function remarkCallouts() {
   };
 }
 
+type AlignedBlock = Parent & {
+  type: "alignedBlock";
+  data: { hName: "div"; hProperties: { align: string } };
+};
+
+const ALIGN_OPEN = /^<(div|p)\s+align\s*=\s*["']?(left|center|right)["']?\s*>$/i;
+const ALIGN_CLOSE = /^<\/(div|p)>$/i;
+const ALIGN_BLOCK = /^<(div|p)\s+align\s*=\s*["']?(left|center|right)["']?\s*>[ \t]*\n([\s\S]*?)\n?[ \t]*<\/\1>$/i;
+const fragmentParser = unified().use(remarkParse).use(remarkGfm).use(remarkMath);
+
+function alignedBlock(alignment: string, children: Content[], position: Html["position"]): AlignedBlock {
+  return {
+    type: "alignedBlock",
+    data: { hName: "div", hProperties: { align: alignment.toLowerCase() } },
+    children,
+    position: position ? { start: { ...position.start }, end: { ...position.end } } : undefined,
+  } as AlignedBlock;
+}
+
+/**
+ * Markdown has no alignment, so documents use `<div align="center">` (GitHub
+ * renders it). Raw HTML is otherwise dropped by this pipeline; only these exact
+ * wrappers become aligned containers whose content is still Markdown. Both the
+ * blank-line form (open tag, Markdown, close tag) and a compact single HTML
+ * block are understood.
+ */
+function remarkAlignment() {
+  const transform = (parent: Parent) => {
+    const output: Content[] = [];
+    const open: AlignedBlock[] = [];
+    for (const child of parent.children as Content[]) {
+      if (child.type === "html") {
+        const value = child.value.trim();
+        const compact = ALIGN_BLOCK.exec(value);
+        if (compact) {
+          const fragment = fragmentParser.parse(compact[3]);
+          // Inner lines start below the opening tag.
+          const shift = (child.position?.start.line ?? 1);
+          visit(fragment, (node) => {
+            if (!node.position) return;
+            node.position.start.line += shift;
+            node.position.end.line += shift;
+            node.position.start.offset = undefined;
+            node.position.end.offset = undefined;
+          });
+          const block = alignedBlock(compact[2], fragment.children as Content[], child.position);
+          (open.at(-1)?.children ?? output).push(block as unknown as Content);
+          continue;
+        }
+        const opening = ALIGN_OPEN.exec(value);
+        if (opening) {
+          const block = alignedBlock(opening[2], [], child.position);
+          (open.at(-1)?.children ?? output).push(block as unknown as Content);
+          open.push(block);
+          continue;
+        }
+        if (ALIGN_CLOSE.test(value) && open.length > 0) {
+          const block = open.pop()!;
+          if (block.position && child.position) block.position.end = { ...child.position.end };
+          continue;
+        }
+      }
+      (open.at(-1)?.children ?? output).push(child);
+    }
+    parent.children = output as Parent["children"];
+    for (const child of output) {
+      if ("children" in child && (child.type === "blockquote" || child.type === "listItem" || child.type === "list" || (child as { type: string }).type === "alignedBlock")) {
+        transform(child as Parent);
+      }
+    }
+  };
+  return (tree: Root) => transform(tree);
+}
+
+const SOURCE_MAPPED_TAGS = new Set([
+  "p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "aside",
+  "pre", "table", "tr", "hr", "div", "dl", "dt", "dd", "img",
+]);
+
+/**
+ * Tags block elements with the Markdown lines they come from, so the split
+ * view can keep editor and preview aligned and a click in the preview can
+ * jump to the source (issue #2). Values are plain line numbers.
+ */
+function rehypeSourceLines() {
+  return (tree: HastRoot) => {
+    visit(tree, "element", (node: Element) => {
+      const position = node.position;
+      if (!position || !SOURCE_MAPPED_TAGS.has(node.tagName)) return;
+      node.properties = {
+        ...node.properties,
+        dataSourceStart: String(position.start.line),
+        dataSourceEnd: String(position.end.line),
+      };
+    });
+  };
+}
+
 // Raw HTML never reaches this pipeline (remark-rehype drops it), so element ids
 // only originate from headings and GFM footnotes. Both already carry the
 // `user-content-` prefix from remark-rehype; a second sanitizer prefix would
@@ -122,7 +221,10 @@ const sanitizeSchema: Schema = {
   tagNames: [...(defaultSchema.tagNames ?? []), "aside", "input"],
   attributes: {
     ...defaultSchema.attributes,
+    // Source line numbers for the split view synchronisation; digits only.
+    "*": [...(defaultSchema.attributes?.["*"] ?? []), ["dataSourceStart", /^\d{1,7}$/], ["dataSourceEnd", /^\d{1,7}$/]],
     aside: ["className", "dataCallout"],
+    div: [...(defaultSchema.attributes?.div ?? []), ["align", "left", "center", "right"]],
     code: [
       ...(defaultSchema.attributes?.code ?? []),
       ["className", /^language-[\w-]+$/],
@@ -210,12 +312,14 @@ const renderer = unified()
   .use(remarkParse)
   .use(remarkGfm)
   .use(remarkMath)
+  .use(remarkAlignment)
   .use(remarkCallouts)
   .use(remarkRehype, {
     footnoteLabel: "Fußnoten",
     footnoteBackLabel: (referenceIndex, rereferenceIndex) =>
       `Zurück zu Verweis ${referenceIndex + 1}${rereferenceIndex > 1 ? `-${rereferenceIndex}` : ""}`,
   })
+  .use(rehypeSourceLines)
   .use(rehypeSanitize, sanitizeSchema)
   .use(rehypeSlug)
   .use(rehypeKatex, katexOptions)

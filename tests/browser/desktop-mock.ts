@@ -15,6 +15,12 @@ export async function mockDesktop(page: Page, name: string, content: string) {
     transferredTabs: [] as Array<{ tab: string; dropX: number | null; dropY: number | null }>,
     moveResult: { moved: true, window: "main-2", created: true } as unknown,
     dialogAnswer: undefined as string | undefined,
+    // Session restore (session.rs): stored window sessions, recovery texts and per-path file contents.
+    sessionRestore: [] as string[],
+    recovery: {} as Record<string, string>,
+    documents: {} as Record<string, string>,
+    writeError: "" as string,
+    storeEntries: undefined as unknown,
     openDocuments(paths: string[]) { control.pendingPaths.push(...paths); control.emit("open-documents", null); },
     transferTabs(tabs: Array<{ tab: string; dropX: number | null; dropY: number | null }>) { control.transferredTabs.push(...tabs); control.emit("tabs-transferred", null); } };
     w.__TAURI_INTERNALS__ = {
@@ -32,11 +38,20 @@ export async function mockDesktop(page: Page, name: string, content: string) {
         if (command === "take_transferred_tabs") return control.transferredTabs.splice(0);
         if (command === "move_tab_to_window") return control.moveResult;
         if (command === "open_new_window") return "main-2";
-        if (command === "read_document") return { path: args.path, name: args.path.split("/").pop(), content, encoding: "UTF-8", hasBom: false, lineEnding: "lf", size: content.length, lossy: false, version: "fixture-version" };
+        if (command === "read_document") {
+          const text = control.documents[args.path] ?? content;
+          return { path: args.path, name: args.path.split("/").pop(), content: text, encoding: "UTF-8", hasBom: false, lineEnding: "lf", size: text.length, lossy: false, version: "fixture-version" };
+        }
+        if (command === "session_take_restore") return control.sessionRestore.splice(0);
+        if (command === "session_read_recovery") return control.recovery[args.id] ?? null;
         // A 2×2 PNG (red/blue checker) so the image viewer reports real dimensions.
         if (command === "read_binary_document") return { path: args.path, name: args.path.split("/").pop(), size: 87, mime: args.kind === "pdf" ? "application/pdf" : "image/png", base64: args.kind === "pdf" ? content : "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVQIW2P8z8Dwn4GBgYGJAQoAADgVAgLkOfJKAAAAAElFTkSuQmCC" };
+        if (command === "write_document" && control.writeError) throw control.writeError;
         if (command === "write_document") return { path: args.path, size: args.content.length, version: "written-version" };
         if (command === "plugin:store|load") return 1;
+        // The replacement history ("entries") is kept in memory; settings keep using the localStorage fallback.
+        if (command === "plugin:store|set" && args.key === "entries") { control.storeEntries = args.value; return null; }
+        if (command === "plugin:store|get" && args.key === "entries") return [control.storeEntries ?? null, control.storeEntries !== undefined];
         if (command === "plugin:store|get") return null;
         if (command === "plugin:path|resolve_directory") return "C:/test-profile";
         if (command === "detect_latex_engines") return [{ id: "test", label: "Mock compiler", available: true }];

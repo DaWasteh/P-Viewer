@@ -2,11 +2,17 @@
   import { onMount } from "svelte";
   import { basicSetup } from "codemirror";
   import { indentWithTab } from "@codemirror/commands";
-  import { Compartment, EditorState } from "@codemirror/state";
-  import { EditorView, keymap } from "@codemirror/view";
+  import { Compartment, EditorSelection, EditorState, Prec, StateEffect, StateField } from "@codemirror/state";
+  import { Decoration, EditorView, keymap, type DecorationSet } from "@codemirror/view";
   import { oneDark } from "@codemirror/theme-one-dark";
   import { loadLanguageForFile } from "./languages";
   import { restoreEditorState, type EditorSession } from "./session";
+  import FormattingToolbar from "./FormattingToolbar.svelte";
+  import { findReplace } from "./findReplace";
+  import BatchReplaceDialog from "./BatchReplaceDialog.svelte";
+  import { loadReplaceHistory, rememberRun, saveReplaceHistory } from "./batchReplace";
+  import { toggleInline, type FormatCommand, type FormatDialect } from "./formatting";
+  import type { PreviewSyncController } from "$lib/preview/sync";
 
   interface CursorPosition {
     line: number;
@@ -23,7 +29,11 @@
     fontSize?: number;
     wordWrap?: boolean;
     spellcheck?: boolean;
-    markdownTools?: boolean;
+    /** Formatting toolbar and shortcuts for Markdown or HTML source; null hides them. */
+    formatting?: FormatDialect | null;
+    documentPath?: string;
+    /** Split view synchronisation with the preview (issue #2). */
+    sync?: PreviewSyncController;
     onChange?: (value: string) => void;
     onCursorChange?: (position: CursorPosition) => void;
   }
@@ -37,14 +47,31 @@
     fontSize = 14,
     wordWrap = false,
     spellcheck = false,
-    markdownTools = false,
+    formatting = null,
+    documentPath = "",
+    sync,
     onChange = () => undefined,
     onCursorChange = () => undefined,
   }: Props = $props();
 
   let host: HTMLDivElement;
   let view = $state.raw<EditorView | null>(null);
+  let toolbar = $state<FormattingToolbar | null>(null);
   let syncingFromParent = false;
+  let batchDialog = $state<{ initialRules: string } | null>(null);
+
+  /** A plain "Alle ersetzen" also joins the replacement history. */
+  async function rememberReplaceAll(query: { search: string; replace: string; caseSensitive: boolean; wholeWord: boolean; regexp: boolean }): Promise<void> {
+    const separator = query.search.includes("=>") || query.replace.includes("=>") ? "\t" : " => ";
+    const history = await loadReplaceHistory();
+    await saveReplaceHistory(
+      rememberRun(history, {
+        name: "",
+        rules: `${query.search}${separator}${query.replace}`,
+        options: { caseSensitive: query.caseSensitive, wholeWord: query.wholeWord, regexp: query.regexp },
+      }),
+    ).catch(() => undefined);
+  }
   let languageRequest = 0;
 
   const languageCompartment = new Compartment();
@@ -53,6 +80,22 @@
   const themeCompartment = new Compartment();
   const wrappingCompartment = new Compartment();
   const spellcheckCompartment = new Compartment();
+
+  // A short line highlight when the preview sends the cursor here.
+  const flashEffect = StateEffect.define<number | null>();
+  const flashField = StateField.define<DecorationSet>({
+    create: () => Decoration.none,
+    update(decorations, transaction) {
+      for (const effect of transaction.effects) {
+        if (!effect.is(flashEffect)) continue;
+        if (effect.value === null) return Decoration.none;
+        const line = transaction.state.doc.lineAt(effect.value);
+        return Decoration.set([Decoration.line({ class: "cm-sync-flash" }).range(line.from)]);
+      }
+      return decorations.map(transaction.changes);
+    },
+    provide: (field) => EditorView.decorations.from(field),
+  });
 
   function editorTheme(mode: "dark" | "light", size: number) {
     const dark = mode === "dark";
@@ -91,6 +134,8 @@
         ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection": {
           backgroundColor: dark ? "#39447a !important" : "#cdd5ff !important",
         },
+        // Inactive native selections would otherwise use the system's white highlight text.
+        "::selection": { color: dark ? "#f1f3f8" : "#232733" },
         ".cm-cursor, .cm-dropCursor": {
           borderLeftColor: dark ? "#9ba8ff" : "#465dd2",
         },
@@ -107,6 +152,9 @@
         ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]": {
           color: dark ? "#fff" : "#1e2538",
           backgroundColor: dark ? "#39447a" : "#dce2ff",
+        },
+        ".cm-sync-flash": {
+          backgroundColor: dark ? "#2d3766 !important" : "#dde3ff !important",
         },
         "&.cm-focused": { outline: "none" },
       },
@@ -134,66 +182,73 @@
     });
   }
 
-  function wrapSelection(before: string, after = before, placeholder = "Text"): boolean {
-    if (!view || readOnly) return false;
-    const selection = view.state.selection.main;
-    const selected = view.state.sliceDoc(selection.from, selection.to);
-    const body = selected || placeholder;
-    const insert = `${before}${body}${after}`;
-    view.dispatch({
-      changes: { from: selection.from, to: selection.to, insert },
-      selection: {
-        anchor: selection.from + before.length,
-        head: selection.from + before.length + body.length,
-      },
-      scrollIntoView: true,
-    });
-    view.focus();
-    return true;
+  /** Formatting shortcuts only act where the toolbar is offered. */
+  function format(command: (dialect: FormatDialect) => FormatCommand): boolean {
+    if (!formatting || readOnly || !toolbar) return false;
+    return toolbar.run(command(formatting));
   }
 
-  function prefixLines(prefix: string): boolean {
-    if (!view || readOnly) return false;
-    const selection = view.state.selection.main;
-    const first = view.state.doc.lineAt(selection.from);
-    const last = view.state.doc.lineAt(selection.to);
-    const changes: Array<{ from: number; insert: string }> = [];
-    for (let number = first.number; number <= last.number; number += 1) {
-      changes.push({ from: view.state.doc.line(number).from, insert: prefix });
-    }
-    view.dispatch({ changes, scrollIntoView: true });
-    view.focus();
-    return true;
+  let flashTimer = 0;
+
+  /** Sync adapter: fractional line at the top edge of the viewport. */
+  function topLine(editor: EditorView): number {
+    const height = Math.max(0, editor.scrollDOM.getBoundingClientRect().top - editor.documentTop);
+    const block = editor.lineBlockAtHeight(height);
+    const first = editor.state.doc.lineAt(block.from).number;
+    const last = editor.state.doc.lineAt(block.to).number;
+    const fraction = block.height > 0 ? Math.max(0, Math.min(1, (height - block.top) / block.height)) : 0;
+    return first + fraction * (last - first + 1);
   }
 
-  function insertCallout(): boolean {
-    if (!view || readOnly) return false;
-    const selection = view.state.selection.main;
-    const selected = view.state.sliceDoc(selection.from, selection.to) || "Hinweis";
-    const body = selected
-      .split("\n")
-      .map((line) => `> ${line}`)
-      .join("\n");
-    const insert = `> [!NOTE]\n${body}`;
-    view.dispatch({
-      changes: { from: selection.from, to: selection.to, insert },
-      selection: { anchor: selection.from + insert.length },
-      scrollIntoView: true,
+  function scrollToLine(editor: EditorView, line: number): void {
+    const doc = editor.state.doc;
+    const number = Math.max(1, Math.min(doc.lines, Math.floor(line)));
+    const block = editor.lineBlockAt(doc.line(number).from);
+    const firstInBlock = doc.lineAt(block.from).number;
+    const lastInBlock = doc.lineAt(block.to).number;
+    const fraction = Math.max(0, Math.min(1, (line - firstInBlock) / (lastInBlock - firstInBlock + 1)));
+    const scroller = editor.scrollDOM;
+    // Distance between the scroller's content origin and the first document line.
+    const offset = editor.documentTop - scroller.getBoundingClientRect().top + scroller.scrollTop;
+    const top = block.top + fraction * block.height + offset;
+    if (Math.abs(scroller.scrollTop - top) > 1) scroller.scrollTop = top;
+  }
+
+  function revealLine(editor: EditorView, line: number): void {
+    const doc = editor.state.doc;
+    const target = doc.line(Math.max(1, Math.min(doc.lines, Math.floor(line))));
+    editor.dispatch({
+      selection: EditorSelection.cursor(target.from),
+      effects: [EditorView.scrollIntoView(target.from, { y: "center" }), flashEffect.of(target.from)],
+      userEvent: "select.sync",
     });
-    view.focus();
-    return true;
+    editor.focus();
+    window.clearTimeout(flashTimer);
+    flashTimer = window.setTimeout(() => {
+      if (view === editor) editor.dispatch({ effects: flashEffect.of(null) });
+    }, 650);
   }
 
   onMount(() => {
     const mountedSession = session;
     const startState = restoreEditorState(mountedSession, value, [
         basicSetup,
-        keymap.of([
-          indentWithTab,
-          // Markdown formatting shortcuts must not rewrite code files.
-          { key: "Mod-b", run: () => markdownTools && wrapSelection("**") },
-          { key: "Mod-i", run: () => markdownTools && wrapSelection("*") },
-        ]),
+        // Above basicSetup: Mod-i is otherwise "select parent syntax".
+        Prec.high(keymap.of([
+          { key: "Mod-b", run: () => format((dialect) => toggleInline("bold", dialect)) },
+          { key: "Mod-i", run: () => format((dialect) => toggleInline("italic", dialect)) },
+          { key: "Mod-Shift-x", run: () => format((dialect) => toggleInline("strikethrough", dialect)) },
+          { key: "Mod-e", run: () => format((dialect) => toggleInline("code", dialect)) },
+          { key: "Mod-k", run: () => Boolean(formatting && !readOnly && toolbar?.openLinkDialog()) },
+        ])),
+        keymap.of([indentWithTab]),
+        findReplace({
+          onBatch: (_view, initialRules) => {
+            if (!readOnly) batchDialog = { initialRules };
+          },
+          onReplaceAll: (query) => void rememberReplaceAll(query),
+        }),
+        flashField,
         languageCompartment.of([]),
         readOnlyCompartment.of(EditorState.readOnly.of(readOnly)),
         editableCompartment.of(EditorView.editable.of(!readOnly)),
@@ -205,13 +260,20 @@
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !syncingFromParent) {
             onChange(update.state.doc.toString());
+            sync?.editorInteracted();
           }
           if (update.docChanged || update.selectionSet) reportCursor(update.view);
+          // A click in the editor shows the matching part of the preview.
+          if (update.transactions.some((transaction) => transaction.isUserEvent("select.pointer"))) {
+            const line = update.state.doc.lineAt(update.state.selection.main.head).number;
+            sync?.revealInPreview(line);
+          }
         }),
       ]);
 
     view = new EditorView({ state: startState, parent: host });
     const editor = view;
+    if (mountedSession) mountedSession.view = editor;
     editor.requestMeasure({ read: () => null, write: () => {
       editor.scrollDOM.scrollTop = mountedSession?.scrollTop ?? 0;
       editor.scrollDOM.scrollLeft = mountedSession?.scrollLeft ?? 0;
@@ -220,14 +282,30 @@
 
     return () => {
       languageRequest += 1;
+      window.clearTimeout(flashTimer);
       if (mountedSession && view) {
         mountedSession.state = view.state;
         mountedSession.scrollTop = view.scrollDOM.scrollTop;
         mountedSession.scrollLeft = view.scrollDOM.scrollLeft;
+        mountedSession.restore = undefined;
+        if (mountedSession.view === view) mountedSession.view = undefined;
       }
       view?.destroy();
       view = null;
     };
+  });
+
+  $effect(() => {
+    const editor = view;
+    const controller = sync;
+    if (!editor || !controller) return;
+    return controller.attachEditor({
+      scroller: editor.scrollDOM,
+      topLine: () => topLine(editor),
+      lineCount: () => editor.state.doc.lines,
+      scrollToLine: (line) => scrollToLine(editor, line),
+      revealLine: (line) => revealLine(editor, line),
+    });
   });
 
   $effect(() => {
@@ -287,21 +365,15 @@
 </script>
 
 <div class="editor-shell">
-  {#if markdownTools && !readOnly}
-    <div class="markdown-tools" aria-label="Markdown-Formatierung">
-      <button title="Fett (Strg/Cmd+B)" onclick={() => wrapSelection("**")}><strong>B</strong></button>
-      <button title="Kursiv (Strg/Cmd+I)" onclick={() => wrapSelection("*")}><em>I</em></button>
-      <button title="Überschrift" onclick={() => prefixLines("# ")}>H1</button>
-      <button title="Zitat" onclick={() => prefixLines("> ")}>❯</button>
-      <button title="Aufgabe" onclick={() => prefixLines("- [ ] ")}>☐</button>
-      <button title="Inline-Code" onclick={() => wrapSelection("`", "`", "code")}>{"</>"}</button>
-      <button title="Link" onclick={() => wrapSelection("[", "](https://)", "Link")}>↗</button>
-      <button title="Hinweisbox" onclick={insertCallout}>NOTE</button>
-      <span>Folding über den Pfeil neben den Zeilennummern</span>
-    </div>
+  {#if formatting}
+    <FormattingToolbar bind:this={toolbar} {view} dialect={formatting} disabled={readOnly} {documentPath} light={theme === "light"} />
   {/if}
   <div class="editor-host" bind:this={host}></div>
 </div>
+
+{#if batchDialog && view}
+  <BatchReplaceDialog {view} initialRules={batchDialog.initialRules} light={theme === "light"} onClose={() => (batchDialog = null)} />
+{/if}
 
 <style>
   .editor-shell {
@@ -318,43 +390,6 @@
     min-width: 0;
     min-height: 0;
     flex: 1;
-  }
-
-  .markdown-tools {
-    display: flex;
-    min-height: 34px;
-    align-items: center;
-    gap: 2px;
-    padding: 3px 8px;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-  }
-
-  .markdown-tools button {
-    min-width: 27px;
-    height: 26px;
-    padding: 0 6px;
-    border: 0;
-    border-radius: 5px;
-    color: var(--text-muted);
-    background: transparent;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 11px;
-  }
-
-  .markdown-tools button:hover {
-    color: var(--text);
-    background: var(--surface-hover);
-  }
-
-  .markdown-tools span {
-    overflow: hidden;
-    margin-left: auto;
-    color: #6f7788;
-    font-size: 9px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   :global(.cm-editor) {

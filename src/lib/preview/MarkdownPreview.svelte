@@ -3,6 +3,8 @@
   import { ChevronDown, ChevronsDownUp, ChevronsUpDown, ListTree } from "@lucide/svelte";
   import { isRelativeImageSource, readLocalImages } from "$lib/files/localImages";
   import { resolveDocumentReference } from "$lib/files/paths";
+  import { rememberScroll } from "./scrollMemory";
+  import { collectAnchors, type PreviewSyncController, type SourceAnchor } from "./sync";
   import "katex/dist/katex.min.css";
   import "highlight.js/styles/github-dark-dimmed.css";
   import "./markdown-body.css";
@@ -18,6 +20,9 @@
     path?: string;
     fontSize?: number;
     theme?: "dark" | "light";
+    scrollMemory?: { top: number };
+    /** Split view synchronisation with the editor (issue #2). */
+    sync?: PreviewSyncController;
     onOpenPath?: (path: string) => void;
   }
 
@@ -26,6 +31,8 @@
     path = "",
     fontSize = 16,
     theme = "dark",
+    scrollMemory,
+    sync,
     onOpenPath = () => undefined,
   }: Props = $props();
 
@@ -34,11 +41,84 @@
   let renderError = $state("");
   let showOutline = $state(false);
   let previewHost: HTMLDivElement;
+  let articleScroll: HTMLDivElement;
   onMount(() => {
-    const observer = new ResizeObserver(([entry]) => { showOutline = entry.contentRect.width >= 720; });
+    const observer = new ResizeObserver(([entry]) => {
+      showOutline = entry.contentRect.width >= 720;
+      invalidateAnchors();
+    });
     observer.observe(previewHost);
     return () => observer.disconnect();
   });
+
+  // Source anchors are measured once per layout, never on every scroll event.
+  let anchorCache: SourceAnchor[] | null = null;
+  function invalidateAnchors(): void {
+    anchorCache = null;
+    sync?.previewChanged();
+  }
+
+  $effect(() => {
+    const controller = sync;
+    if (!controller || !articleScroll) return;
+    return controller.attachPreview({
+      scroller: articleScroll,
+      anchors: () => (anchorCache ??= article ? collectAnchors(article, articleScroll) : []),
+      flashLine,
+    });
+  });
+
+  $effect(() => {
+    const current = article;
+    if (!current) return;
+    // Images and other late layout changes move everything below them.
+    const observer = new ResizeObserver(() => invalidateAnchors());
+    observer.observe(current);
+    const loaded = () => invalidateAnchors();
+    current.addEventListener("load", loaded, true);
+    return () => {
+      observer.disconnect();
+      current.removeEventListener("load", loaded, true);
+    };
+  });
+
+  /** The deepest rendered element that covers a source line. */
+  function elementForLine(line: number): HTMLElement | null {
+    let best: HTMLElement | null = null;
+    for (const element of article?.querySelectorAll<HTMLElement>("[data-source-start]") ?? []) {
+      const start = Number(element.dataset.sourceStart);
+      const end = Number(element.dataset.sourceEnd ?? start);
+      if (start <= line && line <= end && element.getClientRects().length > 0) best = element;
+      else if (start > line) break;
+    }
+    return best;
+  }
+
+  function flashLine(line: number): void {
+    const element = elementForLine(Math.floor(line));
+    if (!element) return;
+    element.classList.remove("sync-flash");
+    void element.offsetWidth;
+    element.classList.add("sync-flash");
+    window.setTimeout(() => element.classList.remove("sync-flash"), 700);
+  }
+
+  const INTERACTIVE = "a[href], button, input, select, textarea, label, summary, details, [contenteditable='true']";
+
+  /** Preview → editor: plain clicks when enabled, Strg/Cmd+click always. */
+  function navigateFromClick(event: MouseEvent, target: Element): boolean {
+    if (!sync) return false;
+    const forced = event.ctrlKey || event.metaKey;
+    if (!forced && (!sync.clickNavigationEnabled || target.closest(INTERACTIVE))) return false;
+    // Selecting text to copy it must not move the editor.
+    if (!forced && window.getSelection()?.isCollapsed === false) return false;
+    const source = target.closest<HTMLElement>("[data-source-start]");
+    if (!source) return false;
+    const line = Number(source.dataset.sourceStart);
+    if (!Number.isFinite(line) || !sync.navigateToSource(line)) return false;
+    event.preventDefault();
+    return true;
+  }
   let article = $state.raw<HTMLElement | null>(null);
 
   $effect(() => {
@@ -155,6 +235,7 @@
         (element as HTMLElement).hidden = collapsedLevels.length > 0;
       }
     }
+    invalidateAnchors();
   }
 
   function setAllCollapsed(collapsed: boolean): void {
@@ -188,8 +269,12 @@
       return;
     }
 
+    if ((event.ctrlKey || event.metaKey) && navigateFromClick(event, target)) return;
     const anchor = target.closest<HTMLAnchorElement>("a[href]");
-    if (!anchor) return;
+    if (!anchor) {
+      navigateFromClick(event, target);
+      return;
+    }
     const href = anchor.getAttribute("href") ?? "";
     if (href.startsWith("#")) {
       event.preventDefault();
@@ -253,7 +338,7 @@
       </aside>
     {/if}
 
-    <div class="article-scroll">
+    <div class="article-scroll" bind:this={articleScroll} use:rememberScroll={scrollMemory}>
       {#if renderError}
         <div class="render-error" role="alert">
           <strong>Markdown konnte nicht gerendert werden.</strong>
@@ -380,6 +465,17 @@
     min-height: 0;
     overflow: auto;
     scroll-behavior: smooth;
+  }
+
+  .markdown-body :global(.sync-flash) {
+    animation: sync-flash 650ms ease-out;
+  }
+
+  @keyframes sync-flash {
+    from {
+      background-color: rgb(113 131 231 / 28%);
+      box-shadow: 0 0 0 4px rgb(113 131 231 / 28%);
+    }
   }
 
   .markdown-body {

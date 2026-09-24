@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { Component } from "svelte";
   import EditorPane from "$lib/editor/EditorPane.svelte";
+  import { rememberScroll } from "./scrollMemory";
   import type { DocumentKind, FileTypeInfo } from "$lib/files/types";
+  import type { PreviewSyncController } from "./sync";
 
   interface Props {
     content: string;
@@ -13,6 +15,10 @@
     editorFontSize?: number;
     previewFontSize?: number;
     wordWrap?: boolean;
+    /** Scroll offset of the tab's preview, kept across tab switches and restarts. */
+    scrollMemory?: { top: number };
+    /** Editor ↔ preview synchronisation; only the Markdown preview takes part. */
+    sync?: PreviewSyncController;
     onOpenPath?: (path: string) => void;
   }
 
@@ -26,6 +32,8 @@
     editorFontSize = 14,
     previewFontSize = 16,
     wordWrap = true,
+    scrollMemory,
+    sync,
     onOpenPath = () => undefined,
   }: Props = $props();
 
@@ -93,6 +101,8 @@
       {binary}
       {theme}
       {onOpenPath}
+      {scrollMemory}
+      sync={fileType.kind === "markdown" ? sync : undefined}
       fontSize={PROSE_KINDS.has(fileType.kind) ? previewFontSize : editorFontSize}
     />
   {:else if previewLoadError}
@@ -121,7 +131,7 @@
     />
   </div>
 {:else}
-  <div class:light={theme === "light"} class:monospace={/\.(?:log|srt|vtt|ass|ssa|sha256|md5|pem|crt|csr|pub|asc|sln)$/i.test(fileName)} class="text-preview">
+  <div class:light={theme === "light"} class:monospace={/\.(?:log|srt|vtt|ass|ssa|sha256|md5|pem|crt|csr|pub|asc|sln)$/i.test(fileName)} class="text-preview" use:rememberScroll={scrollMemory}>
     {#if content}
       <pre style={`font-size: ${previewFontSize}px`}>{content}</pre>
     {:else}

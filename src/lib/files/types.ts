@@ -29,6 +29,8 @@ export interface DocumentPayload {
   size: number;
   lossy: boolean;
   version?: string;
+  /** The file system reports the file as write protected. */
+  readOnly?: boolean;
 }
 
 /** Read-only binary content (images, PDF) delivered as a base64 payload. */

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { createServer } from "node:net";
@@ -21,10 +21,16 @@ await writeFile(queuedPath, Buffer.from("你好", "utf16le"));
 await writeFile(imagePath, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVQIW2P8z8Dwn4GBgYGJAQoAADgVAgLkOfJKAAAAAElFTkSuQmCC", "base64"));
 await writeFile(textPath, "Original\r\n", "utf8");
 await writeFile(dataPath, '{"record":"Alpha"}\n{"record":"Beta"}', "utf8");
-const server = createServer();
-await new Promise((accept, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", accept); });
-const port = server.address().port;
-await new Promise((accept) => server.close(accept));
+// Session and recovery files go to a disposable folder, never the user's real session.
+const sessionPath = join(temporary, "session");
+async function freePort() {
+  const server = createServer();
+  await new Promise((accept, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", accept); });
+  const port = server.address().port;
+  await new Promise((accept) => server.close(accept));
+  return port;
+}
+const port = await freePort();
 // Test-only CDP and a disposable WebView profile. The native app may read its
 // normal preferences; this smoke does not edit settings or touch existing windows.
 // Like any regular run it may update the remembered window geometry
@@ -32,13 +38,13 @@ await new Promise((accept) => server.close(accept));
 // No global environment or installed application is changed.
 const child = spawn(binary, [textPath, dataPath, imagePath], {
   cwd: temporary,
-  env: { ...process.env, WEBVIEW2_USER_DATA_FOLDER: join(temporary, "webview"), WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1` },
+  env: { ...process.env, P_VIEWER_SESSION_DIR: sessionPath, WEBVIEW2_USER_DATA_FOLDER: join(temporary, "webview"), WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1` },
   stdio: ["ignore", "pipe", "pipe"],
 });
 let log = "";
 /** Starts another launcher process; the running instance must take over its arguments so it exits at once. */
 async function runSecondInstance(args) {
-  const second = spawn(binary, args, { cwd: temporary, env: { ...process.env, WEBVIEW2_USER_DATA_FOLDER: join(temporary, "webview-second") }, stdio: ["ignore", "pipe", "pipe"] });
+  const second = spawn(binary, args, { cwd: temporary, env: { ...process.env, P_VIEWER_SESSION_DIR: sessionPath, WEBVIEW2_USER_DATA_FOLDER: join(temporary, "webview-second") }, stdio: ["ignore", "pipe", "pipe"] });
   second.stdout.on("data", (data) => { log = (log + data).slice(-8000); });
   second.stderr.on("data", (data) => { log = (log + data).slice(-8000); });
   const exited = await Promise.race([
@@ -53,6 +59,8 @@ child.stderr.on("data", (data) => { log = (log + data).slice(-8000); });
 let spawnError;
 child.on("error", (error) => { spawnError = error; });
 let browser;
+let relaunched;
+let relaunchedBrowser;
 let succeeded = false;
 try {
   await expect.poll(async () => {
@@ -114,6 +122,24 @@ try {
   await expect(page.getByRole("dialog", { name: "Einstellungen" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "Einstellungen" })).toHaveCount(0);
+  // Find and replace widget: its styles are injected at runtime like CodeMirror's own.
+  await editor.click();
+  await page.keyboard.press("Control+f");
+  await expect(page.locator(".pv-find")).toBeVisible();
+  expect(await page.locator(".pv-find").evaluate((element) => getComputedStyle(element).display)).toBe("flex");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".pv-find")).toHaveCount(0);
+  // JavaScript macros run in a blob worker, which the real CSP must allow while
+  // keeping eval out of the app; the run is one undoable change.
+  await page.keyboard.press("Control+Shift+H");
+  const batch = page.getByRole("dialog", { name: "Mehrfach ersetzen und Makros" });
+  await batch.getByRole("tab", { name: "JavaScript" }).click();
+  await batch.locator("#batch-script").fill("return text.toUpperCase();");
+  await batch.getByRole("button", { name: "Anwenden", exact: true }).click();
+  await expect(batch).toHaveCount(0);
+  await expect(editor).toContainText("DO NOT OVERWRITE EXTERNAL TEXT");
+  await page.keyboard.press("Control+z");
+  await expect(editor).toContainText("Do not overwrite external text");
   await page.screenshot({ path: resolve("test-results/native-windows-smoke.png") });
 
   // A launch without files opens a second window inside the running process.
@@ -136,15 +162,56 @@ try {
   await expect.poll(() => pages().filter((candidate) => !candidate.isClosed()).length, { timeout: 20_000 }).toBe(1);
   await expect(page.getByRole("tab")).toHaveCount(4);
   expect(errors).toEqual([]);
+  // The session and the unsaved text of smoke.txt reached the disposable session folder.
+  await expect.poll(async () => {
+    try {
+      const stored = JSON.parse(await readFile(join(sessionPath, "session.json"), "utf8"));
+      return stored.windows.map((window) => window.session.tabs.length);
+    } catch { return []; }
+  }, { timeout: 10_000 }).toEqual([4]);
+  await expect.poll(async () => (await readdir(join(sessionPath, "recovery")).catch(() => [])).length, { timeout: 10_000 }).toBe(1);
   // Discard ONLY this script's disposable edits; never address another app window.
   await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("plugin:window|destroy", { label: "main" })).catch((error) => {
     // Native destruction can close CDP before the IPC promise resolves.
     if (!page.isClosed()) throw error;
   });
+  await Promise.race([new Promise((accept) => child.once("exit", accept)), new Promise((accept) => { const timer = setTimeout(accept, 10_000); timer.unref(); })]);
+  if (child.exitCode === null) throw new Error("The first P-Viewer process did not exit after its window was destroyed.");
+
+  // Restart without files: the previous session comes back, unsaved text included,
+  // and the external change to smoke.txt is reported instead of being overwritten.
+  const relaunchPort = await freePort();
+  relaunched = spawn(binary, [], {
+    cwd: temporary,
+    env: { ...process.env, P_VIEWER_SESSION_DIR: sessionPath, WEBVIEW2_USER_DATA_FOLDER: join(temporary, "webview"), WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${relaunchPort} --remote-debugging-address=127.0.0.1` },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  relaunched.stdout.on("data", (data) => { log = (log + data).slice(-8000); });
+  relaunched.stderr.on("data", (data) => { log = (log + data).slice(-8000); });
+  await expect.poll(async () => {
+    try { return (await fetch(`http://127.0.0.1:${relaunchPort}/json/version`)).ok; } catch { return false; }
+  }, { timeout: 30_000 }).toBe(true);
+  relaunchedBrowser = await chromium.connectOverCDP(`http://127.0.0.1:${relaunchPort}`);
+  await expect.poll(() => relaunchedBrowser.contexts().flatMap((context) => context.pages()).length).toBeGreaterThan(0);
+  const restored = relaunchedBrowser.contexts().flatMap((context) => context.pages())[0];
+  await expect(restored.getByRole("tab")).toHaveCount(4);
+  await expect(restored.getByRole("tab", { name: "smoke.txt Ungespeichert" })).toBeVisible();
+  await restored.getByRole("tab", { name: "smoke.txt Ungespeichert" }).click();
+  await expect(restored.locator(".editor-pane .cm-content")).toContainText("Do not overwrite external text");
+  await expect(restored.getByRole("status").filter({ hasText: "außerhalb von P-Viewer geändert" })).toBeVisible();
+  expect(await readFile(textPath, "utf8")).toBe("External change\r\n");
+  await restored.evaluate(() => window.__TAURI_INTERNALS__.invoke("plugin:window|destroy", { label: "main" })).catch((error) => {
+    if (!restored.isClosed()) throw error;
+  });
   succeeded = true;
-  console.log(`PASS native Windows v${metadata.version}: startup files, PNG viewer, JSONL, Unicode/CRLF save, single-instance forwarding during modal, external conflict, explicit UTF-16LE reopen, modal UI, second window with tab hand-over and last-tab close; ${binary}`);
+  console.log(`PASS native Windows v${metadata.version}: startup files, PNG viewer, JSONL, Unicode/CRLF save, single-instance forwarding during modal, external conflict, explicit UTF-16LE reopen, modal UI, find widget, second window with tab hand-over and last-tab close, session restore with recovered text after restart; ${binary}`);
 } finally {
   await browser?.close().catch(() => undefined);
+  await relaunchedBrowser?.close().catch(() => undefined);
+  if (relaunched && relaunched.exitCode === null) {
+    await Promise.race([new Promise((accept) => relaunched.once("exit", accept)), new Promise((accept) => { const timer = setTimeout(accept, 3000); timer.unref(); })]);
+    if (relaunched.exitCode === null) relaunched.kill();
+  }
   if (child.exitCode === null) {
     await Promise.race([new Promise((accept) => child.once("exit", accept)), new Promise((accept) => { const timer = setTimeout(accept, 3000); timer.unref(); })]);
     if (child.exitCode === null) child.kill(); // exact owned child only

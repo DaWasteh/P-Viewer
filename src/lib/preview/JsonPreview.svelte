@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { rememberScroll } from "./scrollMemory";
   import { Check, ChevronsDownUp, ChevronsUpDown, Copy, ListOrdered } from "@lucide/svelte";
   import JsonNode from "./JsonNode.svelte";
   import {
@@ -12,9 +13,10 @@
     fileName: string;
     fontSize?: number;
     theme?: "dark" | "light";
+    scrollMemory?: { top: number };
   }
 
-  let { content, fileName, fontSize = 14, theme = "dark" }: Props = $props();
+  let { content, fileName, fontSize = 14, theme = "dark", scrollMemory }: Props = $props();
 
   let result = $state<JsonParseResult>({});
   let sortKeys = $state(false);
@@ -74,7 +76,7 @@
     {#if nodeCount > 0}<span class="node-count">{nodeCount.toLocaleString("de-DE")} Knoten</span>{/if}
   </div>
 
-  <div class="json-scroll">
+  <div class="json-scroll" use:rememberScroll={scrollMemory}>
     {#if result.error}
       <div class="json-error" role="alert">
         <strong>JSON-Vorschau nicht verfügbar</strong>

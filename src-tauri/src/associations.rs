@@ -15,12 +15,27 @@ const MAX_MIMEAPPS_BYTES: u64 = 1024 * 1024;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct AssociationGroup {
-    id: String,
-    prog_id: String,
-    description: String,
-    extensions: Vec<String>,
-    mime_type: String,
+pub(crate) struct AssociationGroup {
+    pub(crate) id: String,
+    pub(crate) prog_id: String,
+    pub(crate) description: String,
+    pub(crate) extensions: Vec<String>,
+    pub(crate) mime_type: String,
+}
+
+/// The bundled format groups (`src/lib/files/associations.json`).
+pub(crate) fn configured_groups() -> Result<Vec<AssociationGroup>, String> {
+    let configured: Vec<AssociationGroup> = serde_json::from_str(ASSOCIATIONS_JSON)
+        .map_err(|error| format!("Die gebündelten Dateizuordnungen sind ungültig: {error}"))?;
+    if configured.iter().any(|association| {
+        association.prog_id.is_empty()
+            || association.description.is_empty()
+            || association.extensions.is_empty()
+            || !association.mime_type.contains('/')
+    }) {
+        return Err("Die gebündelten Dateizuordnungen sind unvollständig.".into());
+    }
+    Ok(configured)
 }
 
 #[derive(Debug, Serialize)]
@@ -36,9 +51,10 @@ pub struct AssociationApplyResult {
 #[tauri::command]
 pub async fn apply_default_file_associations(
     association_ids: Vec<String>,
+    icon_mode: Option<String>,
 ) -> Result<AssociationApplyResult, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        apply_default_file_associations_inner(association_ids)
+        apply_default_file_associations_inner(association_ids, icon_mode)
     })
     .await
     .map_err(|error| format!("Die Systemzuordnung wurde abgebrochen: {error}"))?
@@ -46,13 +62,20 @@ pub async fn apply_default_file_associations(
 
 fn apply_default_file_associations_inner(
     association_ids: Vec<String>,
+    icon_mode: Option<String>,
 ) -> Result<AssociationApplyResult, String> {
     let selected = select_associations(&association_ids)?;
+    let icon_mode = icon_mode
+        .as_deref()
+        .and_then(crate::file_icons::IconMode::parse)
+        .unwrap_or(crate::file_icons::IconMode::FileType);
 
     #[cfg(target_os = "windows")]
     {
-        return apply_on_windows(&selected);
+        return apply_on_windows(&selected, icon_mode);
     }
+    #[cfg(not(target_os = "windows"))]
+    let _ = icon_mode;
 
     #[cfg(target_os = "linux")]
     {
@@ -73,16 +96,7 @@ fn select_associations(ids: &[String]) -> Result<Vec<AssociationGroup>, String> 
         return Err("Wähle mindestens ein Dateiformat aus.".into());
     }
 
-    let configured: Vec<AssociationGroup> = serde_json::from_str(ASSOCIATIONS_JSON)
-        .map_err(|error| format!("Die gebündelten Dateizuordnungen sind ungültig: {error}"))?;
-    if configured.iter().any(|association| {
-        association.prog_id.is_empty()
-            || association.description.is_empty()
-            || association.extensions.is_empty()
-            || !association.mime_type.contains('/')
-    }) {
-        return Err("Die gebündelten Dateizuordnungen sind unvollständig.".into());
-    }
+    let configured = configured_groups()?;
     let by_id: HashMap<&str, &AssociationGroup> = configured
         .iter()
         .map(|association| (association.id.as_str(), association))
@@ -104,7 +118,10 @@ fn select_associations(ids: &[String]) -> Result<Vec<AssociationGroup>, String> 
 }
 
 #[cfg(target_os = "windows")]
-fn apply_on_windows(selected: &[AssociationGroup]) -> Result<AssociationApplyResult, String> {
+fn apply_on_windows(
+    selected: &[AssociationGroup],
+    icon_mode: crate::file_icons::IconMode,
+) -> Result<AssociationApplyResult, String> {
     use std::ffi::{OsStr, OsString};
     use windows_sys::Win32::UI::Shell::{
         SHChangeNotify, SHCNE_ASSOCCHANGED, SHCNF_FLUSH, SHCNF_IDLIST,
@@ -212,42 +229,46 @@ fn apply_on_windows(selected: &[AssociationGroup]) -> Result<AssociationApplyRes
 
     let mut selected_extensions = HashSet::new();
     let mut selected_mappings = HashMap::new();
-    let selected_prog_ids: HashSet<&str> = selected
-        .iter()
-        .map(|association| association.prog_id.as_str())
-        .collect();
+    let mut selected_prog_ids: HashSet<String> = HashSet::new();
+    let icon_dir = crate::file_icons::installed_icon_dir();
     for association in selected {
-        let prog_id_path = format!("Software\\Classes\\{}", association.prog_id);
-        let (prog_id, _) = hkcu.create_subkey(&prog_id_path).map_err(|error| {
-            format!(
-                "ProgID {} konnte nicht erstellt werden: {error}",
-                association.prog_id
-            )
-        })?;
-        prog_id
-            .set_value("", &association.description.as_str())
-            .and_then(|_| {
-                hkcu.create_subkey(format!("{prog_id_path}\\DefaultIcon"))
-                    .and_then(|(key, _)| key.set_value("", &icon.as_os_str()))
-            })
-            .and_then(|_| {
-                hkcu.create_subkey(format!("{prog_id_path}\\shell\\open\\command"))
-                    .and_then(|(key, _)| key.set_value("", &command.as_os_str()))
-            })
-            .map_err(|error| {
-                format!("ProgID {} ist unvollständig: {error}", association.prog_id)
-            })?;
-
+        let first = association.extensions.first().cloned().unwrap_or_default();
         for extension in &association.extensions {
+            // One ProgID per extension so every type shows its own icon.
+            let prog_id_name =
+                crate::file_icons::prog_id_for(&association.prog_id, &first, extension);
+            let prog_id_path = format!("Software\\Classes\\{prog_id_name}");
+            let file_icon = crate::file_icons::default_icon_value(
+                icon_mode,
+                extension,
+                &executable,
+                icon_dir.as_deref(),
+            );
+            let (prog_id, _) = hkcu.create_subkey(&prog_id_path).map_err(|error| {
+                format!("ProgID {prog_id_name} konnte nicht erstellt werden: {error}")
+            })?;
+            prog_id
+                .set_value("", &association.description.as_str())
+                .and_then(|_| {
+                    hkcu.create_subkey(format!("{prog_id_path}\\DefaultIcon"))
+                        .and_then(|(key, _)| key.set_value("", &file_icon))
+                })
+                .and_then(|_| {
+                    hkcu.create_subkey(format!("{prog_id_path}\\shell\\open\\command"))
+                        .and_then(|(key, _)| key.set_value("", &command.as_os_str()))
+                })
+                .map_err(|error| format!("ProgID {prog_id_name} ist unvollständig: {error}"))?;
+
             let dotted = format!(".{extension}");
             selected_extensions.insert(dotted.clone());
-            selected_mappings.insert(dotted.clone(), association.prog_id.clone());
+            selected_mappings.insert(dotted.clone(), prog_id_name.clone());
+            selected_prog_ids.insert(prog_id_name.clone());
             file_associations
-                .set_value(&dotted, &association.prog_id.as_str())
+                .set_value(&dotted, &prog_id_name.as_str())
                 .and_then(|_| supported_types.set_value(&dotted, &""))
                 .map_err(|error| format!("{dotted} konnte nicht ausgewählt werden: {error}"))?;
             hkcu.create_subkey(format!("Software\\Classes\\{dotted}\\OpenWithProgids"))
-                .and_then(|(key, _)| key.set_value(&association.prog_id, &""))
+                .and_then(|(key, _)| key.set_value(&prog_id_name, &""))
                 .map_err(|error| {
                     format!("{dotted} konnte nicht für Öffnen mit registriert werden: {error}")
                 })?;
@@ -290,7 +311,7 @@ fn apply_on_windows(selected: &[AssociationGroup]) -> Result<AssociationApplyRes
         }
     }
     for prog_id in stale_prog_ids {
-        if !selected_prog_ids.contains(prog_id.as_str()) {
+        if !selected_prog_ids.contains(&prog_id) {
             match hkcu.delete_subkey_all(format!("Software\\Classes\\{prog_id}")) {
                 Ok(()) => {}
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}

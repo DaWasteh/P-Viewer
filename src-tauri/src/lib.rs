@@ -1,7 +1,10 @@
 mod associations;
 mod document;
+mod file_icons;
 mod html_preview;
 mod latex;
+mod session;
+mod shell;
 mod updater;
 mod windows;
 
@@ -17,6 +20,7 @@ pub fn run() {
         }))
         .manage(windows::WindowRouter::from_startup_arguments())
         .manage(html_preview::FullHtmlPreviewState::default())
+        .manage(session::SessionState::default())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -33,11 +37,13 @@ pub fn run() {
         )
         .setup(|app| {
             windows::prepare_main_window(app.handle());
+            file_icons::startup_maintenance(app.handle());
             Ok(())
         })
         .on_window_event(windows::handle_window_event)
         .invoke_handler(tauri::generate_handler![
             associations::apply_default_file_associations,
+            file_icons::apply_file_icon_mode,
             windows::take_pending_document_paths,
             windows::take_transferred_tabs,
             windows::open_new_window,
@@ -51,6 +57,15 @@ pub fn run() {
             html_preview::update_full_html_preview,
             html_preview::focus_full_html_preview,
             html_preview::close_full_html_preview,
+            session::session_take_restore,
+            session::session_store,
+            session::session_clear,
+            session::session_resume,
+            session::session_has_recovery,
+            session::session_write_recovery,
+            session::session_read_recovery,
+            session::session_remove_recovery,
+            shell::open_terminal_at,
             latex::compile_latex,
             latex::detect_latex_engines,
             updater::check_for_update,

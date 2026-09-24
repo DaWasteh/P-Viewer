@@ -5,12 +5,18 @@ P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter f
 [![Tests](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml/badge.svg)](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-blue.svg)](LICENSE)
 
-> **Status:** aktueller Entwicklungsstand `v0.1.8`.
+> **Status:** aktueller Entwicklungsstand `v0.1.9`.
 
 ## Aktueller Funktionsumfang
 
 - Text- und Code-Dateien encoding-sicher lesen (UTF-8, UTF-16 mit und ohne BOM, Legacy-Kodierungen), atomar speichern, erstellen und bearbeiten
-- mehrere Dokumente parallel in einer kompakten Tab-Leiste öffnen und sicher schließen, mit eigener Undo-Historie, Auswahl und Scrollposition pro Tab
+- mehrere Dokumente parallel in einer kompakten Tab-Leiste öffnen und sicher schließen, mit eigener Undo-Historie, Auswahl, Faltungen, Editor- und Vorschau-Scrollposition, Ansicht und Split-Breite pro Tab
+- Sitzungswiederherstellung nach einem Neustart: Tabs, Reihenfolge, angeheftete und aktiver Tab sowie ungespeicherte Änderungen kehren zurück; Dateien laden erst beim Anzeigen, extern geänderte Dateien werden nie überschrieben
+- Tab-Kontextmenü mit Schließen (andere, rechts, links, alle, gespeicherte, gleiche Endung, gleicher Ordner), Anheften, Verschieben, Sortieren, Pfad kopieren, Im Explorer anzeigen, Terminal öffnen, Neu laden und „Geschlossenen Tab wieder öffnen“ (Strg/Cmd+Umschalt+T); zu viele Tabs wandern in ein durchsuchbares Overflow-Menü
+- Formatierungsleiste für Markdown und HTML (Fett, Kursiv, Überschriften, Listen, Aufgaben, Zitate, Codeblöcke, Links, Bilder, Tabellen, Trennlinien, Ausrichtung, Einrücken) sowie Suchen und Ersetzen wie in VS Code (Strg/Cmd+F, Strg+H) mit Trefferzähler, Groß-/Kleinschreibung, ganzem Wort und regulären Ausdrücken
+- Mehrfach ersetzen mit Regellisten und Mustern sowie gespeicherte Makros (auch als abgeschottetes JavaScript) mit Verlauf, z. B. für wiederkehrende Pflege von Adblock-Listen (Strg/Cmd+Umschalt+H)
+- Editor und Markdown-Vorschau scrollen in der geteilten Ansicht quellzeilengenau gemeinsam; ein Klick in die Vorschau springt zur Quellzeile
+- Windows-Explorer zeigt für mit P-Viewer verknüpfte Dateien Dateityp-Symbole (wahlweise das App-Symbol)
 - eine laufende Instanz für alle Dateien: extern geöffnete Dokumente landen als Tab im zuletzt benutzten Fenster; Tabs lassen sich per Maus umsortieren, zwischen P-Viewer-Fenstern verschieben oder in ein neues Fenster ziehen (Strg/Cmd+Umschalt+N öffnet ein leeres Fenster), und der letzte Tab schließt sein Fenster
 - Fenster merken sich Größe, Position und Maximierung des zuletzt benutzten P-Viewer-Fensters; neue Fenster öffnen leicht versetzt daneben, und beim Start erscheint das Fenster erst mit fertig gezeichneter Oberfläche im gespeicherten Design statt als weiße Fläche
 - Speicherkonflikte bei externen Änderungen erkennen; bei mehrdeutigen Dateien die Kodierung in der Statusleiste explizit neu wählen
@@ -114,9 +120,19 @@ Unter **Einstellungen → Anzeigemodus** lässt sich **Edit**, **View** oder **S
 
 Die Zeilennummernleiste hebt sich im dunklen Design mit einer dunkleren Fläche vom Text ab; das helle Design bleibt unverändert.
 
+## Sitzung, Tabs und Formatierung
+
+Unter **Einstellungen → Start** stellt P-Viewer beim nächsten Start die letzte Sitzung wieder her (Standard) oder öffnet ein leeres Fenster. Einzeln abwählbar sind Cursor und Auswahl, Scrollpositionen, Ansicht, Split-Breite, eingeklappte Abschnitte und ungespeicherte Dokumente. Sitzung und Wiederherstellungsdaten liegen ausschließlich lokal im App-Datenordner (`session/`), werden atomar geschrieben und nie hochgeladen; eine beschädigte Sitzungsdatei wird beiseitegelegt, ein beschädigter Tab übersprungen. Mehrere Fenster einer abgestürzten Sitzung kehren als eigene Fenster zurück; wer ein Fenster bewusst schließt, während andere offen bleiben, entfernt es aus der Sitzung.
+
+**Mehrfach ersetzen** (Strg/Cmd+Umschalt+H oder „Liste …“ im Suchwidget) wendet eine Regelliste der Reihe nach als einen Undo-Schritt an. JavaScript-Makros laufen in einem eigenen Worker ohne DOM, Dateizugriff, Netzwerk oder App-Befehle und werden nach fünf Sekunden abgebrochen; die App-CSP bleibt dafür unverändert. Makros und Verlauf liegen lokal in `replace-history.json` im App-Datenordner.
+
+Die Formatierungsleiste erzeugt ausschließlich normalen Markdown- bzw. HTML-Quelltext und lässt sich unter **Einstellungen → Editor** auf *Immer* oder *Nie* stellen. Die Scroll-Kopplung der geteilten Ansicht wird unter **Einstellungen → Vorschau-Synchronisation** und pro Tab über den Schalter „Sync“ gesteuert.
+
 ## Dateizuordnungen
 
 Installer registrieren alle 306 unterstützten Dateiendungen als mögliche P-Viewer-Formate. Unter **Einstellungen → Standardprogramme** lassen sich 110 sinnvolle Formatgruppen auswählen; die acht Bild- und PDF-Gruppen sind dabei bewusst abgewählt, bis sie ausdrücklich angehakt werden. Windows öffnet anschließend aus Sicherheitsgründen seine geschützte Standard-Apps-Seite zur Bestätigung; Linux aktualisiert die benutzerspezifische `mimeapps.list`, macOS verwendet LaunchServices. Eine vorhandene Standard-App wird bei der Windows-Installation nicht still überschrieben.
+
+Jede Endung besitzt unter Windows eine eigene ProgID mit eigenem Dateityp-Symbol aus `assets/file-icons` neben der EXE; unter **Einstellungen → Dateityp-Symbole** lässt sich stattdessen das App-Symbol verwenden. Neue Symbole werden als `<endung>.ico` (16, 32, 48 und 256 px) mit `npm run sync:icons -- import <ordner>` übernommen; byte-identische Dateien werden nur einmal gespeichert.
 
 ## Qualitätsprüfungen und Grenzen
 
@@ -124,7 +140,7 @@ Installer registrieren alle 306 unterstützten Dateiendungen als mögliche P-Vie
 
 Vorschaugrenzen halten die App bei sehr großen/komplexen Dateien bedienbar; sie sind keine Beschränkung auf ebenso kleine Editorquellen. Markdown begrenzt Quelltext, Zeilen und Strukturmarker, Notebooks kombinieren Zell-/Text-/Ausgabelimits. Die PDF-Ansicht hält nur eine Seite mit begrenzter Bitmap-Größe vor. View ist über **Strg/Cmd+Umschalt+R** erreichbar, Split über **Strg/Cmd+Umschalt+P**, ein weiteres Fenster über **Strg/Cmd+Umschalt+N**. Tabs wandern per Drag-and-drop zwischen Fenstern; beim Verschieben bleibt die Undo-Historie im Ursprungsfenster zurück.
 
-Testumfang, bekannte Grenzen und noch offene plattformspezifische Release-Abnahmen stehen in [`docs/QUALITY-v0.1.6.md`](docs/QUALITY-v0.1.6.md). Eine vollständige Fehlerfreiheit aller Dateiformate wird nicht behauptet.
+Testumfang, bekannte Grenzen und noch offene plattformspezifische Release-Abnahmen stehen in [`docs/QUALITY-v0.1.9.md`](docs/QUALITY-v0.1.9.md). Eine vollständige Fehlerfreiheit aller Dateiformate wird nicht behauptet.
 
 ## Versionierung
 
@@ -132,4 +148,4 @@ Versionen folgen semantischer Vorabversionierung und werden als `vX.Y.Z` getaggt
 
 ## Lizenz
 
-P-Viewer steht unter der [MIT-Lizenz](LICENSE). Hinweise zu den gebündelten OFL-Schriften stehen in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+P-Viewer steht unter der [MIT-Lizenz](LICENSE). Hinweise zu den gebündelten OFL-Schriften und den Dateityp-Symbolen stehen in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

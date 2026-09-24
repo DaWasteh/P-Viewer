@@ -35,6 +35,8 @@ pub struct DocumentPayload {
     pub size: u64,
     pub lossy: bool,
     pub version: String,
+    /// The file system reports the file as write protected.
+    pub read_only: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -72,8 +74,28 @@ struct DecodedText {
     lossy: bool,
 }
 
+/// File commands run on the blocking pool: a slow or unreachable network share
+/// must never freeze the window (synchronous commands run on the main thread).
+async fn blocking<T: Send + 'static>(
+    task: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(task)
+        .await
+        .map_err(|error| format!("Der Dateizugriff wurde abgebrochen: {error}"))?
+}
+
 #[tauri::command]
-pub fn read_document(path: String, encoding: Option<String>) -> Result<DocumentPayload, String> {
+pub async fn read_document(
+    path: String,
+    encoding: Option<String>,
+) -> Result<DocumentPayload, String> {
+    blocking(move || read_document_blocking(path, encoding)).await
+}
+
+pub(crate) fn read_document_blocking(
+    path: String,
+    encoding: Option<String>,
+) -> Result<DocumentPayload, String> {
     let (path, bytes) = read_document_file(&path, MAX_DOCUMENT_BYTES, Path::canonicalize)?;
     let decoded = match encoding.as_deref() {
         Some(name) => decode_text_as(&bytes, name)?,
@@ -90,6 +112,7 @@ pub fn read_document(path: String, encoding: Option<String>) -> Result<DocumentP
         size: bytes.len() as u64,
         lossy: decoded.lossy,
         version: content_version(&bytes),
+        read_only: fs::metadata(&path).is_ok_and(|metadata| metadata.permissions().readonly()),
     })
 }
 
@@ -97,7 +120,17 @@ pub fn read_document(path: String, encoding: Option<String>) -> Result<DocumentP
 /// from the file signature, not the extension, so a mislabeled file is either
 /// shown with its real type or rejected.
 #[tauri::command]
-pub fn read_binary_document(path: String, kind: String) -> Result<BinaryDocumentPayload, String> {
+pub async fn read_binary_document(
+    path: String,
+    kind: String,
+) -> Result<BinaryDocumentPayload, String> {
+    blocking(move || read_binary_document_blocking(path, kind)).await
+}
+
+pub(crate) fn read_binary_document_blocking(
+    path: String,
+    kind: String,
+) -> Result<BinaryDocumentPayload, String> {
     let limit = match kind.as_str() {
         "image" => MAX_IMAGE_DOCUMENT_BYTES,
         "pdf" => MAX_PDF_DOCUMENT_BYTES,
@@ -125,7 +158,28 @@ pub fn read_binary_document(path: String, kind: String) -> Result<BinaryDocument
 }
 
 #[tauri::command]
-pub fn write_document(
+pub async fn write_document(
+    path: String,
+    content: String,
+    encoding: String,
+    has_bom: bool,
+    line_ending: String,
+    expected_version: Option<String>,
+) -> Result<SaveResult, String> {
+    blocking(move || {
+        write_document_blocking(
+            path,
+            content,
+            encoding,
+            has_bom,
+            line_ending,
+            expected_version,
+        )
+    })
+    .await
+}
+
+pub(crate) fn write_document_blocking(
     path: String,
     content: String,
     encoding: String,
@@ -251,7 +305,14 @@ pub(crate) fn read_bounded_file(path: &Path, limit: u64) -> Result<Vec<u8>, Stri
 }
 
 #[tauri::command]
-pub fn read_local_images(
+pub async fn read_local_images(
+    document_path: String,
+    sources: Vec<String>,
+) -> Result<Vec<LocalImagePayload>, String> {
+    blocking(move || read_local_images_blocking(document_path, sources)).await
+}
+
+pub(crate) fn read_local_images_blocking(
     document_path: String,
     sources: Vec<String>,
 ) -> Result<Vec<LocalImagePayload>, String> {
@@ -798,7 +859,7 @@ mod tests {
         })
         .unwrap();
         let name = display_path(&opened_path);
-        let saved = write_document(
+        let saved = write_document_blocking(
             name.clone(),
             "changed".into(),
             "UTF-8".into(),
@@ -809,7 +870,7 @@ mod tests {
         .unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"changed");
         fs::write(&path, "external").unwrap();
-        assert!(write_document(
+        assert!(write_document_blocking(
             name,
             "mine".into(),
             "UTF-8".into(),
@@ -865,9 +926,9 @@ mod tests {
         let link = directory.path().join("link.txt");
         fs::write(&target, "original").unwrap();
         std::os::unix::fs::symlink(&target, &link).unwrap();
-        let opened = read_document(link.to_string_lossy().into_owned(), None).unwrap();
+        let opened = read_document_blocking(link.to_string_lossy().into_owned(), None).unwrap();
         assert_eq!(opened.path, display_path(&target.canonicalize().unwrap()));
-        write_document(
+        write_document_blocking(
             opened.path,
             "changed".into(),
             "UTF-8".into(),
@@ -927,9 +988,9 @@ mod tests {
         let path = directory.path().join("conflict.txt");
         let name = path.to_string_lossy().into_owned();
         fs::write(&path, "original").unwrap();
-        let opened = read_document(name.clone(), None).unwrap();
+        let opened = read_document_blocking(name.clone(), None).unwrap();
         fs::write(&path, "external").unwrap(); // Same length; mtime is irrelevant.
-        let error = write_document(
+        let error = write_document_blocking(
             name.clone(),
             "mine".into(),
             "UTF-8".into(),
@@ -941,7 +1002,7 @@ mod tests {
         assert!(error.contains("außerhalb"));
         assert_eq!(fs::read(&path).unwrap(), b"external");
         fs::remove_file(&path).unwrap();
-        assert!(write_document(
+        assert!(write_document_blocking(
             name,
             "mine".into(),
             "UTF-8".into(),
@@ -959,8 +1020,8 @@ mod tests {
         let path = directory.path().join("save.txt");
         let name = path.to_string_lossy().into_owned();
         fs::write(&path, "original").unwrap();
-        let opened = read_document(name.clone(), None).unwrap();
-        let saved = write_document(
+        let opened = read_document_blocking(name.clone(), None).unwrap();
+        let saved = write_document_blocking(
             name.clone(),
             "changed".into(),
             "UTF-8".into(),
@@ -972,9 +1033,9 @@ mod tests {
         assert_ne!(opened.version, saved.version);
         assert_eq!(
             saved.version,
-            read_document(name.clone(), None).unwrap().version
+            read_document_blocking(name.clone(), None).unwrap().version
         );
-        assert!(write_document(
+        assert!(write_document_blocking(
             name,
             "again".into(),
             "UTF-8".into(),
@@ -1022,7 +1083,7 @@ mod tests {
         let path = directory.path().join("paper.txt");
         let path_string = path.to_string_lossy().into_owned();
 
-        let saved = write_document(
+        let saved = write_document_blocking(
             path_string.clone(),
             "Alpha α\nBeta β\n".into(),
             "UTF-16LE".into(),
@@ -1032,7 +1093,7 @@ mod tests {
         )
         .unwrap();
         let raw = fs::read(&path).unwrap();
-        let opened = read_document(path_string, None).unwrap();
+        let opened = read_document_blocking(path_string, None).unwrap();
 
         assert_eq!(saved.size, raw.len() as u64);
         assert!(raw.starts_with(UTF16_LE_BOM));
@@ -1052,7 +1113,7 @@ mod tests {
         fs::write(&image, b"\x89PNG\r\n\x1a\ncontent").unwrap();
         fs::write(&disguised_svg, "<svg/>").unwrap();
 
-        let payloads = read_local_images(
+        let payloads = read_local_images_blocking(
             document.to_string_lossy().into_owned(),
             vec!["figure.asset".into(), "figure.png".into()],
         )
@@ -1083,7 +1144,7 @@ mod tests {
         fs::write(&document, "<img src=\"../outside.png\">").unwrap();
         fs::write(&outside, b"\x89PNG\r\n\x1a\ncontent").unwrap();
 
-        let payloads = read_local_images(
+        let payloads = read_local_images_blocking(
             document.to_string_lossy().into_owned(),
             vec!["../outside.png".into()],
         )
@@ -1104,7 +1165,7 @@ mod tests {
             fs::write(directory.path().join(format!("image-{index}.png")), &image).unwrap();
         }
 
-        let payloads = read_local_images(
+        let payloads = read_local_images_blocking(
             document.to_string_lossy().into_owned(),
             vec![
                 "image-0.png".into(),
@@ -1138,44 +1199,47 @@ mod tests {
         fs::write(&avif, &avif_bytes).unwrap();
 
         let opened =
-            read_binary_document(png.to_string_lossy().into_owned(), "image".into()).unwrap();
+            read_binary_document_blocking(png.to_string_lossy().into_owned(), "image".into())
+                .unwrap();
         assert_eq!(opened.mime, "image/png");
         assert_eq!(opened.name, "photo.png");
         assert_eq!(opened.size, 15);
         assert_eq!(opened.base64, BASE64.encode(fs::read(&png).unwrap()));
 
-        let mislabeled =
-            read_binary_document(jpeg_as_png.to_string_lossy().into_owned(), "image".into())
-                .unwrap();
+        let mislabeled = read_binary_document_blocking(
+            jpeg_as_png.to_string_lossy().into_owned(),
+            "image".into(),
+        )
+        .unwrap();
         assert_eq!(mislabeled.mime, "image/jpeg");
         assert_eq!(
-            read_binary_document(avif.to_string_lossy().into_owned(), "image".into())
+            read_binary_document_blocking(avif.to_string_lossy().into_owned(), "image".into())
                 .unwrap()
                 .mime,
             "image/avif"
         );
         assert_eq!(
-            read_binary_document(pdf.to_string_lossy().into_owned(), "pdf".into())
+            read_binary_document_blocking(pdf.to_string_lossy().into_owned(), "pdf".into())
                 .unwrap()
                 .mime,
             "application/pdf"
         );
         assert!(
-            read_binary_document(text.to_string_lossy().into_owned(), "pdf".into())
+            read_binary_document_blocking(text.to_string_lossy().into_owned(), "pdf".into())
                 .unwrap_err()
                 .contains("PDF-Signatur")
         );
         assert!(
-            read_binary_document(text.to_string_lossy().into_owned(), "image".into())
+            read_binary_document_blocking(text.to_string_lossy().into_owned(), "image".into())
                 .unwrap_err()
                 .contains("Sicherheitsgründen")
         );
         assert!(
-            read_binary_document(png.to_string_lossy().into_owned(), "video".into())
+            read_binary_document_blocking(png.to_string_lossy().into_owned(), "video".into())
                 .unwrap_err()
                 .contains("Unbekannte")
         );
-        assert!(read_binary_document(
+        assert!(read_binary_document_blocking(
             directory.path().to_string_lossy().into_owned(),
             "image".into()
         )
@@ -1191,8 +1255,8 @@ mod tests {
             .map(|index| format!("image-{index}.png"))
             .collect();
 
-        let error =
-            read_local_images(document.to_string_lossy().into_owned(), sources).unwrap_err();
+        let error = read_local_images_blocking(document.to_string_lossy().into_owned(), sources)
+            .unwrap_err();
         assert!(error.contains("höchstens"));
     }
 }

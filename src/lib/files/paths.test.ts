@@ -88,3 +88,14 @@ describe("document references", () => {
       .toBeNull();
   });
 });
+
+describe("relative references for inserted images", () => {
+  it("prefers paths relative to the document", async () => {
+    const { relativeReference } = await import("./paths");
+    expect(relativeReference("C:/Docs/readme.md", "C:/Docs/img/logo.png")).toBe("img/logo.png");
+    expect(relativeReference("C:/Docs/sub/readme.md", "c:/docs/img/logo.png")).toBe("../img/logo.png");
+    expect(relativeReference("C:/Docs/readme.md", "D:/Bilder/logo.png")).toBe("D:/Bilder/logo.png");
+    expect(relativeReference("/home/me/a/readme.md", "/home/me/b/x.png")).toBe("../b/x.png");
+    expect(relativeReference("", "C:/x.png")).toBe("C:/x.png");
+  });
+});

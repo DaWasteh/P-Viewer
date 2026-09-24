@@ -142,3 +142,22 @@ function normalizeSegments(segments: string[], rooted: boolean): string[] {
   }
   return parts;
 }
+
+/**
+ * Link target for `target` as seen from the document at `documentPath`: a
+ * relative path with forward slashes when both share a root, otherwise the
+ * absolute path. Untitled documents get the absolute path.
+ */
+export function relativeReference(documentPath: string, target: string): string {
+  const split = (path: string) => path.split(/[\\/]+/).filter(Boolean);
+  const windows = /^(?:[a-z]:|[\\/]{2})/i.test(target);
+  const same = (left: string, right: string) => (windows ? left.toLowerCase() === right.toLowerCase() : left === right);
+  if (!documentPath) return target.replace(/\\/g, "/");
+  const from = split(documentPath).slice(0, -1);
+  const to = split(target);
+  if (from.length === 0 || to.length === 0 || !same(from[0], to[0])) return target.replace(/\\/g, "/");
+  let shared = 0;
+  while (shared < from.length && shared < to.length - 1 && same(from[shared], to[shared])) shared += 1;
+  const up = from.length - shared;
+  return [...Array.from({ length: up }, () => ".."), ...to.slice(shared)].join("/");
+}

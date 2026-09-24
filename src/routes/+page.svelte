@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick, untrack } from "svelte";
-  import type { EditorSession } from "$lib/editor/session";
+  import { captureEditorView, type EditorSession } from "$lib/editor/session";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import type { Window as TauriWindow } from "@tauri-apps/api/window";
@@ -8,23 +8,34 @@
     AppWindow,
     CircleArrowUp,
     Columns2,
+    ArrowDownUp,
     Eye,
     FileOutput,
     FilePlus2,
     FileText,
     FolderOpen,
+    LoaderCircle,
     Pencil,
     Save,
     Settings2,
+    TriangleAlert,
   } from "@lucide/svelte";
   import EditorPane from "$lib/editor/EditorPane.svelte";
   import PreviewPane from "$lib/preview/PreviewPane.svelte";
+  import { PreviewSyncController, type SyncMode } from "$lib/preview/sync";
+  import ContextMenu, { type MenuEntry } from "$lib/ContextMenu.svelte";
   import DocumentTabs, { type TabDropPoint } from "$lib/files/DocumentTabs.svelte";
+  import CloseTabsDialog, {
+    type BulkChoice,
+    type CloseDialogRequest,
+    type ReviewChoice,
+  } from "$lib/files/CloseTabsDialog.svelte";
   import FileTypeSelector from "$lib/files/FileTypeSelector.svelte";
   import {
     chooseAndOpenDocument,
     confirmDiscardChanges,
     confirmDiscardDocuments,
+    confirmReload,
     createUntitledDocument,
     documentWeight,
     openDocumentPath,
@@ -33,16 +44,44 @@
   import { currentRuntimeInfo } from "$lib/debug/runtime";
   import { countLines, countWords, detectFileType } from "$lib/files/fileTypes";
   import {
+    bulkCloseTargets,
+    clampSplitRatio,
     documentIsDirty,
+    extensionOfName,
     findTabByPath,
     insertionIndex,
     isPristineUntitled,
+    logicalInsertionIndex,
+    moveTab,
+    newRecoveryId,
     nextUntitledName,
+    normalizePinnedOrder,
     parseTabTransfer,
     reorderTabs,
+    serializeRestoreTransfer,
     serializeTabTransfer,
+    setTabPinned,
+    sortTabs,
+    tabIsDirty,
+    type BulkClose,
     type DocumentTab,
+    type TabMove,
+    type TabNotice,
+    type TabSort,
+    type TabViewState,
   } from "$lib/files/tabs";
+  import {
+    clearStoredSession,
+    readRecovery,
+    removeRecovery,
+    resumeSessionStorage,
+    sessionTabFor,
+    storeWindowSession,
+    takeRestoredSessions,
+    writeRecovery,
+    type SessionTab,
+    type WindowSession,
+  } from "$lib/files/session";
   import type { OpenDocument, ViewMode } from "$lib/files/types";
   import { APP_VERSION } from "$lib/version";
   import SettingsPanel from "$lib/settings/SettingsPanel.svelte";
@@ -63,9 +102,25 @@
     if (!session) { session = {}; editorSessions.set(key, session); }
     return session;
   }
+  /** Preview scroll offsets per tab; plain objects, so scrolling never re-renders the page. */
+  const previewMemories = new Map<string, { top: number }>();
+  function previewMemory(tabId: string): { top: number } {
+    let memory = previewMemories.get(tabId);
+    if (!memory) { memory = { top: 0 }; previewMemories.set(tabId, memory); }
+    return memory;
+  }
+  const sessionKey = (tab: Pick<DocumentTab, "id" | "revision">) => `${tab.id}:${tab.revision}`;
+
   let tabSequence = 0;
-  const MAX_TABS = 32;
+  const MAX_TABS = 100;
   const MAX_TAB_WEIGHT = 64_000_000;
+  /** Recently closed tabs kept for Strg/Cmd+Umschalt+T. */
+  const CLOSED_TAB_HISTORY = 20;
+  const SESSION_SAVE_DELAY = 600;
+  const RECOVERY_DELAY = 1_000;
+  /** A restored file that does not answer in time (offline share) is marked unavailable. */
+  const RESTORE_TIMEOUT = 15_000;
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
   /** A tab queued for this window by another P-Viewer window (see windows.rs). */
   interface QueuedTab {
@@ -78,10 +133,20 @@
     window: string | null;
     created: boolean;
   }
+  interface ClosedTab {
+    state: SessionTab;
+    /** Unsaved untitled text, so reopening never loses what was just closed. */
+    document?: OpenDocument;
+  }
 
-  function createTab(document: OpenDocument, mode: ViewMode = "edit"): DocumentTab {
+  function createTab(document: OpenDocument, mode: ViewMode = "edit", extras: Partial<DocumentTab> = {}): DocumentTab {
     tabSequence += 1;
-    return { id: `tab-${tabSequence}`, document, revision: 0, mode };
+    return { id: `tab-${tabSequence}`, document, revision: 0, mode, recoveryId: newRecoveryId(), ...extras };
+  }
+
+  /** A tab that can be replaced by the next opened document without losing anything. */
+  function isReplaceable(tab: DocumentTab | undefined): boolean {
+    return Boolean(tab && !tab.restore && isPristineUntitled(tab.document));
   }
 
   const initialTab = createTab(createUntitledDocument());
@@ -110,6 +175,12 @@
   let settingsOpen = $state(false);
   let updateOpen = $state(false);
   let settingsReady = $state(false);
+  let contextMenu = $state<{ tabId: string; x: number; y: number } | null>(null);
+  let closeDialog = $state<CloseDialogRequest | null>(null);
+  let closedTabs: ClosedTab[] = [];
+  let closedTabCount = $state(0);
+  let toast = $state<{ message: string; count: number } | null>(null);
+  let toastTimer = 0;
   const desktop =
     typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
   // The native window starts hidden (windows.rs). It is revealed once the stored
@@ -130,20 +201,27 @@
   // Set when this code decided the window may close, so the close-requested
   // handler lets the native close through without asking again.
   let windowCloseApproved = false;
+  /** The window closes because its last tab was closed: the stored session is empty. */
+  let lastTabClosed = false;
 
   const activeTab = $derived(tabs.find((tab) => tab.id === activeTabId) ?? tabs[0]);
   const mode = $derived(activeTab?.mode ?? "edit");
   const document = $derived(activeTab!.document);
-  const dirty = $derived(documentIsDirty(document));
+  const dirty = $derived(tabIsDirty(activeTab!));
   // Images and PDF are read-only viewers without an editor or save path.
   const binaryDocument = $derived(Boolean(document.binary));
-  const dirtyCount = $derived(tabs.filter((tab) => documentIsDirty(tab.document)).length);
+  /** The active tab was restored from the session and its file is not loaded yet. */
+  const restoring = $derived(Boolean(activeTab?.restore));
+  const splitRatio = $derived(clampSplitRatio(activeTab?.splitRatio ?? 0.5));
+  const dirtyCount = $derived(tabs.filter((tab) => tabIsDirty(tab)).length);
   const tabItems = $derived(
     tabs.map((tab) => ({
       id: tab.id,
       name: tab.document.name,
       path: tab.document.path,
-      dirty: documentIsDirty(tab.document),
+      dirty: tabIsDirty(tab),
+      pinned: Boolean(tab.pinned),
+      readOnly: Boolean(tab.document.readOnly),
     })),
   );
   const lineCount = $derived(countLines(document.content));
@@ -151,6 +229,40 @@
   const activeTheme = $derived(
     settings.theme === "system" ? (systemDark ? "dark" : "light") : settings.theme,
   );
+  const persistSession = $derived(desktop && settingsReady && settings.startupBehavior === "restore");
+  const keepRecovery = $derived(persistSession && settings.restoreOptions.unsaved);
+  const extraRows = $derived((errorMessage ? 1 : 0) + (activeTab?.notice ? 1 : 0));
+
+  // Editor ↔ preview synchronisation (issue #2): only the split view of a
+  // Markdown document runs it. The toolbar toggle is kept per tab.
+  const previewSync = new PreviewSyncController();
+  const syncAvailable = $derived(mode === "split" && document.fileType.kind === "markdown" && !binaryDocument && !restoring);
+  const effectiveSyncMode = $derived.by((): SyncMode => {
+    const configured = settings.previewSyncMode;
+    const toggle = activeTab?.previewSync;
+    if (toggle === false) return "off";
+    if (toggle === true) return configured === "off" ? "bidirectional" : configured;
+    return configured;
+  });
+  $effect(() => {
+    previewSync.configure({ active: syncAvailable, mode: effectiveSyncMode, clickNavigation: settings.previewClickNavigation });
+  });
+
+  function togglePreviewSync(): void {
+    if (!activeTab) return;
+    activeTab.previewSync = effectiveSyncMode === "off";
+  }
+  /**
+   * Formatting toolbar above the editor (issue #1): "auto" offers it for
+   * Markdown and HTML only, "always" falls back to Markdown syntax elsewhere.
+   */
+  const formattingDialect = $derived.by((): "markdown" | "html" | null => {
+    const kind = document.fileType.kind;
+    if (settings.formattingToolbar === "never") return null;
+    if (kind === "html") return "html";
+    if (kind === "markdown") return "markdown";
+    return settings.formattingToolbar === "always" ? "markdown" : null;
+  });
 
   $effect(() => {
     if (!appWindow) return;
@@ -212,6 +324,7 @@
       ...settings,
       defaultAppAssociations: [...settings.defaultAppAssociations],
       extensionViewModes: { ...settings.extensionViewModes },
+      restoreOptions: { ...settings.restoreOptions },
     };
     if (!settingsReady) return;
     const timer = window.setTimeout(() => {
@@ -220,6 +333,12 @@
       });
     }, 180);
     return () => window.clearTimeout(timer);
+  });
+
+  // A restored tab loads its file the first time it becomes the active tab.
+  $effect(() => {
+    const tab = activeTab;
+    if (tab?.restore?.state === "pending") untrack(() => void loadRestoredTab(tab));
   });
 
   onMount(() => {
@@ -272,16 +391,25 @@
       appWindow = getCurrentWindow();
       cleanups.push(
         await appWindow.onCloseRequested(async (event) => {
-          if (windowCloseApproved) return;
+          if (windowCloseApproved) {
+            await finalizeSession(false);
+            return;
+          }
           if (busy || installingUpdate) { event.preventDefault(); return; }
           const dirtyNames = tabs
-            .filter((tab) => documentIsDirty(tab.document))
+            .filter((tab) => tabIsDirty(tab))
             .map((tab) => tab.document.name);
-          if (dirtyNames.length === 0) return;
+          if (dirtyNames.length === 0) {
+            await finalizeSession(false);
+            return;
+          }
           event.preventDefault();
           busy = true;
           try {
-            if (await confirmDiscardDocuments(dirtyNames)) await appWindow?.destroy();
+            if (await confirmDiscardDocuments(dirtyNames)) {
+              await finalizeSession(true);
+              await appWindow?.destroy();
+            }
           } finally { busy = false; }
         }),
       );
@@ -309,6 +437,10 @@
         }),
       );
 
+      // Only the first window of a process receives the previous session.
+      await restorePreviousSession();
+      sessionReady = true;
+      scheduleSessionSave();
       await acceptTransferredTabs();
       await pullQueuedDocuments();
     })()
@@ -319,8 +451,18 @@
         startupPulled = true;
       });
 
+    // Cursor and scroll positions are only kept in memory while working; they
+    // reach the session when the window loses focus and every half minute.
+    const flushOnBlur = () => scheduleSessionSave(0);
+    const periodic = window.setInterval(() => {
+      if (window.document.hasFocus()) scheduleSessionSave(0);
+    }, 30_000);
+    window.addEventListener("blur", flushOnBlur);
+
     return () => {
       disposed = true;
+      window.clearInterval(periodic);
+      window.removeEventListener("blur", flushOnBlur);
       for (const cleanup of cleanups) cleanup();
     };
   });
@@ -338,6 +480,421 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Tab state: view capture, session persistence and recovery (issue #4)
+  // ---------------------------------------------------------------------------
+
+  /** Cursor, selection, folds and scroll offsets of a tab right now. */
+  function captureView(tab: DocumentTab): TabViewState | undefined {
+    const editor = captureEditorView(editorSessions.get(sessionKey(tab))) ?? tab.view;
+    const preview = previewMemories.get(tab.id)?.top ?? tab.view?.previewScroll;
+    if (!editor && !preview) return undefined;
+    return { ...editor, ...(preview ? { previewScroll: preview } : {}) };
+  }
+
+  /** Makes the next mounted editor and preview of `tab` start from `view`. */
+  function seedView(tab: DocumentTab, view: TabViewState | undefined): void {
+    if (!view) return;
+    editorSessions.set(sessionKey(tab), { restore: view, scrollTop: view.editorScroll });
+    if (view.previewScroll) previewMemories.set(tab.id, { top: view.previewScroll });
+  }
+
+  let sessionReady = false;
+  let sessionTimer = 0;
+  let lastFingerprint = "";
+
+  function recoveryAvailable(tab: DocumentTab): boolean {
+    if (!keepRecovery) return false;
+    if (tab.restore) return tab.restore.hasRecovery;
+    return !tab.document.binary && documentIsDirty(tab.document);
+  }
+
+  function buildWindowSession(discarded = false): WindowSession {
+    const entries = lastTabClosed
+      ? []
+      : tabs
+          .filter((tab) => !isReplaceable(tab))
+          .map((tab) => sessionTabFor(tab, captureView(tab), !discarded && recoveryAvailable(tab)));
+    return {
+      version: 1,
+      ...(activeTab && !lastTabClosed ? { activeRecoveryId: activeTab.recoveryId } : {}),
+      tabs: entries,
+    };
+  }
+
+  function scheduleSessionSave(delay = SESSION_SAVE_DELAY): void {
+    if (!sessionReady || !persistSession) return;
+    window.clearTimeout(sessionTimer);
+    sessionTimer = window.setTimeout(() => {
+      void storeWindowSession(buildWindowSession()).catch((error) => {
+        console.warn("Sitzung konnte nicht gespeichert werden.", error);
+      });
+    }, delay);
+  }
+
+  /** Last write before the window closes; never blocks closing for long. */
+  async function finalizeSession(discarded: boolean): Promise<void> {
+    window.clearTimeout(sessionTimer);
+    window.clearTimeout(recoveryTimer);
+    if (!sessionReady) return;
+    const work = (async () => {
+      if (discarded) {
+        await Promise.allSettled(
+          tabs.filter((tab) => tabIsDirty(tab)).map((tab) => discardRecovery(tab)),
+        );
+      }
+      if (persistSession) await storeWindowSession(buildWindowSession(discarded));
+    })();
+    await Promise.race([work.catch(() => undefined), new Promise((resolve) => window.setTimeout(resolve, 1_500))]);
+  }
+
+  // Structural changes (order, pinning, modes, split, dirty state, active tab)
+  // are saved shortly after they happen; typing alone does not rewrite the file.
+  $effect(() => {
+    const fingerprint = [
+      activeTabId,
+      persistSession,
+      ...tabs.map((tab) =>
+        [tab.id, tab.recoveryId, tab.document.path, tab.document.name, tab.mode, tab.pinned, tab.splitRatio, tab.previewSync, tabIsDirty(tab), tab.revision, tab.restore?.state].join("|"),
+      ),
+    ].join("\n");
+    if (fingerprint === lastFingerprint) return;
+    lastFingerprint = fingerprint;
+    untrack(() => scheduleSessionSave());
+  });
+
+  // Turning session restore off removes what was stored; turning it on resumes.
+  let previousStartup: AppSettings["startupBehavior"] | null = null;
+  $effect(() => {
+    const startup = settings.startupBehavior;
+    if (!settingsReady || !desktop) return;
+    untrack(() => {
+      if (previousStartup !== null && previousStartup !== startup) {
+        if (startup === "empty") {
+          void clearStoredSession(true, false).catch((error) => (errorMessage = messageFrom(error)));
+          recoveryWritten.clear();
+        } else {
+          void resumeSessionStorage().then(() => scheduleSessionSave(0));
+        }
+      }
+      previousStartup = startup;
+    });
+  });
+
+  // Unsaved text is mirrored into the recovery store, debounced, so a crash or
+  // a killed process loses at most about a second of typing.
+  const recoveryWritten = new Map<string, string>();
+  /** Recovery ids of tabs moved to another window: that window owns the file now. */
+  const handedOver = new Set<string>();
+  let recoveryTimer = 0;
+  $effect(() => {
+    const keep = keepRecovery;
+    for (const tab of tabs) {
+      if (!tab.restore && !tab.document.binary && documentIsDirty(tab.document)) void tab.document.content;
+    }
+    void keep;
+    untrack(() => {
+      window.clearTimeout(recoveryTimer);
+      recoveryTimer = window.setTimeout(() => void syncRecovery(), RECOVERY_DELAY);
+    });
+  });
+
+  async function syncRecovery(): Promise<void> {
+    if (!sessionReady) return;
+    const wanted = new Map<string, string>();
+    if (keepRecovery) {
+      for (const tab of tabs) {
+        if (!tab.restore && !tab.document.binary && documentIsDirty(tab.document)) wanted.set(tab.recoveryId, tab.document.content);
+      }
+    }
+    for (const [id, content] of wanted) {
+      if (recoveryWritten.get(id) === content) continue;
+      try {
+        await writeRecovery(id, content);
+        recoveryWritten.set(id, content);
+      } catch (error) {
+        console.warn("Wiederherstellungsdaten konnten nicht geschrieben werden.", error);
+      }
+    }
+    for (const id of [...recoveryWritten.keys()]) {
+      if (wanted.has(id)) continue;
+      recoveryWritten.delete(id);
+      if (!handedOver.has(id)) void removeRecovery(id).catch(() => undefined);
+    }
+  }
+
+  /** Drops the stored unsaved text of a tab whose changes were discarded, saved or closed. */
+  async function discardRecovery(tab: DocumentTab): Promise<void> {
+    recoveryWritten.delete(tab.recoveryId);
+    if (!desktop) return;
+    await removeRecovery(tab.recoveryId).catch(() => undefined);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Session restore
+  // ---------------------------------------------------------------------------
+
+  /** Drops what the startup settings say not to bring back. */
+  function withRestoreOptions(entry: SessionTab): SessionTab {
+    const options = settings.restoreOptions;
+    const next: SessionTab = { ...entry };
+    if (!options.cursor) delete next.selection;
+    if (!options.scroll) {
+      delete next.editorScroll;
+      delete next.previewScroll;
+    }
+    if (!options.folds) delete next.folds;
+    if (!options.splitWidths) delete next.splitRatio;
+    if (!options.mode) next.mode = preferredViewMode(settings, entry.name);
+    if (!options.unsaved && entry.hasRecovery) {
+      void removeRecovery(entry.recoveryId).catch(() => undefined);
+      next.hasRecovery = false;
+    }
+    return next;
+  }
+
+  /** Builds a not yet loaded tab from a stored session entry. */
+  function tabFromSession(entry: SessionTab): DocumentTab | null {
+    const hasRecovery = Boolean(entry.hasRecovery);
+    // An untitled tab without unsaved text has nothing to bring back.
+    if (entry.untitled && !hasRecovery) return null;
+    const document = createUntitledDocument(entry.name);
+    document.path = entry.untitled ? "" : entry.path;
+    document.untitled = entry.untitled;
+    if (entry.encoding) document.encoding = entry.encoding;
+    if (entry.lineEnding) document.lineEnding = entry.lineEnding;
+    if (entry.hasBom !== undefined) document.hasBom = entry.hasBom;
+    const view: TabViewState = {
+      ...(entry.selection ? { selection: entry.selection } : {}),
+      ...(entry.editorScroll ? { editorScroll: entry.editorScroll } : {}),
+      ...(entry.previewScroll ? { previewScroll: entry.previewScroll } : {}),
+      ...(entry.folds ? { folds: entry.folds } : {}),
+    };
+    const recoveryId = tabs.some((tab) => tab.recoveryId === entry.recoveryId) ? newRecoveryId() : entry.recoveryId;
+    return createTab(document, entry.mode, {
+      recoveryId,
+      pinned: Boolean(entry.pinned),
+      splitRatio: entry.splitRatio,
+      previewSync: entry.previewSync,
+      view,
+      restore: { state: "pending", version: entry.version, hasRecovery },
+    });
+  }
+
+  async function restorePreviousSession(): Promise<void> {
+    if (settings.startupBehavior !== "restore") return;
+    let sessions: WindowSession[];
+    try {
+      sessions = await takeRestoredSessions();
+    } catch (error) {
+      console.warn("Die letzte Sitzung konnte nicht gelesen werden.", error);
+      return;
+    }
+    const [own, ...others] = sessions.filter((session) => session.tabs.length > 0);
+    if (!own) return;
+    const restored: DocumentTab[] = [];
+    for (const entry of own.tabs.slice(0, MAX_TABS)) {
+      // One broken entry never costs the rest of the session.
+      try {
+        if (!entry.untitled && findTabByPath([...tabs, ...restored], entry.path)) continue;
+        const tab = tabFromSession(withRestoreOptions(entry));
+        if (tab) restored.push(tab);
+      } catch (error) {
+        console.warn("Ein Tab der letzten Sitzung wurde übersprungen.", error);
+      }
+    }
+    if (restored.length > 0) {
+      if (tabs.length === 1 && isReplaceable(tabs[0])) {
+        editorSessions.delete(sessionKey(tabs[0]));
+        tabs.splice(0, 1, ...restored);
+      } else {
+        tabs.push(...restored);
+      }
+      normalizePinnedOrder(tabs);
+      const active = restored.find((tab) => tab.recoveryId === own.activeRecoveryId) ?? restored[0];
+      activeTabId = active.id;
+      // Unsaved text is brought back right away; other tabs load when first shown.
+      for (const tab of restored) if (tab.restore?.hasRecovery && tab.id !== active.id) void loadRestoredTab(tab);
+    }
+    for (const session of others) await restoreWindowElsewhere(session);
+  }
+
+  /** Further windows of the previous session reopen as windows of their own. */
+  async function restoreWindowElsewhere(session: WindowSession): Promise<void> {
+    let target: string | null = null;
+    for (const entry of session.tabs) {
+      try {
+        const result: TabMoveResult = await invoke<TabMoveResult>("move_tab_to_window", {
+          tab: serializeRestoreTransfer(withRestoreOptions(entry), entry.mode, entry.recoveryId === session.activeRecoveryId),
+          target,
+          insideSource: true,
+          allowNewWindow: true,
+          atCursor: false,
+        });
+        target = result.window ?? target;
+      } catch (error) {
+        console.warn("Ein Fenster der letzten Sitzung konnte nicht wiederhergestellt werden.", error);
+        return;
+      }
+    }
+  }
+
+  const restoreAttempts = new Map<string, number>();
+
+  function withTimeout<T>(promise: Promise<T>, milliseconds: number): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = window.setTimeout(() => reject(new RestoreTimeout()), milliseconds);
+      promise.then(
+        (value) => { window.clearTimeout(timer); resolve(value); },
+        (error) => { window.clearTimeout(timer); reject(error); },
+      );
+    });
+  }
+
+  class RestoreTimeout extends Error {
+    constructor() {
+      super("Die Datei hat nicht rechtzeitig geantwortet. Netzlaufwerk oder Freigabe sind möglicherweise nicht verbunden.");
+    }
+  }
+
+  /** Loads the file (and any unsaved text) of a restored tab; errors stay on the tab. */
+  async function loadRestoredTab(tab: DocumentTab): Promise<void> {
+    const restore = tab.restore;
+    if (!restore || restore.state === "loading") return;
+    const attempt = (restoreAttempts.get(tab.id) ?? 0) + 1;
+    restoreAttempts.set(tab.id, attempt);
+    tab.restore = { ...restore, state: "loading", error: undefined, unavailable: false };
+    const current = () => {
+      const candidate = tabs.find((entry) => entry.id === tab.id);
+      return candidate?.restore && restoreAttempts.get(tab.id) === attempt ? candidate : null;
+    };
+
+    let recovered: string | null = null;
+    if (restore.hasRecovery) {
+      try {
+        recovered = await readRecovery(tab.recoveryId);
+      } catch (error) {
+        const target = current();
+        if (target) target.restore = { ...restore, state: "error", error: messageFrom(error) };
+        return;
+      }
+    }
+
+    if (tab.document.untitled) {
+      const target = current();
+      if (!target) return;
+      const document = createUntitledDocument(target.document.name);
+      document.encoding = target.document.encoding;
+      document.lineEnding = target.document.lineEnding;
+      document.hasBom = target.document.hasBom;
+      document.content = recovered ?? "";
+      finishRestore(target, document, undefined, true);
+      return;
+    }
+
+    let disk: OpenDocument | null = null;
+    let failure: unknown = null;
+    try {
+      disk = await withTimeout(openDocumentPath(tab.document.path), RESTORE_TIMEOUT);
+    } catch (error) {
+      failure = error;
+    }
+    const target = current();
+    if (!target) return;
+
+    if (disk) {
+      const changed = Boolean(restore.version && disk.version && restore.version !== disk.version);
+      if (recovered !== null && !disk.binary && recovered !== disk.content) {
+        const document: OpenDocument = { ...disk, content: recovered };
+        let notice: TabNotice | undefined;
+        if (changed) {
+          // Keep the old version: a plain save now reports the conflict instead of
+          // overwriting what changed on disk since the last session.
+          document.version = restore.version;
+          notice = { kind: "external-change", diskContent: disk.content, diskVersion: disk.version };
+        }
+        finishRestore(target, document, notice, !changed);
+      } else {
+        if (recovered !== null) void discardRecovery(target);
+        finishRestore(target, disk, undefined, !changed);
+      }
+      return;
+    }
+
+    if (recovered !== null) {
+      // The file is gone or unreachable, but its unsaved text is not lost.
+      const document: OpenDocument = { ...target.document, content: recovered, savedContent: "", version: restore.version };
+      finishRestore(target, document, { kind: "missing" }, false);
+      return;
+    }
+    target.restore = {
+      ...restore,
+      state: "error",
+      error: messageFrom(failure),
+      unavailable: failure instanceof RestoreTimeout,
+    };
+  }
+
+  function finishRestore(tab: DocumentTab, document: OpenDocument, notice: TabNotice | undefined, keepFolds: boolean): void {
+    const view = tab.view ? { ...tab.view } : undefined;
+    if (view && !keepFolds) delete view.folds;
+    editorSessions.delete(sessionKey(tab));
+    tab.document = document;
+    tab.notice = notice;
+    tab.revision += 1;
+    seedView(tab, view);
+    tab.view = undefined;
+    tab.restore = undefined;
+  }
+
+  function retryRestoredTab(tabId: string): void {
+    const tab = tabs.find((candidate) => candidate.id === tabId);
+    if (!tab?.restore) return;
+    tab.restore = { ...tab.restore, state: "pending" };
+    void loadRestoredTab(tab);
+  }
+
+  /** "Datei suchen …": points a restored tab whose file moved to a new location. */
+  async function locateRestoredTab(tabId: string): Promise<void> {
+    if (busy) return;
+    busy = true;
+    try {
+      const opened = await chooseAndOpenDocument();
+      const tab = tabs.find((candidate) => candidate.id === tabId);
+      if (!opened || !tab) return;
+      const existing = findTabByPath(tabs, opened.path, tabId);
+      if (existing) {
+        activeTabId = existing.id;
+        return;
+      }
+      restoreAttempts.set(tabId, (restoreAttempts.get(tabId) ?? 0) + 1);
+      finishRestore(tab, opened, undefined, false);
+    } catch (error) {
+      errorMessage = messageFrom(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function keepRecoveredVersion(tab: DocumentTab): void {
+    if (tab.notice?.kind === "external-change") tab.document.version = tab.notice.diskVersion;
+    tab.notice = undefined;
+  }
+
+  function useDiskVersion(tab: DocumentTab): void {
+    const notice = tab.notice;
+    if (notice?.kind !== "external-change" || notice.diskContent === undefined) return;
+    editorSessions.delete(sessionKey(tab));
+    tab.document = { ...tab.document, content: notice.diskContent, savedContent: notice.diskContent, version: notice.diskVersion };
+    tab.notice = undefined;
+    tab.revision += 1;
+    void discardRecovery(tab);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Opening documents
+  // ---------------------------------------------------------------------------
+
   function showDocument(opened: OpenDocument, replacePristine: boolean): void {
     const existing = findTabByPath(tabs, opened.path);
     if (existing) {
@@ -349,8 +906,8 @@
       throw new Error(`Zu viele offene Dokumente (maximal ${MAX_TABS} Tabs / 64 Millionen Zeichen). Bitte zuerst Tabs schließen.`);
     }
     const current = tabs.find((tab) => tab.id === activeTabId);
-    if (replacePristine && current && isPristineUntitled(current.document)) {
-      editorSessions.delete(`${current.id}:${current.revision}`);
+    if (replacePristine && current && isReplaceable(current)) {
+      editorSessions.delete(sessionKey(current));
       current.document = opened;
       current.mode = preferredViewMode(settings, opened.name);
       current.revision += 1;
@@ -407,7 +964,8 @@
     const shells = Array.from(window.document.querySelectorAll<HTMLElement>(".tab-list .tab-shell"));
     const strip = window.document.querySelector(".tab-list")?.getBoundingClientRect();
     if (!strip || y < strip.top - 24 || y > strip.bottom + 24) return tabs.length;
-    return insertionIndex(x, shells.map((shell) => shell.getBoundingClientRect()));
+    const visibleIndex = insertionIndex(x, shells.map((shell) => shell.getBoundingClientRect()));
+    return logicalInsertionIndex(tabs.map((tab) => tab.id), shells.map((shell) => shell.dataset.shellId ?? ""), null, visibleIndex);
   }
 
   async function acceptTransferredTabs(): Promise<void> {
@@ -425,30 +983,53 @@
         continue;
       }
       const incoming = transfer.document;
-      const existing = incoming.path ? findTabByPath(tabs, incoming.path) : undefined;
-      const onlyPristine = tabs.length === 1 && isPristineUntitled(tabs[0].document);
-      if (existing && !documentIsDirty(incoming)) {
+      const state = transfer.state;
+      const path = incoming ? incoming.path : state?.untitled ? "" : state?.path ?? "";
+      const existing = path ? findTabByPath(tabs, path) : undefined;
+      const incomingDirty = incoming ? documentIsDirty(incoming) : Boolean(state?.hasRecovery);
+      const onlyPristine = tabs.length === 1 && isReplaceable(tabs[0]);
+      if (existing && !incomingDirty) {
         // Same file already open here and nothing unsaved travels with it.
         activeTabId = existing.id;
         continue;
       }
-      if (!onlyPristine && (existing || !canHostAnotherTab(incoming))) {
+      if (!onlyPristine && (existing || (incoming ? !canHostAnotherTab(incoming) : tabs.length >= MAX_TABS))) {
         // Never drop a document: bounce it into a fresh window instead.
         try {
-          await invoke("move_tab_to_window", { tab: entry.tab, target: null, insideSource: true, allowNewWindow: true });
+          await invoke("move_tab_to_window", { tab: entry.tab, target: null, insideSource: true, allowNewWindow: true, atCursor: false });
         } catch (error) {
           errorMessage = messageFrom(error);
         }
         continue;
       }
-      const tab = createTab(incoming, transfer.mode);
+      let tab: DocumentTab | null;
+      if (incoming) {
+        const recoveryId = state && !tabs.some((candidate) => candidate.recoveryId === state.recoveryId) ? state.recoveryId : newRecoveryId();
+        tab = createTab(incoming, transfer.mode, {
+          recoveryId,
+          pinned: state?.pinned,
+          splitRatio: state?.splitRatio,
+          previewSync: state?.previewSync,
+        });
+        seedView(tab, state ? { selection: state.selection, editorScroll: state.editorScroll, previewScroll: state.previewScroll, folds: state.folds } : undefined);
+      } else {
+        tab = state?.name
+          ? tabFromSession({ ...state, path, name: state.name, untitled: state.untitled ?? !path, mode: transfer.mode })
+          : null;
+        if (!tab) continue;
+      }
+      // A tab of a restored window only takes focus when it was the active one
+      // or when this window has nothing else to show yet.
+      const takeFocus = Boolean(incoming || transfer.active || onlyPristine || isReplaceable(activeTab));
       if (onlyPristine) {
-        editorSessions.delete(`${tabs[0].id}:${tabs[0].revision}`);
+        editorSessions.delete(sessionKey(tabs[0]));
         tabs.splice(0, 1, tab);
       } else {
         tabs.splice(dropIndexFor(entry.dropX, entry.dropY), 0, tab);
       }
-      activeTabId = tab.id;
+      normalizePinnedOrder(tabs);
+      if (takeFocus) activeTabId = tab.id;
+      if (tab.restore?.hasRecovery && activeTabId !== tab.id) void loadRestoredTab(tab);
       cursorLine = 1;
       cursorColumn = 1;
       selectedCharacters = 0;
@@ -471,29 +1052,47 @@
     reorderTabs(tabs, tabId, index);
   }
 
-  /** Hands a dragged tab to the window under the pointer or to a new window. */
-  async function detachTab(tabId: string, point: TabDropPoint): Promise<void> {
+  /** Serialized form of a tab for another window, including its view state. */
+  function transferPayload(tab: DocumentTab): string {
+    const state = sessionTabFor(tab, captureView(tab), tab.restore ? tab.restore.hasRecovery : false);
+    return tab.restore
+      ? serializeRestoreTransfer(state, tab.mode ?? "edit", true)
+      : serializeTabTransfer(tab.document, tab.mode ?? "edit", state);
+  }
+
+  /** Hands a tab to the window under the pointer or to a new window. */
+  async function transferTab(tabId: string, insideWindow: boolean, atCursor: boolean): Promise<void> {
     if (busy || installingUpdate || !desktop) return;
     const tab = tabs.find((candidate) => candidate.id === tabId);
     if (!tab) return;
     const onlyTab = tabs.length === 1;
     // The only tab dropped over its own window has nowhere else to go.
-    if (onlyTab && point.insideWindow) return;
+    if (onlyTab && insideWindow) return;
     busy = true;
     errorMessage = "";
     try {
       const result = await invoke<TabMoveResult>("move_tab_to_window", {
-        tab: serializeTabTransfer(tab.document, tab.mode ?? "edit"),
+        tab: transferPayload(tab),
         target: null,
-        insideSource: point.insideWindow,
+        insideSource: insideWindow,
         allowNewWindow: !onlyTab,
+        atCursor,
       });
-      if (result.moved) removeTab(tabId);
+      if (result.moved) {
+        // The receiving window now owns the tab's recovery text.
+        recoveryWritten.delete(tab.recoveryId);
+        handedOver.add(tab.recoveryId);
+        removeTab(tabId);
+      }
     } catch (error) {
       errorMessage = messageFrom(error);
     } finally {
       busy = false;
     }
+  }
+
+  function detachTab(tabId: string, point: TabDropPoint): Promise<void> {
+    return transferTab(tabId, point.insideWindow, true);
   }
 
   async function openExternalDocuments(
@@ -538,13 +1137,40 @@
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // Closing tabs, closed tab history (issue #4)
+  // ---------------------------------------------------------------------------
+
+  function closedEntryFor(tab: DocumentTab): ClosedTab {
+    const state = sessionTabFor(tab, captureView(tab), false);
+    const keepText = !tab.restore && tab.document.untitled && tab.document.content !== "";
+    return keepText ? { state, document: { ...tab.document } } : { state };
+  }
+
+  function rememberClosed(entries: ClosedTab[]): void {
+    const useful = entries.filter((entry) => entry.document || !entry.state.untitled);
+    if (useful.length === 0) return;
+    closedTabs = [...closedTabs, ...useful].slice(-CLOSED_TAB_HISTORY);
+    closedTabCount = closedTabs.length;
+    showToast(
+      useful.length === 1 ? `„${useful[0].state.name}“ geschlossen` : `${useful.length} Tabs geschlossen`,
+      useful.length,
+    );
+  }
+
+  function showToast(message: string, count: number): void {
+    window.clearTimeout(toastTimer);
+    toast = { message, count };
+    toastTimer = window.setTimeout(() => (toast = null), 6_000);
+  }
+
   async function closeTab(tabId: string): Promise<string | null> {
     if (busy) return null;
     let index = tabs.findIndex((tab) => tab.id === tabId);
     if (index < 0) return null;
 
     const closing = tabs[index];
-    if (documentIsDirty(closing.document)) {
+    if (tabIsDirty(closing)) {
       busy = true;
       let accepted = false;
       try {
@@ -559,8 +1185,97 @@
       if (index < 0) return null;
     }
 
+    const entry = closedEntryFor(closing);
+    const windowStays = tabs.length > 1;
+    void discardRecovery(closing);
     removeTab(tabId);
+    if (windowStays) rememberClosed([entry]);
     return activeTabId;
+  }
+
+  function askBulkClose(names: string[]): Promise<BulkChoice> {
+    return new Promise((resolve) => {
+      closeDialog = { kind: "bulk", names, resolve: (choice) => { closeDialog = null; resolve(choice); } };
+    });
+  }
+
+  function askReview(name: string, position: number, total: number): Promise<ReviewChoice> {
+    return new Promise((resolve) => {
+      closeDialog = { kind: "review", name, position, total, resolve: (choice) => { closeDialog = null; resolve(choice); } };
+    });
+  }
+
+  /** Saves a tab that is about to close; false aborts the close. */
+  async function saveTabForClose(tabId: string): Promise<boolean> {
+    let tab = tabs.find((candidate) => candidate.id === tabId);
+    if (!tab) return true;
+    if (tab.restore) {
+      await loadRestoredTab(tab);
+      tab = tabs.find((candidate) => candidate.id === tabId);
+      if (!tab || tab.restore) {
+        errorMessage = `„${tab?.document.name ?? "Dokument"}“ konnte nicht geladen und daher nicht gespeichert werden.`;
+        return false;
+      }
+    }
+    try {
+      const saved = await saveDocument(tab.document, false, (path) => validateSavePath(tabId, path));
+      if (!saved) return false;
+      tab.document = saved;
+      return true;
+    } catch (error) {
+      activeTabId = tabId;
+      errorMessage = messageFrom(error);
+      return false;
+    }
+  }
+
+  /**
+   * Bulk close with one decision for all unsaved tabs. Nothing unsaved is ever
+   * dropped silently: saving, reviewing one by one or an explicit "discard all"
+   * are the only ways past the dialog.
+   */
+  async function closeTabs(ids: readonly string[], keepId?: string): Promise<void> {
+    if (busy || ids.length === 0) return;
+    const targets = tabs.filter((tab) => ids.includes(tab.id));
+    const dirtyTabs = targets.filter((tab) => tabIsDirty(tab));
+    const skipped = new Set<string>();
+    busy = true;
+    try {
+      if (dirtyTabs.length > 0) {
+        const choice = await askBulkClose(dirtyTabs.map((tab) => tab.document.name));
+        if (choice === "cancel") return;
+        if (choice === "save") {
+          for (const tab of dirtyTabs) if (!(await saveTabForClose(tab.id))) return;
+        } else if (choice === "review") {
+          for (let index = 0; index < dirtyTabs.length; index += 1) {
+            const tab = dirtyTabs[index];
+            activeTabId = tab.id;
+            const decision = await askReview(tab.document.name, index + 1, dirtyTabs.length);
+            if (decision === "cancel") return;
+            if (decision === "skip") skipped.add(tab.id);
+            if (decision === "save" && !(await saveTabForClose(tab.id))) return;
+          }
+        }
+      }
+    } finally {
+      busy = false;
+    }
+
+    const closing = tabs.filter((tab) => ids.includes(tab.id) && !skipped.has(tab.id));
+    if (closing.length === 0) return;
+    const entries = closing.map(closedEntryFor);
+    if (closing.length === tabs.length) {
+      // "Alle schließen" keeps the window: a fresh document replaces the last tab.
+      const replacement = createTab(createUntitledDocument(), preferredViewMode(settings, "Unbenannt.txt"));
+      tabs.push(replacement);
+      activeTabId = replacement.id;
+    }
+    for (const tab of closing) {
+      void discardRecovery(tab);
+      removeTab(tab.id);
+    }
+    if (keepId && tabs.some((tab) => tab.id === keepId)) activeTabId = keepId;
+    rememberClosed(entries);
   }
 
   /** Removes a tab whose fate is settled; closing the last one closes this window. */
@@ -568,15 +1283,19 @@
     const index = tabs.findIndex((tab) => tab.id === tabId);
     if (index < 0) return;
     const removed = tabs[index];
-    editorSessions.delete(`${removed.id}:${removed.revision}`);
+    editorSessions.delete(sessionKey(removed));
+    previewMemories.delete(removed.id);
+    restoreAttempts.delete(removed.id);
     if (tabs.length === 1) {
       if (appWindow) {
         // Keep the tab mounted until the window is gone; nothing may render
         // an empty tab list in between. A regular close (not destroy) lets the
         // native side record the window geometry before the window goes away.
         windowCloseApproved = true;
+        lastTabClosed = true;
         void appWindow.close().catch((error) => {
           windowCloseApproved = false;
+          lastTabClosed = false;
           errorMessage = `Fenster konnte nicht geschlossen werden: ${messageFrom(error)}`;
         });
         return;
@@ -598,12 +1317,48 @@
     focusDocumentTab(activeTabId);
   }
 
+  /** Strg/Cmd+Umschalt+T and "Rückgängig": reopens the most recently closed tabs. */
+  async function reopenClosedTab(count = 1): Promise<void> {
+    if (busy) return;
+    for (let reopened = 0; reopened < count; reopened += 1) {
+      const entry = closedTabs.pop();
+      closedTabCount = closedTabs.length;
+      if (!entry) break;
+      if (tabs.length >= MAX_TABS) { errorMessage = `Maximal ${MAX_TABS} offene Tabs. Bitte zuerst einen Tab schließen.`; closedTabs.push(entry); closedTabCount = closedTabs.length; break; }
+      const existing = entry.state.untitled ? undefined : findTabByPath(tabs, entry.state.path);
+      if (existing) {
+        activeTabId = existing.id;
+        continue;
+      }
+      const view: TabViewState = { selection: entry.state.selection, editorScroll: entry.state.editorScroll, previewScroll: entry.state.previewScroll, folds: entry.state.folds };
+      let tab: DocumentTab | null;
+      if (entry.document) {
+        const name = tabs.some((candidate) => candidate.document.name === entry.document!.name) ? nextUntitledName(tabs.map((candidate) => candidate.document)) : entry.document.name;
+        tab = createTab({ ...entry.document, name }, entry.state.mode, { pinned: entry.state.pinned, splitRatio: entry.state.splitRatio, previewSync: entry.state.previewSync });
+        seedView(tab, view);
+      } else {
+        tab = tabFromSession({ ...entry.state, hasRecovery: false, recoveryId: newRecoveryId() });
+      }
+      if (!tab) continue;
+      if (tabs.length === 1 && isReplaceable(tabs[0])) {
+        editorSessions.delete(sessionKey(tabs[0]));
+        tabs.splice(0, 1, tab);
+      } else {
+        tabs.push(tab);
+      }
+      normalizePinnedOrder(tabs);
+      activeTabId = tab.id;
+    }
+    toast = null;
+  }
+
   function activateTab(tabId: string): void {
     if (busy || tabId === activeTabId || !tabs.some((tab) => tab.id === tabId)) return;
     activeTabId = tabId;
     cursorLine = 1;
     cursorColumn = 1;
     selectedCharacters = 0;
+    scheduleSessionSave();
   }
 
   function cycleTab(direction: -1 | 1): void {
@@ -612,6 +1367,151 @@
     const nextIndex = (currentIndex + direction + tabs.length) % tabs.length;
     activateTab(tabs[nextIndex].id);
   }
+
+  // ---------------------------------------------------------------------------
+  // Tab context menu (issue #4): every action targets the right-clicked tab
+  // ---------------------------------------------------------------------------
+
+  function openTabContextMenu(tabId: string, x: number, y: number): void {
+    if (busy || !tabs.some((tab) => tab.id === tabId)) return;
+    contextMenu = { tabId, x, y };
+  }
+
+  async function copyText(text: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const area = window.document.createElement("textarea");
+      area.value = text;
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      window.document.body.append(area);
+      area.select();
+      window.document.execCommand("copy");
+      area.remove();
+    }
+  }
+
+  async function revealInFileManager(path: string): Promise<void> {
+    try {
+      const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
+      await revealItemInDir(path);
+    } catch (error) {
+      errorMessage = `Datei konnte nicht angezeigt werden: ${messageFrom(error)}`;
+    }
+  }
+
+  async function openTerminalAt(path: string): Promise<void> {
+    try {
+      await invoke("open_terminal_at", { path });
+    } catch (error) {
+      errorMessage = messageFrom(error);
+    }
+  }
+
+  /** Reads the file again from disk; unsaved changes are only dropped after confirmation. */
+  async function reloadTab(tabId: string): Promise<void> {
+    const tab = tabs.find((candidate) => candidate.id === tabId);
+    if (!tab || busy || tab.document.untitled || !tab.document.path) return;
+    if (tab.restore) {
+      retryRestoredTab(tabId);
+      return;
+    }
+    busy = true;
+    errorMessage = "";
+    try {
+      if (tabIsDirty(tab) && !(await confirmReload(tab.document.name))) return;
+      const view = captureView(tab);
+      const reloaded = await openDocumentPath(tab.document.path);
+      editorSessions.delete(sessionKey(tab));
+      tab.document = reloaded;
+      tab.notice = undefined;
+      tab.revision += 1;
+      seedView(tab, view ? { ...view, folds: undefined } : undefined);
+      void discardRecovery(tab);
+    } catch (error) {
+      errorMessage = messageFrom(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function applyTabOrder(change: () => boolean | void): void {
+    if (busy) return;
+    change();
+  }
+
+  const fileManagerName = isMac ? "Im Finder anzeigen" : /Windows/.test(typeof navigator !== "undefined" ? navigator.userAgent : "") ? "Im Explorer anzeigen" : "Im Dateimanager anzeigen";
+
+  function tabMenu(tabId: string): MenuEntry[] {
+    const tab = tabs.find((candidate) => candidate.id === tabId);
+    if (!tab) return [];
+    const index = tabs.indexOf(tab);
+    const hasFile = Boolean(tab.document.path) && !tab.document.untitled;
+    const targets = (kind: BulkClose) => bulkCloseTargets(tabs, tabId, kind);
+    const group = tabs.filter((candidate) => Boolean(candidate.pinned) === Boolean(tab.pinned));
+    const groupIndex = group.indexOf(tab);
+    const extension = extensionOfName(tab.document.name);
+    const primary = isMac ? "Cmd" : "Strg";
+    const move = (kind: TabMove) => () => applyTabOrder(() => moveTab(tabs, tabId, kind));
+    const sort = (kind: TabSort) => () => applyTabOrder(() => sortTabs(tabs, kind));
+    const close = (kind: BulkClose) => () => void closeTabs(targets(kind), kind === "others" || kind === "folder" ? tabId : undefined);
+    return [
+      { label: "Schließen", shortcut: `${primary}+W`, action: () => void closeTab(tabId) },
+      { label: "Andere schließen", disabled: targets("others").length === 0, action: close("others") },
+      { label: "Rechts schließen", disabled: targets("right").length === 0, action: close("right") },
+      { label: "Links schließen", disabled: targets("left").length === 0, action: close("left") },
+      { label: "Alle schließen", action: close("all") },
+      { label: "Gespeicherte schließen", disabled: targets("saved").length === 0, title: "Schließt nur Tabs ohne ungespeicherte Änderungen", action: close("saved") },
+      {
+        label: "Weitere schließen",
+        children: [
+          { label: extension ? `Alle .${extension}-Tabs schließen` : "Alle Tabs ohne Endung schließen", disabled: targets("extension").length === 0, action: close("extension") },
+          { label: "Andere Tabs aus diesem Ordner schließen", disabled: targets("folder").length === 0, title: "Nur genau dieser Ordner, ohne Unterordner", action: close("folder") },
+        ],
+      },
+      { separator: true },
+      { label: tab.pinned ? "Loslösen" : "Anheften", action: () => applyTabOrder(() => setTabPinned(tabs, tabId, !tab.pinned)) },
+      { label: "Duplizieren", disabled: true, title: "Zwei Ansichten derselben Datei würden konkurrierende Fassungen erzeugen; P-Viewer bietet das daher noch nicht an." },
+      { label: "In neues Fenster verschieben", disabled: !desktop || tabs.length < 2, action: () => void transferTab(tabId, true, false) },
+      { label: "Geschlossenen Tab wieder öffnen", shortcut: `${primary}+Umschalt+T`, disabled: closedTabCount === 0, action: () => void reopenClosedTab() },
+      { separator: true },
+      {
+        label: "Verschieben",
+        children: [
+          { label: "Nach links", disabled: groupIndex <= 0, action: move("left") },
+          { label: "Nach rechts", disabled: groupIndex >= group.length - 1, action: move("right") },
+          { label: "An den Anfang", disabled: groupIndex <= 0, action: move("start") },
+          { label: "Ans Ende", disabled: groupIndex >= group.length - 1, action: move("end") },
+        ],
+      },
+      {
+        label: "Tabs sortieren",
+        disabled: tabs.length < 2,
+        children: [
+          { label: "Nach Name", action: sort("name") },
+          { label: "Nach Dateityp", action: sort("type") },
+          { label: "Nach Ordner", action: sort("folder") },
+        ],
+      },
+      {
+        label: "Kopieren",
+        children: [
+          { label: "Dateiname", action: () => void copyText(tab.document.name) },
+          { label: "Vollständiger Pfad", disabled: !hasFile, action: () => void copyText(tab.document.path) },
+          { label: "Relativer Pfad", disabled: true, title: "P-Viewer kennt keinen Projektordner, zu dem ein relativer Pfad eindeutig wäre." },
+        ],
+      },
+      { separator: true },
+      { label: fileManagerName, disabled: !hasFile || !desktop, action: () => void revealInFileManager(tab.document.path) },
+      { label: "Terminal hier öffnen", disabled: !hasFile || !desktop, action: () => void openTerminalAt(tab.document.path) },
+      { label: "Neu laden", disabled: !hasFile || !desktop || index < 0, action: () => void reloadTab(tabId) },
+    ];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Saving and editing
+  // ---------------------------------------------------------------------------
 
   function validateSavePath(tabId: string, path: string): void {
     const conflict = findTabByPath(tabs, path, tabId);
@@ -622,7 +1522,7 @@
   }
 
   async function saveCurrent(forceDialog = false): Promise<boolean> {
-    if (busy) return false;
+    if (busy || activeTab!.restore) return false;
     const tabId = activeTab!.id;
     const source = activeTab!.document;
     busy = true;
@@ -634,7 +1534,10 @@
       if (!saved) return false;
 
       const target = tabs.find((tab) => tab.id === tabId);
-      if (target) target.document = saved;
+      if (target) {
+        target.document = saved;
+        target.notice = undefined;
+      }
       return true;
     } catch (error) {
       errorMessage = messageFrom(error);
@@ -647,22 +1550,16 @@
   async function saveAllDirtyDocuments(): Promise<boolean> {
     if (busy) return false;
     const dirtyTabIds = tabs
-      .filter((tab) => documentIsDirty(tab.document))
+      .filter((tab) => tabIsDirty(tab))
       .map((tab) => tab.id);
     busy = true;
     errorMessage = "";
     try {
       for (const tabId of dirtyTabIds) {
-        const tab = tabs.find((candidate) => candidate.id === tabId);
-        if (!tab) continue;
-        const saved = await saveDocument(tab.document, false, (path) =>
-          validateSavePath(tabId, path),
-        );
-        if (!saved) {
-          activeTabId = tabId;
+        if (!(await saveTabForClose(tabId))) {
+          if (tabs.some((tab) => tab.id === tabId)) activeTabId = tabId;
           return false;
         }
-        tab.document = saved;
       }
       return true;
     } catch (error) {
@@ -674,14 +1571,14 @@
   }
 
   async function reopenEncoding(encoding: string): Promise<void> {
-    if (busy || installingUpdate || document.untitled) return;
+    if (busy || installingUpdate || document.untitled || activeTab!.restore) return;
     const tab = activeTab!;
     busy = true;
     errorMessage = "";
     try {
       if (documentIsDirty(tab.document) && !await confirmDiscardChanges(tab.document.name)) return;
       const reopened = await openDocumentPath(tab.document.path, encoding || undefined);
-      editorSessions.delete(`${tab.id}:${tab.revision}`);
+      editorSessions.delete(sessionKey(tab));
       tab.document = reopened;
       tab.revision += 1;
     } catch (error) { errorMessage = messageFrom(error); }
@@ -693,7 +1590,7 @@
   }
 
   function updateFileType(fileName: string): void {
-    if (fileName === document.name || binaryDocument) return;
+    if (fileName === document.name || binaryDocument || activeTab!.restore) return;
     document.name = fileName;
     document.fileType = detectFileType(fileName);
     document.metadataDirty = true;
@@ -718,9 +1615,65 @@
     settings = resetSettings();
   }
 
+  // ---------------------------------------------------------------------------
+  // Split view divider: per-tab ratio, never below 20 % for either side
+  // ---------------------------------------------------------------------------
+
+  let workspace = $state<HTMLDivElement | null>(null);
+  let resizingSplit = $state(false);
+
+  function startSplitResize(event: PointerEvent): void {
+    if (event.button !== 0 || !workspace) return;
+    event.preventDefault();
+    const divider = event.currentTarget as HTMLElement;
+    divider.setPointerCapture(event.pointerId);
+    resizingSplit = true;
+    const bounds = workspace.getBoundingClientRect();
+    const move = (moveEvent: PointerEvent) => {
+      activeTab!.splitRatio = clampSplitRatio((moveEvent.clientX - bounds.left) / bounds.width);
+    };
+    const end = () => {
+      resizingSplit = false;
+      divider.removeEventListener("pointermove", move);
+      divider.removeEventListener("pointerup", end);
+      divider.removeEventListener("pointercancel", end);
+    };
+    divider.addEventListener("pointermove", move);
+    divider.addEventListener("pointerup", end);
+    divider.addEventListener("pointercancel", end);
+  }
+
+  function handleSplitKey(event: KeyboardEvent): void {
+    const step = event.shiftKey ? 0.1 : 0.02;
+    if (event.key === "ArrowLeft") activeTab!.splitRatio = clampSplitRatio(splitRatio - step);
+    else if (event.key === "ArrowRight") activeTab!.splitRatio = clampSplitRatio(splitRatio + step);
+    else if (event.key === "Home") activeTab!.splitRatio = 0.2;
+    else if (event.key === "End") activeTab!.splitRatio = 0.8;
+    else if (event.key === "Enter") activeTab!.splitRatio = 0.5;
+    else return;
+    event.preventDefault();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Keyboard shortcuts
+  // ---------------------------------------------------------------------------
+
   function handleShortcut(event: KeyboardEvent): void {
+    if (event.defaultPrevented || settingsOpen || updateOpen || busy || installingUpdate || window.document.querySelector("dialog[open]")) return;
+
+    // Direct tab selection: Alt+1…9 (Cmd+1…9 on macOS, where Option types characters).
+    // Numpad digits are left alone so Alt codes keep working.
+    const digit = /^Digit([1-9])$/.exec(event.code)?.[1];
+    const tabChord = isMac ? event.metaKey && !event.ctrlKey && !event.altKey : event.altKey && !event.ctrlKey && !event.metaKey;
+    if (digit && tabChord && !event.shiftKey) {
+      event.preventDefault();
+      const target = digit === "9" ? tabs[tabs.length - 1] : tabs[Number(digit) - 1];
+      if (target) activateTab(target.id);
+      return;
+    }
+
     const primary = event.ctrlKey || event.metaKey;
-    if (!primary || event.defaultPrevented || settingsOpen || updateOpen || busy || installingUpdate || window.document.querySelector("dialog[open]")) return;
+    if (!primary) return;
 
     const key = event.key.toLowerCase();
     if (key === "tab") {
@@ -729,6 +1682,9 @@
     } else if (key === "w" && !event.shiftKey) {
       event.preventDefault();
       void closeTab(activeTabId);
+    } else if (key === "t" && event.shiftKey) {
+      event.preventDefault();
+      void reopenClosedTab();
     } else if (key === "n" && event.shiftKey) {
       event.preventDefault();
       void openNewWindow();
@@ -787,9 +1743,8 @@
 
 <main
   class="app-shell"
-  class:has-error={Boolean(errorMessage)}
   class:light={activeTheme === "light"}
-  style={`--icon-scale: ${settings.iconSize / DEFAULT_SETTINGS.iconSize}`}
+  style={`--icon-scale: ${settings.iconSize / DEFAULT_SETTINGS.iconSize}; grid-template-rows: 48px 46px 34px ${"auto ".repeat(extraRows)}minmax(0, 1fr) 28px`}
   aria-busy={busy}
 >
   <header class="titlebar">
@@ -817,11 +1772,11 @@
         <FolderOpen size={17} aria-hidden="true" />
         <span class="sr-only">Dokument öffnen</span>
       </button>
-      <button class="icon-button" title="Speichern (Strg/Cmd+S)" onclick={() => void saveCurrent()} disabled={busy || binaryDocument || (!dirty && !document.untitled)}>
+      <button class="icon-button" title="Speichern (Strg/Cmd+S)" onclick={() => void saveCurrent()} disabled={busy || binaryDocument || restoring || (!dirty && !document.untitled)}>
         <Save size={17} aria-hidden="true" />
         <span class="sr-only">Dokument speichern</span>
       </button>
-      <button class="icon-button" title={binaryDocument ? "Bilder und PDF werden nur angezeigt" : "Speichern unter (Strg/Cmd+Umschalt+S)"} onclick={() => void saveCurrent(true)} disabled={busy || binaryDocument}>
+      <button class="icon-button" title={binaryDocument ? "Bilder und PDF werden nur angezeigt" : "Speichern unter (Strg/Cmd+Umschalt+S)"} onclick={() => void saveCurrent(true)} disabled={busy || binaryDocument || restoring}>
         <FileOutput size={17} aria-hidden="true" />
         <span class="sr-only">Dokument speichern unter</span>
       </button>
@@ -842,9 +1797,22 @@
       </button>
     </div>
 
+    {#if syncAvailable}
+      <button
+        class="sync-toggle"
+        class:active={effectiveSyncMode !== "off"}
+        aria-pressed={effectiveSyncMode !== "off"}
+        title={effectiveSyncMode === "off" ? "Scroll-Synchronisation für diesen Tab einschalten" : "Scroll-Synchronisation für diesen Tab ausschalten"}
+        onclick={togglePreviewSync}
+      >
+        <ArrowDownUp size={14} aria-hidden="true" />
+        <span>Sync {effectiveSyncMode === "off" ? "aus" : "an"}</span>
+      </button>
+    {/if}
+
     <FileTypeSelector
       fileName={document.name}
-      disabled={busy || binaryDocument}
+      disabled={busy || binaryDocument || restoring}
       onChange={updateFileType}
     />
     <button
@@ -877,6 +1845,7 @@
     onNew={newDocument}
     onReorder={reorderTab}
     onDetach={(tabId, point) => void detachTab(tabId, point)}
+    onContextMenu={openTabContextMenu}
   />
 
   {#if errorMessage}
@@ -886,14 +1855,50 @@
     </div>
   {/if}
 
+  {#if activeTab?.notice}
+    {@const tab = activeTab}
+    <div class="notice-banner" role="status">
+      <TriangleAlert size={14} aria-hidden="true" />
+      {#if tab.notice?.kind === "external-change"}
+        <span>„{tab.document.name}“ wurde seit der letzten Sitzung außerhalb von P-Viewer geändert. Angezeigt werden deine wiederhergestellten, ungespeicherten Änderungen.</span>
+        <button onclick={() => keepRecoveredVersion(tab)}>Wiederhergestellte Version behalten</button>
+        <button onclick={() => useDiskVersion(tab)}>Datenträgerversion verwenden</button>
+      {:else}
+        <span>Die Datei „{tab.document.name}“ wurde nicht gefunden. Deine ungespeicherten Änderungen wurden wiederhergestellt – mit „Speichern unter“ sichern.</span>
+        <button onclick={() => (tab.notice = undefined)}>Ausblenden</button>
+      {/if}
+    </div>
+  {/if}
+
   <div
     id="document-workspace"
-    class:split={mode === "split" && !binaryDocument}
+    bind:this={workspace}
+    class:split={mode === "split" && !binaryDocument && !restoring}
+    class:resizing={resizingSplit}
     class="workspace"
+    style={mode === "split" && !binaryDocument && !restoring ? `grid-template-columns: minmax(0, ${splitRatio}fr) 1px minmax(0, ${1 - splitRatio}fr)` : undefined}
     role="tabpanel"
     aria-label={document.name}
   >
-    {#if binaryDocument}
+    {#if activeTab?.restore}
+      {@const restore = activeTab.restore}
+      <div class="restore-panel" class:light={activeTheme === "light"}>
+        {#if restore.state === "error"}
+          <TriangleAlert size={22} aria-hidden="true" />
+          <strong>{restore.unavailable ? "Netzwerkdatei nicht erreichbar" : "Datei konnte nicht geöffnet werden"}</strong>
+          <span class="restore-path">{document.path}</span>
+          <small>{restore.error}</small>
+          <div class="restore-actions">
+            <button onclick={() => retryRestoredTab(activeTab!.id)}>Erneut versuchen</button>
+            <button onclick={() => void locateRestoredTab(activeTab!.id)} disabled={!desktop || busy}>Datei suchen …</button>
+            <button onclick={() => void closeTab(activeTab!.id)}>Tab schließen</button>
+          </div>
+        {:else}
+          <LoaderCircle class="spinning" size={20} aria-hidden="true" />
+          <span>„{document.name}“ wird geladen …</span>
+        {/if}
+      </div>
+    {:else if binaryDocument}
       <!-- Images and PDF have no editable text: the viewer takes the whole workspace. -->
       <div class="pane viewer-pane" aria-label="Betrachter">
         {#key `${activeTabId}:${activeTab!.revision}`}
@@ -907,6 +1912,7 @@
           editorFontSize={settings.editorFontSize}
           previewFontSize={settings.previewFontSize}
           wordWrap={settings.wordWrap}
+          scrollMemory={previewMemory(activeTabId)}
           onOpenPath={(path) => void openExternalDocuments([path])}
         />
         {/key}
@@ -923,12 +1929,32 @@
           fontSize={settings.editorFontSize}
           wordWrap={settings.wordWrap && (document.fileType.kind === "text" || document.fileType.kind === "markdown")}
           spellcheck={settings.spellcheck && (document.fileType.kind === "text" || document.fileType.kind === "markdown")}
-          markdownTools={document.fileType.kind === "markdown"}
+          formatting={formattingDialect}
+          documentPath={document.path}
+          sync={previewSync}
           onChange={updateContent}
           onCursorChange={updateCursor}
         />
       {/key}
     </div>
+
+    {#if mode === "split"}
+      <div
+        class="split-divider"
+        role="slider"
+        tabindex="0"
+        aria-orientation="horizontal"
+        aria-label="Breite von Editor und Vorschau"
+        aria-valuetext={`Editor ${Math.round(splitRatio * 100)} %, Vorschau ${100 - Math.round(splitRatio * 100)} %`}
+        aria-valuemin={20}
+        aria-valuemax={80}
+        aria-valuenow={Math.round(splitRatio * 100)}
+        title="Ziehen, um die Aufteilung zu ändern (Doppelklick: 50 / 50)"
+        onpointerdown={startSplitResize}
+        ondblclick={() => (activeTab!.splitRatio = 0.5)}
+        onkeydown={handleSplitKey}
+      ></div>
+    {/if}
 
     {#if mode === "view" || mode === "split"}
       <div class="pane viewer-pane" aria-label="Leseansicht">
@@ -942,6 +1968,8 @@
           editorFontSize={settings.editorFontSize}
           previewFontSize={settings.previewFontSize}
           wordWrap={settings.wordWrap}
+          scrollMemory={previewMemory(activeTabId)}
+          sync={previewSync}
           onOpenPath={(path) => void openExternalDocuments([path])}
         />
         {/key}
@@ -970,7 +1998,7 @@
     {#if selectedCharacters > 0}<span>{selectedCharacters} ausgewählt</span>{/if}
     <label class="encoding-control" title="Datei mit anderer Kodierung neu lesen (keine Konvertierung)">
       <span class="sr-only">Mit Kodierung neu öffnen</span>
-      <select disabled={document.untitled || busy || installingUpdate} value={document.encoding} onchange={(event) => { const selected = event.currentTarget.value; event.currentTarget.value = document.encoding; void reopenEncoding(selected); }}>
+      <select disabled={document.untitled || busy || installingUpdate || restoring} value={document.encoding} onchange={(event) => { const selected = event.currentTarget.value; event.currentTarget.value = document.encoding; void reopenEncoding(selected); }}>
         {#each [...new Set([document.encoding, "UTF-8", "UTF-16LE", "UTF-16BE", "windows-1252", "windows-1251", "Shift_JIS", "GB18030", "EUC-KR", "ISO-8859-15"])] as encoding}
           <option value={encoding}>{encoding}</option>
         {/each}
@@ -978,6 +2006,7 @@
       </select>{document.hasBom ? " BOM" : ""}
     </label>
     <span>{lineEndingLabel(document.lineEnding)}</span>
+    {#if document.readOnly}<span class="warning">Schreibgeschützte Datei</span>{/if}
     {#if document.lossy}<span class="warning">Kodierung mit Ersatzzeichen</span>{/if}
     {/if}
     {#if settings.debugMode}
@@ -987,6 +2016,29 @@
     {/if}
     <span class="path" title={document.path}>{document.path || "Noch nicht gespeichert"}</span>
   </footer>
+
+  {#if toast}
+    <div class="toast" role="status">
+      <span>{toast.message}</span>
+      <button onclick={() => void reopenClosedTab(toast?.count ?? 1)}>Rückgängig</button>
+      <button class="toast-close" aria-label="Hinweis schließen" onclick={() => (toast = null)}>×</button>
+    </div>
+  {/if}
+
+  {#if contextMenu}
+    <ContextMenu
+      items={tabMenu(contextMenu.tabId)}
+      x={contextMenu.x}
+      y={contextMenu.y}
+      label="Tab-Aktionen"
+      light={activeTheme === "light"}
+      onClose={() => (contextMenu = null)}
+    />
+  {/if}
+
+  {#if closeDialog}
+    <CloseTabsDialog request={closeDialog} light={activeTheme === "light"} />
+  {/if}
 
   {#if settingsOpen}
     <SettingsPanel
@@ -1063,10 +2115,6 @@
     transform: scale(var(--icon-scale));
     transform-origin: center;
     transition: transform 120ms ease;
-  }
-
-  .app-shell.has-error {
-    grid-template-rows: 48px 46px 34px auto minmax(0, 1fr) 28px;
   }
 
   .titlebar,
@@ -1213,6 +2261,29 @@
     box-shadow: 0 1px 4px rgb(0 0 0 / 24%);
   }
 
+  .sync-toggle {
+    display: flex;
+    height: 30px;
+    align-items: center;
+    gap: 6px;
+    margin-left: -4px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-muted);
+    background: var(--inset);
+    font-size: 11px;
+  }
+
+  .sync-toggle:hover,
+  .sync-toggle.active {
+    color: var(--text);
+  }
+
+  .sync-toggle.active {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  }
+
   .error-banner {
     display: flex;
     align-items: center;
@@ -1240,7 +2311,150 @@
   }
 
   .workspace.split {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    position: relative;
+    grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+  }
+
+  .workspace.resizing {
+    cursor: col-resize;
+    user-select: none;
+  }
+
+  .workspace.resizing :global(iframe) {
+    pointer-events: none;
+  }
+
+  .split-divider {
+    position: relative;
+    z-index: 3;
+    background: var(--border-strong);
+    cursor: col-resize;
+  }
+
+  /* A wider invisible grab area around the 1 px line. */
+  .split-divider::before {
+    position: absolute;
+    inset: 0 -4px;
+    content: "";
+  }
+
+  .split-divider:hover,
+  .split-divider:focus-visible,
+  .resizing .split-divider {
+    outline: none;
+    background: var(--accent);
+  }
+
+  .restore-panel {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 9px;
+    padding: 24px;
+    color: var(--text-muted);
+    background: var(--bg);
+    font-size: 12px;
+    text-align: center;
+  }
+
+  .restore-panel strong {
+    color: var(--text);
+    font-size: 13px;
+  }
+
+  .restore-path {
+    max-width: 90%;
+    overflow-wrap: anywhere;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  .restore-panel small {
+    max-width: 620px;
+    color: var(--text-faint);
+    font-size: 11px;
+  }
+
+  .restore-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 7px;
+    margin-top: 6px;
+  }
+
+  .restore-actions button,
+  .notice-banner button,
+  .toast button:not(.toast-close) {
+    height: 27px;
+    padding: 0 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    color: var(--text);
+    background: var(--surface-raised);
+    font-size: 11px;
+  }
+
+  .restore-actions button:hover:not(:disabled),
+  .notice-banner button:hover,
+  .toast button:not(.toast-close):hover {
+    background: var(--surface-hover);
+  }
+
+  .restore-panel :global(.spinning) {
+    animation: spin 700ms linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .notice-banner {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    background: color-mix(in srgb, #e6bd72 14%, var(--surface));
+    font-size: 11px;
+  }
+
+  .notice-banner > :global(svg) {
+    color: #e6bd72;
+  }
+
+  .notice-banner span {
+    flex: 1 1 320px;
+  }
+
+  .toast {
+    position: fixed;
+    z-index: 40;
+    right: 14px;
+    bottom: 40px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 8px 7px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: 7px;
+    color: var(--text);
+    background: var(--surface-raised);
+    box-shadow: 0 6px 20px rgb(0 0 0 / 30%);
+    font-size: 11px;
+  }
+
+  .toast-close {
+    padding: 0 4px;
+    color: var(--text-muted);
+    background: transparent;
+    font-size: 16px;
   }
 
   .pane {
@@ -1252,10 +2466,6 @@
 
   .pane.hidden {
     display: none;
-  }
-
-  .split .pane + .pane {
-    border-left: 1px solid var(--border-strong);
   }
 
   .drop-overlay {

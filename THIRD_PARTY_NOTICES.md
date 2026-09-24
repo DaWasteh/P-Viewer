@@ -1,5 +1,11 @@
 # Third-party notices
 
+## Dateityp-Symbole
+
+Die Windows-Dateityp-Symbole unter `src-tauri/assets/file-icons/` (und ihre 32-px-Vorschauen unter `static/file-icons/`) wurden von Freak288 (GitHub `nextscript`) in Issue #3 für P-Viewer bereitgestellt und unverändert übernommen. Einige Symbole zeigen Logos von Programmiersprachen, Formaten oder Programmen; diese Marken gehören ihren jeweiligen Inhabern und werden nur zur Kennzeichnung des Dateityps verwendet. Herkunft und Nutzungsrechte der gelieferten Grafiken sind vor einer Weiterverwendung außerhalb von P-Viewer mit dem Beitragenden zu klären.
+
+## Fonts
+
 P-Viewer bundles the following font software through Fontsource:
 
 - **Inter** — Copyright 2016 The Inter Project Authors (`https://github.com/rsms/inter`)

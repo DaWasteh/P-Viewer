@@ -39,6 +39,8 @@ Diese Kombination liefert native, kleine Desktop-Pakete und direkten, kontrollie
    **Fenster ohne Blitzen:** Dokumentfenster werden unsichtbar erzeugt, erhalten aus `settings.json` die Hintergrundfarbe des gespeicherten Designs und werden über den Befehl `reveal_window` erst sichtbar, wenn das Frontend Einstellungen und Startdokumente gezeichnet hat; ein Rust-Timer (1,5 s) zeigt das Fenster notfalls ohne Rückmeldung. `tauri-plugin-window-state` merkt sich Größe, Position und Maximierung aller Dokumentfenster unter dem gemeinsamen Schlüssel `main`; Vorschaufenster sind ausgenommen. Neue Fenster ohne Zielposition werden vom zuletzt benutzten Fenster kaskadiert, solange sie auf dessen Arbeitsbereich passen.
 3. **Keine implizite Ausführung von Dokumentcode:** Markdown-HTML wird sanitisiert, HTML läuft standardmäßig nur statisch in einem Iframe ohne Sandbox-Rechte und SVG wird ausschließlich als Bild dargestellt. Notebook-Ausgaben vom Typ `text/html` bleiben deaktiviert. Aktives HTML erfordert eine ausdrückliche Warnungsbestätigung und öffnet ausschließlich in einem getrennten WebView ohne App-Capabilities; Astro-/Svelte-/Vue-Projektcode bleibt Quelltext.
 4. **Minimale native Rechte:** Datei-Reads sind am geöffneten Handle begrenzt. Reguläre Saves vergleichen die beim Lesen/Speichern ermittelte SHA-256-Version unmittelbar vor dem atomaren Commit (optimistische Konflikterkennung, kein betriebssystemweiter Lock).  Dateioperationen laufen über eng begrenzte Rust-Commands statt pauschaler Dateisystemfreigaben.
+   **Tabs als Arbeitsbereiche:** Tab-Befehle (Schließen-Ziele, Anheften, Verschieben, Sortieren, Overflow-Auswahl, Suche) sind reine Funktionen in `files/tabs.ts`; Tab-Leiste, Overflow-Menü und Kontextmenü sind nur Darstellungen derselben Tab-Liste. Die Sitzung speichert Reihenfolge, Pins und Ansichtszustand, nie den breitenabhängigen Overflow. Wiederhergestellte Tabs sind bis zum ersten Anzeigen Platzhalter; ungespeicherter Text liegt in eigenen Recovery-Dateien und wird bei Versionskonflikten nie still auf die Datei geschrieben.
+   **Quellzeilen-Synchronisation:** Die Markdown-Pipeline annotiert Blockelemente mit `data-source-start/-end`; die Vorschau misst daraus eine gecachte Ankerliste, die Zuordnung Zeile ↔ Position ist binäre Suche plus Interpolation. Die zuletzt vom Nutzer bediente Seite führt, programmatische Scroll-Echos der anderen Seite werden ignoriert.
 5. **Einstellungen getrennt vom Programm:** Updates ersetzen nur Anwendungsartefakte. Einstellungen bleiben in `%APPDATA%`, `~/Library/Application Support` beziehungsweise `$XDG_DATA_HOME` erhalten.
 6. **Sichere TeX-Vorgaben:** Die gebündelte Live-Ansicht escaped Text und verwendet KaTeX mit `trust: false`. Externe Compiler werden über absolute Programme aus bereinigten PATH-Ordnern ohne Benutzershell gestartet. Arbeitsausgaben bleiben temporär, Projektdateien werden nur als Inputs gesucht, und `shell-escape` bleibt aus.
 7. **Benutzer kontrollieren Standardprogramme:** Installer und Laufzeitcode registrieren P-Viewer unter Windows ausschließlich als Kandidaten und schreiben weder Extension-Defaults noch `UserChoice`. Das eigentliche Setzen geschieht nur nach expliziter Formatauswahl und, wo vom OS verlangt, in dessen geschützter Oberfläche.
@@ -65,14 +67,17 @@ Tectonic wird als optionale Engine im `--untrusted`-Modus unterstützt, ersetzt 
 ```text
 src/lib/
   debug/        WebView-/Plattformdiagnose für den expliziten Debug-Modus
-  editor/       CodeMirror-Integration, lazy Sprachauflösung und eigene Stream-Modi
-  files/        Dateitypen, Zuordnungsgruppen, Dokumentzustand, Pfade und Dialoge
-  preview/      isolierte HTML-, SVG-, Bild-, Markdown-, Notebook-, JSON-, CSV-, Text-, LaTeX- und PDF-Ansichten
+  editor/       CodeMirror-Integration, lazy Sprachauflösung, eigene Stream-Modi, Formatierungsbefehle und Suchen/Ersetzen
+  files/        Dateitypen, Zuordnungsgruppen, Dateityp-Symbole, Tab-Befehle, Sitzung, Pfade und Dialoge
+  preview/      isolierte HTML-, SVG-, Bild-, Markdown-, Notebook-, JSON-, CSV-, Text-, LaTeX- und PDF-Ansichten, Scroll-Speicher und Editor-/Vorschau-Synchronisation
   settings/     persistente UI-/Editor-/Zuordnungseinstellungen
   update/       Oberfläche des signierten Release-Updaters
 src-tauri/src/
   associations.rs  OS-konforme Standardprogramm-Auswahl
-  document.rs      Encoding-sichere und atomare Datei-E/A, signaturgeprüfte Binärdokumente sowie Open-Events
+  document.rs      Encoding-sichere und atomare Datei-E/A (außerhalb des UI-Threads), signaturgeprüfte Binärdokumente sowie Open-Events
+  file_icons.rs    Windows-Dateityp-Symbole: ProgID pro Endung, Symbol-/App-Modus, Reparatur symbolloser *_auto_file-Klassen
+  session.rs       Sitzungsdatei pro Fensterlabel und Wiederherstellungstexte, atomar im App-Datenordner
+  shell.rs         „Terminal hier öffnen“ ohne Befehlszeilen-Interpolation
   html_preview.rs  isolierter Loopback-Server und Fenster-Lifecycle für aktives HTML
   latex.rs         isolierte Compilersteuerung mit Timeouts
   updater.rs       HTTPS-, Signatur- und Installationsgrenze

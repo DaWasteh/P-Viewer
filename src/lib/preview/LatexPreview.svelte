@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { rememberScroll } from "./scrollMemory";
   import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import {
@@ -37,9 +38,10 @@
     fileName: string;
     theme?: "dark" | "light";
     fontSize?: number;
+    scrollMemory?: { top: number };
   }
 
-  let { content, path, fileName, theme = "dark", fontSize = 16 }: Props = $props();
+  let { content, path, fileName, theme = "dark", fontSize = 16, scrollMemory }: Props = $props();
 
   let viewMode = $state<"live" | "pdf">("live");
   let liveHtml = $state("");
@@ -185,7 +187,7 @@
 
   <div class="latex-content">
     {#if viewMode === "live"}
-      <div class="live-scroll">
+      <div class="live-scroll" use:rememberScroll={scrollMemory}>
         {#if liveError}
           <div class="latex-state build-error" role="alert">
             <AlertTriangle size={28} strokeWidth={1.5} aria-hidden="true" />

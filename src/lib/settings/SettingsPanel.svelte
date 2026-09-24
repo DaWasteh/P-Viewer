@@ -3,8 +3,11 @@
   import { modal } from "$lib/modal";
   import { invoke } from "@tauri-apps/api/core";
   import {
+    ArrowDownUp,
     Bug,
     FileCog,
+    ArchiveRestore,
+    PanelTop,
     LoaderCircle,
     Monitor,
     Moon,
@@ -19,7 +22,18 @@
     FILE_ASSOCIATION_GROUPS,
     FILE_ASSOCIATION_IDS,
   } from "$lib/files/associations";
-  import { normalizeExtension, type AppSettings, type ThemePreference } from "./settings";
+  import {
+    normalizeExtension,
+    type AppSettings,
+    type FileIconMode,
+    type FormattingToolbarMode,
+    type PreviewSyncMode,
+    type SessionRestoreOptions,
+    type StartupBehavior,
+    type ThemePreference,
+  } from "./settings";
+  import { fileIconUrl } from "$lib/files/FileIconRegistry";
+  import { clearStoredSession, hasStoredRecovery } from "$lib/files/session";
   import type { ViewMode } from "$lib/files/types";
 
   interface AssociationApplyResult {
@@ -69,6 +83,56 @@
 
   const selectedAssociationCount = $derived(settings.defaultAppAssociations.length);
 
+  const restoreChoices: Array<{ key: keyof SessionRestoreOptions; label: string }> = [
+    { key: "cursor", label: "Cursor und Auswahl" },
+    { key: "scroll", label: "Scrollpositionen" },
+    { key: "mode", label: "Edit / View / Split" },
+    { key: "splitWidths", label: "Breite der geteilten Ansicht" },
+    { key: "folds", label: "Eingeklappte Abschnitte" },
+    { key: "unsaved", label: "Ungespeicherte Dokumente" },
+  ];
+  let sessionMessage = $state("");
+  let fileIconMessage = $state("");
+  let fileIconError = $state(false);
+  const isWindows = typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent);
+  const iconPreviewFiles = ["README.md", "main.py", "app.js", "config.json", "index.html"];
+
+  function updateRestoreOption(key: keyof SessionRestoreOptions, value: boolean): void {
+    update("restoreOptions", { ...settings.restoreOptions, [key]: value });
+  }
+
+  async function clearSession(): Promise<void> {
+    sessionMessage = "";
+    try {
+      const recovery = await hasStoredRecovery();
+      let includeRecovery = false;
+      if (recovery) {
+        const { confirm } = await import("@tauri-apps/plugin-dialog");
+        includeRecovery = await confirm(
+          "Es gibt gesicherte, noch nicht gespeicherte Änderungen. Sollen auch diese endgültig gelöscht werden? Mit „Behalten“ bleiben sie für eine spätere Wiederherstellung erhalten.",
+          { title: "Ungespeicherte Änderungen löschen?", kind: "warning", okLabel: "Endgültig löschen", cancelLabel: "Behalten" },
+        );
+      }
+      await clearStoredSession(includeRecovery, true);
+      sessionMessage = "Gespeicherte Sitzung gelöscht. Beim nächsten Start öffnet P-Viewer ein leeres Fenster; die aktuell offenen Tabs bleiben bis dahin geöffnet.";
+    } catch (error) {
+      sessionMessage = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  async function changeFileIconMode(mode: FileIconMode): Promise<void> {
+    update("fileIconMode", mode);
+    fileIconMessage = "";
+    fileIconError = false;
+    if (!("__TAURI_INTERNALS__" in window) || !isWindows) return;
+    try {
+      fileIconMessage = await invoke<string>("apply_file_icon_mode", { mode });
+    } catch (error) {
+      fileIconError = true;
+      fileIconMessage = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   onMount(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
     void import("@tauri-apps/api/path")
@@ -115,7 +179,7 @@
       }
       const result = await invoke<AssociationApplyResult>(
         "apply_default_file_associations",
-        { associationIds: settings.defaultAppAssociations },
+        { associationIds: settings.defaultAppAssociations, iconMode: settings.fileIconMode },
       );
       associationMessage = result.message;
     } catch (error) {
@@ -285,6 +349,68 @@
           />
           <span class="switch" aria-hidden="true"></span>
         </label>
+        <label class="mode-setting select-setting">
+          <span class="setting-label"><PanelTop size={16} aria-hidden="true" /> Formatierungsleiste</span>
+          <select aria-label="Formatierungsleiste" value={settings.formattingToolbar} onchange={(event) => update("formattingToolbar", event.currentTarget.value as FormattingToolbarMode)}>
+            <option value="auto">Automatisch</option>
+            <option value="always">Immer</option>
+            <option value="never">Nie</option>
+          </select>
+        </label>
+        <p class="group-description">Automatisch: nur für Markdown und HTML. Immer: auch in anderen Dateien, dann mit Markdown-Syntax. Die Leiste erzeugt ausschließlich normalen Quelltext.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Vorschau-Synchronisation</legend>
+        <label class="mode-setting select-setting">
+          <span class="setting-label"><ArrowDownUp size={16} aria-hidden="true" /> Scrollen koppeln</span>
+          <select aria-label="Vorschau-Synchronisation" value={settings.previewSyncMode} onchange={(event) => update("previewSyncMode", event.currentTarget.value as PreviewSyncMode)}>
+            <option value="bidirectional">In beide Richtungen</option>
+            <option value="editor-to-preview">Editor → Vorschau</option>
+            <option value="preview-to-editor">Vorschau → Editor</option>
+            <option value="off">Aus</option>
+          </select>
+        </label>
+        <label class="toggle-setting">
+          <span class="toggle-copy">
+            <span class="setting-label">Klick in der Vorschau springt zum Quelltext</span>
+            <small>Links, Schaltflächen und Checkboxen behalten ihre Funktion. Strg/Cmd+Klick springt immer.</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={settings.previewClickNavigation}
+            onchange={(event) => update("previewClickNavigation", event.currentTarget.checked)}
+          />
+          <span class="switch" aria-hidden="true"></span>
+        </label>
+        <p class="group-description">Gilt in der geteilten Ansicht von Markdown-Dokumenten. Der Schalter „Sync“ in der Werkzeugleiste ändert die Kopplung nur für den aktuellen Tab.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Start</legend>
+        <label class="mode-setting select-setting">
+          <span class="setting-label"><ArchiveRestore size={16} aria-hidden="true" /> Beim Start</span>
+          <select aria-label="Beim Start" value={settings.startupBehavior} onchange={(event) => update("startupBehavior", event.currentTarget.value as StartupBehavior)}>
+            <option value="restore">Letzte Sitzung wiederherstellen</option>
+            <option value="empty">Leeres Fenster öffnen</option>
+          </select>
+        </label>
+        <div class="restore-options" role="group" aria-label="Wiederherstellen">
+          {#each restoreChoices as choice (choice.key)}
+            <label>
+              <input
+                type="checkbox"
+                checked={settings.restoreOptions[choice.key]}
+                disabled={settings.startupBehavior !== "restore"}
+                onchange={(event) => updateRestoreOption(choice.key, event.currentTarget.checked)}
+              />
+              <span>{choice.label}</span>
+            </label>
+          {/each}
+        </div>
+        <p class="group-description">Geöffnete Tabs, ihre Reihenfolge, angeheftete Tabs und der aktive Tab kommen nach einem Neustart zurück. Dateien werden erst beim Anzeigen geladen; extern geänderte Dateien werden nie überschrieben. Sitzung und Wiederherstellungsdaten bleiben lokal im App-Datenordner.</p>
+        <button class="secondary-button" onclick={() => void clearSession()}>Gespeicherte Sitzung löschen</button>
+        {#if sessionMessage}<p class="association-message" role="status">{sessionMessage}</p>{/if}
       </fieldset>
 
       <fieldset>
@@ -301,6 +427,36 @@
           />
           <span class="switch" aria-hidden="true"></span>
         </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Dateityp-Symbole</legend>
+        <div class="icon-mode" role="radiogroup" aria-label="Symbole zugeordneter Dateien">
+          <label>
+            <input type="radio" name="file-icon-mode" checked={settings.fileIconMode === "file-type"} onchange={() => void changeFileIconMode("file-type")} />
+            <span>Dateityp-Symbole</span>
+          </label>
+          <label>
+            <input type="radio" name="file-icon-mode" checked={settings.fileIconMode === "app"} onchange={() => void changeFileIconMode("app")} />
+            <span>P-Viewer-App-Symbol</span>
+          </label>
+        </div>
+        <div class="icon-preview" aria-label="Vorschau der Dateisymbole">
+          {#each iconPreviewFiles as name}
+            <span>
+              {#if settings.fileIconMode === "app"}
+                <img src="/favicon.png" alt="" width="32" height="32" />
+              {:else}
+                <img src={fileIconUrl(name)} alt="" width="32" height="32" />
+              {/if}
+              <small>{name}</small>
+            </span>
+          {/each}
+        </div>
+        <p class="group-description">Im Windows-Explorer erkennst du Dateien, die mit P-Viewer geöffnet werden, an ihrem Typ; das kleine P-Viewer-Abzeichen ist Teil der Symbole. Die Tabs in P-Viewer verwenden immer die Dateityp-Symbole.</p>
+        {#if fileIconMessage}
+          <p class:error={fileIconError} class="association-message" role={fileIconError ? "alert" : "status"}>{fileIconMessage}</p>
+        {/if}
       </fieldset>
 
       <fieldset>
@@ -551,6 +707,81 @@
   }
 
   .advanced-modes summary { cursor: pointer; font-size: 11px; }
+  .select-setting { min-height: 40px; }
+  .select-setting select { max-width: 55%; }
+
+  .restore-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 12px;
+    margin: 10px 0 2px;
+    font-size: 10px;
+  }
+
+  .restore-options label,
+  .icon-mode label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: #bdc2cc;
+    cursor: pointer;
+  }
+
+  .restore-options input,
+  .icon-mode input {
+    margin: 0;
+    accent-color: #7183e7;
+  }
+
+  .restore-options input:disabled + span {
+    opacity: 0.45;
+  }
+
+  .secondary-button {
+    padding: 7px 10px;
+    border: 1px solid #434b5c;
+    border-radius: 5px;
+    background: transparent;
+    font-size: 10px;
+  }
+
+  .secondary-button:hover {
+    background: #252a34;
+  }
+
+  .icon-mode {
+    display: flex;
+    gap: 16px;
+    margin: 10px 0;
+    font-size: 10px;
+  }
+
+  .icon-preview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px;
+    border: 1px solid #303641;
+    border-radius: 7px;
+    background: #13161b;
+  }
+
+  .icon-preview span {
+    display: flex;
+    width: 64px;
+    align-items: center;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .icon-preview small {
+    overflow: hidden;
+    max-width: 100%;
+    color: #8e97a8;
+    font-size: 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .extension-form { display: grid; gap: 8px; }
   .extension-form label { display: grid; gap: 4px; font-size: 10px; }
   .extension-form button, .extension-rule button {
@@ -915,6 +1146,16 @@
     color: #171b23;
   }
 
+  .light .restore-options label,
+  .light .icon-mode label {
+    color: #434a58;
+  }
+
+  .light .secondary-button:hover {
+    background: #e8eaf0;
+  }
+
+  .light .icon-preview,
   .light .theme-options button,
   .light .association-toggle,
   .light .association-selector,

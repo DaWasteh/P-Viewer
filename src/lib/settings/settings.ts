@@ -6,6 +6,23 @@ import {
 import type { ViewMode } from "$lib/files/types";
 
 export type ThemePreference = "dark" | "light" | "system";
+/** When the Markdown/HTML formatting toolbar appears above the editor. */
+export type FormattingToolbarMode = "auto" | "always" | "never";
+/** Which side of the split view follows the other one. */
+export type PreviewSyncMode = "off" | "editor-to-preview" | "preview-to-editor" | "bidirectional";
+export type StartupBehavior = "restore" | "empty";
+/** Windows Explorer icons of files associated with P-Viewer. */
+export type FileIconMode = "file-type" | "app";
+
+/** Parts of a tab that session restore brings back after a restart. */
+export interface SessionRestoreOptions {
+  cursor: boolean;
+  scroll: boolean;
+  mode: boolean;
+  splitWidths: boolean;
+  folds: boolean;
+  unsaved: boolean;
+}
 
 export interface AppSettings {
   theme: ThemePreference;
@@ -18,7 +35,22 @@ export interface AppSettings {
   spellcheck: boolean;
   debugMode: boolean;
   defaultAppAssociations: string[];
+  formattingToolbar: FormattingToolbarMode;
+  previewSyncMode: PreviewSyncMode;
+  previewClickNavigation: boolean;
+  startupBehavior: StartupBehavior;
+  restoreOptions: SessionRestoreOptions;
+  fileIconMode: FileIconMode;
 }
+
+export const DEFAULT_RESTORE_OPTIONS: SessionRestoreOptions = Object.freeze({
+  cursor: true,
+  scroll: true,
+  mode: true,
+  splitWidths: true,
+  folds: true,
+  unsaved: true,
+});
 
 export const DEFAULT_SETTINGS: AppSettings = Object.freeze({
   theme: "dark",
@@ -31,6 +63,12 @@ export const DEFAULT_SETTINGS: AppSettings = Object.freeze({
   spellcheck: true,
   debugMode: false,
   defaultAppAssociations: [...DEFAULT_FILE_ASSOCIATION_IDS],
+  formattingToolbar: "auto",
+  previewSyncMode: "bidirectional",
+  previewClickNavigation: true,
+  startupBehavior: "restore",
+  restoreOptions: DEFAULT_RESTORE_OPTIONS,
+  fileIconMode: "file-type",
 });
 
 const STORE_FILE = "settings.json";
@@ -71,7 +109,33 @@ export function normalizeSettings(value: unknown): AppSettings {
     debugMode:
       typeof source.debugMode === "boolean" ? source.debugMode : DEFAULT_SETTINGS.debugMode,
     defaultAppAssociations: normalizeAssociationIds(source.defaultAppAssociations),
+    formattingToolbar: oneOf(source.formattingToolbar, ["auto", "always", "never"], DEFAULT_SETTINGS.formattingToolbar),
+    previewSyncMode: oneOf(
+      source.previewSyncMode,
+      ["off", "editor-to-preview", "preview-to-editor", "bidirectional"],
+      DEFAULT_SETTINGS.previewSyncMode,
+    ),
+    previewClickNavigation:
+      typeof source.previewClickNavigation === "boolean"
+        ? source.previewClickNavigation
+        : DEFAULT_SETTINGS.previewClickNavigation,
+    startupBehavior: oneOf(source.startupBehavior, ["restore", "empty"], DEFAULT_SETTINGS.startupBehavior),
+    restoreOptions: normalizeRestoreOptions(source.restoreOptions),
+    fileIconMode: oneOf(source.fileIconMode, ["file-type", "app"], DEFAULT_SETTINGS.fileIconMode),
   };
+}
+
+function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return allowed.includes(value as T) ? (value as T) : fallback;
+}
+
+function normalizeRestoreOptions(value: unknown): SessionRestoreOptions {
+  const source = isRecord(value) ? value : {};
+  const options = { ...DEFAULT_RESTORE_OPTIONS };
+  for (const key of Object.keys(options) as Array<keyof SessionRestoreOptions>) {
+    if (typeof source[key] === "boolean") options[key] = source[key];
+  }
+  return options;
 }
 
 export async function loadSettings(): Promise<AppSettings> {
@@ -118,6 +182,7 @@ export function resetSettings(): AppSettings {
     ...DEFAULT_SETTINGS,
     extensionViewModes: {},
     defaultAppAssociations: [...DEFAULT_SETTINGS.defaultAppAssociations],
+    restoreOptions: { ...DEFAULT_RESTORE_OPTIONS },
   };
 }
 

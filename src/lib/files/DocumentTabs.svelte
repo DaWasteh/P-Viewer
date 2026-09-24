@@ -1,13 +1,11 @@
-<script lang="ts">
-  import { tick } from "svelte";
-  import { FileText, Plus, X } from "@lucide/svelte";
-  import { insertionIndex } from "./tabs";
-
-  interface DocumentTabItem {
+<script lang="ts" module>
+  export interface DocumentTabItem {
     id: string;
     name: string;
     path: string;
     dirty: boolean;
+    pinned?: boolean;
+    readOnly?: boolean;
   }
 
   /** Where a dragged tab was released relative to this window. */
@@ -18,6 +16,17 @@
     insideWindow: boolean;
   }
 
+  /** Tab widths the overflow calculation works with (CSS pixels). */
+  export const TAB_METRICS = { minTabWidth: 120, pinnedTabWidth: 40, overflowButtonWidth: 84 } as const;
+</script>
+
+<script lang="ts">
+  import { onMount, tick } from "svelte";
+  import { ChevronsRight, Lock, Pin, Plus, X } from "@lucide/svelte";
+  import { fileIconUrl } from "./FileIconRegistry";
+  import TabOverflowMenu from "./TabOverflowMenu.svelte";
+  import { insertionIndex, logicalInsertionIndex, visibleTabIds } from "./tabs";
+
   interface Props {
     tabs: DocumentTabItem[];
     activeId: string;
@@ -25,10 +34,12 @@
     onActivate?: (id: string) => void;
     onClose?: (id: string) => void;
     onNew?: () => void;
-    /** Live reorder while dragging: `index` is the position among the other tabs. */
+    /** Live reorder while dragging: `index` is the logical position among the other tabs. */
     onReorder?: (id: string, index: number) => void;
     /** The tab was dropped outside the tab strip and should move to another window. */
     onDetach?: (id: string, point: TabDropPoint) => void;
+    /** Right click (or the context menu key) on a tab in the strip or in the overflow menu. */
+    onContextMenu?: (id: string, x: number, y: number) => void;
   }
 
   let {
@@ -40,6 +51,7 @@
     onNew = () => undefined,
     onReorder = () => undefined,
     onDetach = () => undefined,
+    onContextMenu = () => undefined,
   }: Props = $props();
 
   /** Pointer travel before a press becomes a drag; keeps plain clicks intact. */
@@ -59,9 +71,43 @@
   }
 
   let tabList: HTMLDivElement;
+  let overflowButton = $state<HTMLButtonElement | null>(null);
   let drag: DragState | null = null;
   let draggingId = $state("");
   let detaching = $state(false);
+  let stripWidth = $state(0);
+  let overflowOpen = $state(false);
+  let overflowAnchor = $state<DOMRect | null>(null);
+
+  // Hidden tabs are purely a function of the current width: nothing about
+  // them is stored, and the logical order always comes from `tabs`.
+  const visibleIds = $derived(
+    stripWidth > 0
+      ? visibleTabIds(tabs, activeId, { available: stripWidth, ...TAB_METRICS })
+      : tabs.map((tab) => tab.id),
+  );
+  const visibleSet = $derived(new Set(visibleIds));
+  const visibleTabs = $derived(tabs.filter((tab) => visibleSet.has(tab.id)));
+  const hiddenTabs = $derived(tabs.filter((tab) => !visibleSet.has(tab.id)));
+
+  onMount(() => {
+    let frame = 0;
+    const observer = new ResizeObserver(([entry]) => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        stripWidth = Math.floor(entry.contentRect.width);
+      });
+    });
+    observer.observe(tabList.parentElement!);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  });
+
+  $effect(() => {
+    if (hiddenTabs.length === 0 && overflowOpen) overflowOpen = false;
+  });
 
   function closeTab(event: MouseEvent, id: string): void {
     event.stopPropagation();
@@ -80,7 +126,18 @@
     });
   }
 
+  function tooltip(tab: DocumentTabItem): string {
+    const states = [tab.dirty ? "Geändert" : "", tab.pinned ? "Angeheftet" : "", tab.readOnly ? "Schreibgeschützt" : ""].filter(Boolean);
+    return [tab.name, tab.path, states.join(" · ")].filter(Boolean).join("\n");
+  }
+
   function handleTabKeydown(event: KeyboardEvent, id: string): void {
+    if (event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) {
+      event.preventDefault();
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      onContextMenu(id, rect.left + 12, rect.bottom);
+      return;
+    }
     const currentIndex = tabs.findIndex((tab) => tab.id === id);
     if (currentIndex < 0) return;
 
@@ -175,7 +232,11 @@
       .map((rect) => ({ left: rect.left, width: rect.width }));
     const draggedCenter = event.clientX - drag.grabOffsetX + draggedRect.width / 2;
     const target = insertionIndex(draggedCenter, others);
-    if (target !== currentIndex) onReorder(drag.id, target);
+    if (target !== currentIndex) {
+      // Tabs hidden in the overflow menu keep their logical place.
+      const index = logicalInsertionIndex(tabs.map((tab) => tab.id), visibleIds, drag.id, target);
+      onReorder(drag.id, index);
+    }
     void tick().then(applyDragTransform);
   }
 
@@ -228,51 +289,115 @@
   function handleWindowKeydown(event: KeyboardEvent): void {
     if (event.key === "Escape" && drag) finishDrag();
   }
+
+  function toggleOverflow(): void {
+    if (overflowOpen) {
+      overflowOpen = false;
+      return;
+    }
+    overflowAnchor = overflowButton?.getBoundingClientRect() ?? null;
+    overflowOpen = Boolean(overflowAnchor);
+  }
+
+  function activateFromOverflow(id: string): void {
+    overflowOpen = false;
+    onActivate(id);
+    // The strip now shows the tab; keyboard focus follows it.
+    void tick().then(() => focusTab(id));
+  }
+
+  function dismissOverflow(restoreFocus: boolean): void {
+    overflowOpen = false;
+    if (restoreFocus) overflowButton?.focus();
+  }
 </script>
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
 <nav class="document-tabs" class:dragging={Boolean(draggingId)} class:detaching aria-label="Geöffnete Dokumente">
-  <div
-    class="tab-list"
-    role="tablist"
-    tabindex="-1"
-    bind:this={tabList}
-    onlostpointercapture={handleLostCapture}
-  >
-    {#each tabs as tab (tab.id)}
-      <div class:active={tab.id === activeId} class:dragged={tab.id === draggingId} class="tab-shell">
-        <button
-          class="tab-button"
-          role="tab"
-          aria-selected={tab.id === activeId}
-          aria-controls="document-workspace"
-          tabindex={tab.id === activeId ? 0 : -1}
-          data-tab-id={tab.id}
-          title={tab.path || tab.name}
-          onpointerdown={(event) => handlePointerDown(event, tab.id)}
-          onclick={() => onActivate(tab.id)}
-          onauxclick={(event) => handleAuxClick(event, tab.id)}
-          onkeydown={(event) => handleTabKeydown(event, tab.id)}
-          {disabled}
+  <div class="tab-strip">
+    <div
+      class="tab-list"
+      role="tablist"
+      tabindex="-1"
+      bind:this={tabList}
+      onlostpointercapture={handleLostCapture}
+    >
+      {#each visibleTabs as tab (tab.id)}
+        <div
+          class:active={tab.id === activeId}
+          class:dragged={tab.id === draggingId}
+          class:pinned={tab.pinned}
+          class="tab-shell"
+          data-shell-id={tab.id}
         >
-          <FileText size={13} aria-hidden="true" />
-          <span>{tab.name}</span>
-          {#if tab.dirty}
-            <span class="dirty-indicator" title="Ungespeicherte Änderungen" aria-label="Ungespeichert">●</span>
+          <button
+            class="tab-button"
+            role="tab"
+            aria-selected={tab.id === activeId}
+            aria-controls="document-workspace"
+            tabindex={tab.id === activeId ? 0 : -1}
+            data-tab-id={tab.id}
+            title={tooltip(tab)}
+            onpointerdown={(event) => handlePointerDown(event, tab.id)}
+            onclick={() => onActivate(tab.id)}
+            onauxclick={(event) => handleAuxClick(event, tab.id)}
+            onmousedown={(event) => {
+              // Keeps the middle click from starting autoscroll.
+              if (event.button === 1) event.preventDefault();
+            }}
+            oncontextmenu={(event) => {
+              event.preventDefault();
+              onContextMenu(tab.id, event.clientX, event.clientY);
+            }}
+            onkeydown={(event) => handleTabKeydown(event, tab.id)}
+            {disabled}
+          >
+            <img class="file-icon" src={fileIconUrl(tab.name)} alt="" width="16" height="16" draggable="false" />
+            {#if tab.pinned}
+              <span class="sr-only">{tab.name} Angeheftet</span>
+            {:else}
+              <span class="tab-name">{tab.name}</span>
+            {/if}
+            {#if tab.readOnly && !tab.pinned}
+              <span class="state-icon" aria-label="Schreibgeschützt"><Lock size={10} aria-hidden="true" /></span>
+            {/if}
+            {#if tab.dirty}
+              <span class="dirty-indicator" title="Ungespeicherte Änderungen" aria-label="Ungespeichert">●</span>
+            {/if}
+          </button>
+          {#if !tab.pinned}
+            <button
+              class="close-tab"
+              aria-label={`„${tab.name}“ schließen`}
+              title="Schließen (Strg/Cmd+W)"
+              onclick={(event) => closeTab(event, tab.id)}
+              {disabled}
+            >
+              <X size={12} aria-hidden="true" />
+            </button>
+          {:else}
+            <span class="pin-mark" aria-hidden="true"><Pin size={8} /></span>
           {/if}
-        </button>
-        <button
-          class="close-tab"
-          aria-label={`„${tab.name}“ schließen`}
-          title="Schließen (Strg/Cmd+W)"
-          onclick={(event) => closeTab(event, tab.id)}
-          {disabled}
-        >
-          <X size={12} aria-hidden="true" />
-        </button>
-      </div>
-    {/each}
+        </div>
+      {/each}
+    </div>
+    {#if hiddenTabs.length > 0}
+      <button
+        class="overflow-button"
+        bind:this={overflowButton}
+        aria-haspopup="menu"
+        aria-expanded={overflowOpen}
+        aria-label={`Weitere geöffnete Tabs, ${hiddenTabs.length} ausgeblendet`}
+        title={hiddenTabs.length === 1 ? "1 ausgeblendeter Tab" : `${hiddenTabs.length} ausgeblendete Tabs`}
+        onclick={toggleOverflow}
+        {disabled}
+      >
+        <ChevronsRight size={13} aria-hidden="true" />
+        <span>{hiddenTabs.length} mehr</span>
+        {#if hiddenTabs.some((tab) => tab.dirty)}<span class="dirty-indicator" aria-hidden="true">●</span>{/if}
+      </button>
+    {/if}
   </div>
   <button
     class="new-tab"
@@ -285,6 +410,18 @@
   </button>
 </nav>
 
+{#if overflowOpen && overflowAnchor}
+  <TabOverflowMenu
+    tabs={hiddenTabs}
+    allTabs={tabs}
+    anchor={overflowAnchor}
+    onActivate={activateFromOverflow}
+    {onClose}
+    {onContextMenu}
+    onDismiss={dismissOverflow}
+  />
+{/if}
+
 <style>
   .document-tabs {
     display: flex;
@@ -294,26 +431,35 @@
     background: var(--chrome);
   }
 
+  .tab-strip {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+  }
+
   .tab-list {
     display: flex;
     min-width: 0;
     flex: 1;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border-strong) transparent;
+    overflow: hidden;
   }
 
   .tab-shell {
     position: relative;
     display: flex;
-    min-width: 112px;
+    min-width: 120px;
     max-width: 220px;
     flex: 0 1 170px;
     align-items: center;
     border-right: 1px solid var(--border);
     color: var(--text-muted);
     background: var(--surface);
+  }
+
+  .tab-shell.pinned {
+    min-width: 40px;
+    max-width: 40px;
+    flex: 0 0 40px;
   }
 
   .tab-shell::before {
@@ -383,20 +529,35 @@
     text-align: left;
   }
 
-  .tab-button > span:not(.dirty-indicator) {
+  .pinned .tab-button {
+    justify-content: center;
+    gap: 2px;
+    padding: 0;
+  }
+
+  .tab-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .tab-button > :global(svg) {
+  .file-icon {
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+    -webkit-user-drag: none;
+  }
+
+  .state-icon {
+    display: inline-flex;
     flex: 0 0 auto;
     color: var(--text-faint);
   }
 
   .tab-button:focus-visible,
   .close-tab:focus-visible,
-  .new-tab:focus-visible {
+  .new-tab:focus-visible,
+  .overflow-button:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: -2px;
   }
@@ -405,6 +566,15 @@
     flex: 0 0 auto;
     color: var(--accent-strong);
     font-size: 8px;
+  }
+
+  .pin-mark {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: flex;
+    color: var(--text-faint);
+    pointer-events: none;
   }
 
   .close-tab {
@@ -433,6 +603,28 @@
     background: var(--surface-raised);
   }
 
+  .overflow-button {
+    display: flex;
+    width: 84px;
+    flex: 0 0 84px;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border: 0;
+    border-left: 1px solid var(--border);
+    color: var(--text-muted);
+    background: var(--surface);
+    cursor: pointer;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  .overflow-button:hover:not(:disabled),
+  .overflow-button[aria-expanded="true"] {
+    color: var(--text);
+    background: var(--surface-hover);
+  }
+
   .new-tab {
     display: grid;
     width: 35px;
@@ -455,10 +647,12 @@
     opacity: 0.45;
   }
 
-  @media (max-width: 560px) {
-    .tab-shell {
-      min-width: 92px;
-      flex-basis: 135px;
-    }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
   }
 </style>

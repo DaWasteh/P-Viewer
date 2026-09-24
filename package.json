@@ -1,6 +1,6 @@
 {
   "name": "p-viewer",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "A fast, focused cross-platform editor and document viewer.",
   "type": "module",
   "scripts": {
@@ -10,13 +10,15 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "check:version": "node scripts/check-version.mjs",
-    "check:associations": "node scripts/sync-file-associations.mjs --check",
+    "check:associations": "node scripts/sync-file-associations.mjs --check && node scripts/file-icons.mjs --check",
     "sync:associations": "node scripts/sync-file-associations.mjs",
     "test": "vitest run",
     "test:browser": "playwright test",
     "stage:launcher": "node scripts/stage-launcher.mjs",
     "build:launcher": "tauri build --no-bundle && node scripts/stage-launcher.mjs",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "sync:icons": "node scripts/file-icons.mjs",
+    "check:icons": "node scripts/file-icons.mjs --check"
   },
   "author": "P-Viewer contributors",
   "license": "MIT",
