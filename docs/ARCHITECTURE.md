@@ -17,7 +17,7 @@ Diese Kombination liefert native, kleine Desktop-Pakete und direkten, kontrollie
 | Native Logik | Rust |
 | Oberfläche | Svelte 5, TypeScript, Vite |
 | Editor | CodeMirror 6, Sprachen bei Bedarf geladen; eigene Stream-Modi für Formate ohne Paketunterstützung |
-| Markdown | unified, remark-gfm, remark-math, rehype-katex, rehype-sanitize, rehype-highlight |
+| Markdown | unified, remark-gfm, remark-math, rehype-raw, rehype-sanitize (GitHub-Allowlist), rehype-katex, rehype-highlight |
 | HTML | sichere HAST-/Iframe-Vorschau als Standard; explizit bestätigter separater WebView über tokenisierten Loopback-Ursprung für vollständige aktive Inhalte |
 | SVG | Bild-Data-URL in einem Iframe ohne Sandbox-Rechte mit deny-by-default-CSP; kein Skript- oder Ressourcenzugriff |
 | Bilder und PDF | schreibgeschützte Base64-Payload aus Rust nach Signaturprüfung (nie Textdecodierung); Bild als `<img>`-Data-URL, PDF über PDF.js im Worker; kein Editor, kein Speicherpfad |
@@ -26,7 +26,7 @@ Diese Kombination liefert native, kleine Desktop-Pakete und direkten, kontrollie
 | Notebooks | eigener nbformat-Parser; Markdown- und Code-Zellen über die sanitisierte Markdown-Pipeline, Ausgaben nur als Text, Bilddaten oder Fehler |
 | CSV/TSV | eigener RFC-4180-Parser mit Trennzeichenerkennung und aggregiertem Tabellenzellenlimit |
 | LaTeX | gebündelter sicherer HTML-/KaTeX-Live-Renderer; optionale lokale Compilersteuerung in Rust und PDF.js |
-| Dateizuordnungen | Tauri-Bundle-Metadaten plus OS-konforme Auswahl über Windows Default Apps, Linux MIME Apps und macOS LaunchServices |
+| Dateizuordnungen | Tauri-Bundle-Metadaten plus OS-konforme Auswahl über Windows Default Apps, Linux MIME Apps und macOS LaunchServices; Windows-Installer-Hooks (ProgIDs, „Öffnen mit“, Kontextmenü) generiert aus `associations.json` durch `scripts/nsis-hooks.mjs` |
 | Einstellungen | Tauri Store im plattformüblichen App-Konfigurationspfad, inklusive persistentem Debug-Modus |
 | Updates | signiertes Tauri-Updater-Manifest aus GitHub Releases |
 | Typografie und Icons | gebündelte Inter-/JetBrains-Mono-Schriften und Lucide-Icons |

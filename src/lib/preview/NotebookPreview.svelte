@@ -118,7 +118,7 @@
             {/if}
             <div class="cell-body">
               {#if cell.type === "markdown"}
-                <!-- renderMarkdown sanitizes the HAST; raw HTML never reaches this point. -->
+                <!-- renderMarkdown parses raw HTML and sanitizes the HAST before this point. -->
                 <article class:light={theme === "light"} class="markdown-body">{@html renderMarkdownCell(cell.source)}</article>
               {:else if cell.type === "code"}
                 <!-- The code cell is rendered through the same sanitized Markdown pipeline. -->

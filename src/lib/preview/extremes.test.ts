@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { countJsonNodes, MAX_JSON_DEPTH, MAX_JSON_NODES, parseJsonDocument } from "./json";
 import { MAX_CSV_CELLS, MAX_CSV_CHARACTERS, parseCsv } from "./csv";
-import { decodeMarkdownFragment, extractMarkdownHeadings, MAX_MARKDOWN_HEADINGS, renderMarkdown } from "./markdown";
+import { decodeMarkdownFragment, MAX_MARKDOWN_HEADINGS, renderMarkdown, renderMarkdownDocument } from "./markdown";
 import { parseNotebook, MAX_NOTEBOOK_CELLS } from "./notebook";
 import { renderNotebookLatex, renderNotebookMarkdown } from "./notebookRendering";
 import { MAX_PDF_DIMENSION, MAX_PDF_PAGE_PIXELS, boundedPdfScale } from "./pdfLimits";
@@ -47,7 +47,7 @@ describe("bounded preview complexity", () => {
   });
   it("bounds heading-heavy Markdown and caps the outline", () => {
     expect(() => renderMarkdown("# x\n".repeat(50_000))).toThrow(/begrenzt/);
-    expect(extractMarkdownHeadings("# x\n".repeat(400))).toHaveLength(MAX_MARKDOWN_HEADINGS);
+    expect(renderMarkdownDocument("# x\n".repeat(400)).headings).toHaveLength(MAX_MARKDOWN_HEADINGS);
     expect(decodeMarkdownFragment("%ZZ")).toBe("%ZZ");
     expect(decodeMarkdownFragment("h%C3%A4llo")).toBe("hällo");
   });

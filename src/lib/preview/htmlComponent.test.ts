@@ -27,6 +27,12 @@ describe("HTML preview containment wiring", () => {
     expect(csp).not.toMatch(/frame-src[^;]*(?:data:|blob:|https?:)/);
   });
 
+  it("loads external Markdown images over HTTPS only", () => {
+    const imgSrc = tauriConfig.app.security.csp.match(/img-src([^;]*)/)?.[1] ?? "";
+    expect(imgSrc.trim().split(/\s+/)).toEqual(["'self'", "data:", "blob:", "https:"]);
+    expect(tauriConfig.app.security.csp).toContain("default-src 'self'");
+  });
+
   it("requires confirmation before opening active HTML in the native isolation boundary", () => {
     expect(componentSource).toContain("fullPreviewDialog.showModal()");
     expect(componentSource).toContain("Aktive HTML-Inhalte ausführen?");

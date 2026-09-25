@@ -77,6 +77,42 @@ test("Markdown split adapts to pane width and malformed fragments do not throw",
   await expect(page.getByRole("complementary", { name: "Dokumentgliederung" })).toBeVisible();
 });
 
+test("Markdown renders sanitized raw HTML like GitHub", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await selectExtension(page, "md");
+  const filler = Array.from({ length: 40 }, (_, index) => `Absatz ${index + 1}`).join("\n\n");
+  await enterText(page, [
+    "<h2>HTML Überschrift</h2>",
+    '<table>\n  <tr>\n    <td width="50%" align="center">Mitte</td>\n    <td>Standard</td>\n  </tr>\n</table>',
+    "| Links | Rechts |\n| :- | -: |\n| a | b |",
+    '<img src="https://preview-test.invalid/x.png" onerror="window.__rawHtmlEscaped = true" alt="Extern">',
+    "<details><summary>Mehr</summary>\n\n**Versteckt**\n\n</details>",
+    "[Sprung](#ziel)",
+    filler,
+    '<a name="ziel"></a>\n\n## Ziel',
+  ].join("\n\n"));
+  await page.getByRole("button", { name: "View", exact: true }).click();
+  const body = page.locator(".markdown-body");
+  await expect(body.locator("h2").first()).toContainText("HTML Überschrift");
+  // HTML headings take part in folding like Markdown headings.
+  await expect(body.locator("h2").first().locator(".heading-fold")).toHaveCount(1);
+  const align = (locator: import("@playwright/test").Locator) => locator.evaluate((element) => getComputedStyle(element).textAlign);
+  expect(await align(body.locator("td", { hasText: "Mitte" }))).toMatch(/center/);
+  expect(await align(body.locator("td", { hasText: "Standard" }))).toMatch(/^(start|left)$/);
+  // GFM column alignment is an `align` attribute as well (`-webkit-right` in Chromium).
+  expect(await align(body.locator("td", { hasText: /^b$/ }))).toMatch(/right/);
+  await expect(body.locator("[onerror], script")).toHaveCount(0);
+  await expect(body.locator("img[alt='Extern']")).toHaveAttribute("src", "https://preview-test.invalid/x.png");
+  await body.locator("summary").click();
+  await expect(body.locator("details strong")).toHaveText("Versteckt");
+  await expect(page.getByRole("complementary", { name: "Dokumentgliederung" })).toContainText("HTML Überschrift");
+  await body.getByRole("link", { name: "Sprung", exact: true }).click();
+  await expect(body.locator('a[name="user-content-ziel"]')).toBeInViewport();
+  expect(await page.evaluate(() => (window as any).__rawHtmlEscaped)).toBeUndefined();
+  expect(errors).toEqual([]);
+});
+
 test("JSONL renders records and deeply nested JSON produces a recoverable notice", async ({ page }) => {
   await selectExtension(page, "jsonl");
   await enterText(page, '{"name":"Alpha"}\n{"name":"Beta"}');

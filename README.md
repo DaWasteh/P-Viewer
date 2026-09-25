@@ -5,7 +5,7 @@ P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter f
 [![Tests](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml/badge.svg)](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-blue.svg)](LICENSE)
 
-> **Status:** aktueller Entwicklungsstand `v0.2.0`.
+> **Status:** aktueller Entwicklungsstand `v0.2.1`.
 
 ## Aktueller Funktionsumfang
 
@@ -25,13 +25,13 @@ P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter f
 - schreibgeschützte Bildansicht für PNG, JPEG, GIF, WebP, BMP, ICO und AVIF mit Zoom, Einpassen und Transparenzraster sowie eine integrierte PDF-Ansicht; beide werden per Dateisignatur geprüft, nie als Text gelesen und nie überschrieben
 - Edit-, View- und Split-Ansicht mit gespeichertem Standardmodus und Ausnahmen pro Dateiendung; manuelle Moduswechsel bleiben pro Tab erhalten
 - sichere statische HTML-/HTM-/XHTML-Vorschau sowie eine explizit bestätigte vollständige Vorschau mit Skripten, Stylesheets und lokalen Ressourcen
-- Markdown mit GFM, Gliederung, Folding, Tabellen, Aufgabenlisten, Fußnoten, Callouts, Syntaxhervorhebung in Codeblöcken und KaTeX-Mathematik
+- Markdown mit GFM, Gliederung, Folding, Tabellen, Aufgabenlisten, Fußnoten, Callouts, Syntaxhervorhebung in Codeblöcken und KaTeX-Mathematik; eingebettetes HTML wie in GitHub-READMEs (Bilder mit Breite, Tabellen, `align`, `<details>`, Links) wird nach GitHubs Allowlist sanitisiert dargestellt, Skripte, Event-Handler und `javascript:`-Links werden entfernt; relative Bilder werden aus dem Dokumentordner geladen, externe nur über HTTPS
 - einklappbare JSON-Strukturansicht für JSON, JSONC, JSON5, JSON-LD, GeoJSON, Source Maps und Web-Manifeste sowie zeilenweise JSONL-/NDJSON-Datensätze; Werkzeugdateien wie `tsconfig.json`, `.babelrc` oder VS-Code-Einstellungen gelten als JSONC, Syntaxfehler werden auf Deutsch mit Zeile und Spalte gemeldet
 - Jupyter-Notebook-Ansicht mit Markdown-, Code- und Ausgabezellen (Text, Raster- und SVG-Bilder, Fehler); HTML-Ausgaben werden bewusst nicht ausgeführt
 - CSV-/TSV-Tabellenansicht mit automatischer Trennzeichenerkennung, Kopfzeile, Zeilennummern und Zahlenausrichtung
 - sandboxed SVG-Bildvorschau mit Zoom, Transparenzraster und Quelltextumschaltung
 - gebündelte, automatisch aktualisierte LaTeX-Livevorschau mit KaTeX, nummerierten Überschriften, Inhaltsverzeichnis, Fußnoten, Theorem-Umgebungen, Tabellen und Makros sowie optionaler PDF-Build über eine lokale TeX-Distribution
-- Registrierung aller unterstützten Endungen für „Öffnen mit“ und auswählbare Standardprogramm-Gruppen in den Einstellungen
+- Registrierung aller unterstützten Endungen für „Öffnen mit“, ein Explorer-Eintrag „Mit P-Viewer öffnen“ und auswählbare Standardprogramm-Gruppen in den Einstellungen
 - Dark Mode als Standard, optionaler Light Mode
 - anpassbare Schrift- und Symbolgrößen sowie gebündelte Inter-/JetBrains-Mono-Schriften für konsistente WebViews
 - persistente Einstellungen einschließlich eines Diagnose-/Debug-Modus im plattformüblichen Benutzer-Konfigurationsverzeichnis
@@ -131,6 +131,8 @@ Die Formatierungsleiste erzeugt ausschließlich normalen Markdown- bzw. HTML-Que
 ## Dateizuordnungen
 
 Installer registrieren alle 306 unterstützten Dateiendungen als mögliche P-Viewer-Formate. Unter **Einstellungen → Standardprogramme** lassen sich 110 sinnvolle Formatgruppen auswählen; die acht Bild- und PDF-Gruppen sind dabei bewusst abgewählt, bis sie ausdrücklich angehakt werden. Windows öffnet anschließend aus Sicherheitsgründen seine geschützte Standard-Apps-Seite zur Bestätigung; Linux aktualisiert die benutzerspezifische `mimeapps.list`, macOS verwendet LaunchServices. Eine vorhandene Standard-App wird bei der Windows-Installation nicht still überschrieben.
+
+Unter Windows erscheint P-Viewer für jede unterstützte Endung unter **Öffnen mit** und zusätzlich als eigener Eintrag **Mit P-Viewer öffnen** (unter Windows 11 im klassischen Menü „Weitere Optionen anzeigen“). Updates und erneute Installationen registrieren alles erneut, ohne die Einträge zwischendurch zu entfernen, sodass eine gewählte Standard-App erhalten bleibt; erst die Deinstallation entfernt ausschließlich die Einträge von P-Viewer. `npm run check:associations` prüft die generierten Installer-Hooks, `npm run test:installer-hooks` führt sie unter Windows gegen die Registry aus.
 
 Jede Endung besitzt unter Windows eine eigene ProgID mit eigenem Dateityp-Symbol aus `assets/file-icons` neben der EXE; unter **Einstellungen → Dateityp-Symbole** lässt sich stattdessen das App-Symbol verwenden. Neue Symbole werden als `<endung>.ico` (16, 32, 48 und 256 px) mit `npm run sync:icons -- import <ordner>` übernommen; byte-identische Dateien werden nur einmal gespeichert.
 

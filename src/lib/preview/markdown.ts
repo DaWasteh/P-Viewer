@@ -1,9 +1,9 @@
-import GithubSlugger from "github-slugger";
-import { toString } from "mdast-util-to-string";
 import type { Blockquote, Content, Html, Paragraph, Parent, Root, Text } from "mdast";
 import type { Element, Root as HastRoot } from "hast";
+import { toString as hastToString } from "hast-util-to-string";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex, { type Options as KatexOptions } from "rehype-katex";
+import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import type { Schema } from "hast-util-sanitize";
 import rehypeSlug from "rehype-slug";
@@ -134,10 +134,11 @@ function alignedBlock(alignment: string, children: Content[], position: Html["po
 
 /**
  * Markdown has no alignment, so documents use `<div align="center">` (GitHub
- * renders it). Raw HTML is otherwise dropped by this pipeline; only these exact
- * wrappers become aligned containers whose content is still Markdown. Both the
- * blank-line form (open tag, Markdown, close tag) and a compact single HTML
- * block are understood.
+ * renders it). These exact wrappers become aligned containers whose content is
+ * still Markdown with its own source lines, also in the compact single HTML
+ * block form where CommonMark would keep the inner Markdown as raw text. Both
+ * the blank-line form (open tag, Markdown, close tag) and the compact form are
+ * understood; all other raw HTML goes through rehype-raw.
  */
 function remarkAlignment() {
   const transform = (parent: Parent) => {
@@ -149,14 +150,20 @@ function remarkAlignment() {
         const compact = ALIGN_BLOCK.exec(value);
         if (compact) {
           const fragment = fragmentParser.parse(compact[3]);
-          // Inner lines start below the opening tag.
-          const shift = (child.position?.start.line ?? 1);
+          // Inner lines start below the opening tag. rehype-raw maps positions
+          // through offsets, so they are rebased onto the file as well.
+          const position = child.position;
+          const base = (position?.start.offset ?? 0) + child.value.indexOf(compact[3], child.value.indexOf(">") + 1);
           visit(fragment, (node) => {
             if (!node.position) return;
-            node.position.start.line += shift;
-            node.position.end.line += shift;
-            node.position.start.offset = undefined;
-            node.position.end.offset = undefined;
+            if (!position) {
+              node.position = undefined;
+              return;
+            }
+            node.position.start.line += position.start.line;
+            node.position.end.line += position.start.line;
+            node.position.start.offset = (node.position.start.offset ?? 0) + base;
+            node.position.end.offset = (node.position.end.offset ?? 0) + base;
           });
           const block = alignedBlock(compact[2], fragment.children as Content[], child.position);
           (open.at(-1)?.children ?? output).push(block as unknown as Content);
@@ -211,20 +218,72 @@ function rehypeSourceLines() {
   };
 }
 
-// Raw HTML never reaches this pipeline (remark-rehype drops it), so element ids
-// only originate from headings and GFM footnotes. Both already carry the
-// `user-content-` prefix from remark-rehype; a second sanitizer prefix would
-// break the footnote links, therefore clobbering is left to remark-rehype.
+const CLOBBER_PREFIX = "user-content-";
+const CLOBBERING_PROPERTIES = ["id", "name", "ariaDescribedBy", "ariaLabelledBy"] as const;
+
+function withClobberPrefix(value: string): string {
+  return value.startsWith(CLOBBER_PREFIX) ? value : CLOBBER_PREFIX + value;
+}
+
+/**
+ * Raw HTML may bring its own `id` and `name` values, which would otherwise
+ * become globals of the app window (DOM clobbering). They get GitHub's
+ * `user-content-` prefix; footnote ids from remark-rehype already carry it, so
+ * unlike the sanitizer's own clobbering this never prefixes twice. Heading
+ * slugs are added afterwards and stay unprefixed like before.
+ */
+function rehypeClobberIds() {
+  return (tree: HastRoot) => {
+    visit(tree, "element", (node: Element) => {
+      const properties: Record<string, unknown> = node.properties;
+      for (const key of CLOBBERING_PROPERTIES) {
+        const value = properties[key];
+        if (typeof value === "string" && value) properties[key] = withClobberPrefix(value);
+        else if (Array.isArray(value)) properties[key] = value.map((item) => withClobberPrefix(String(item)));
+      }
+    });
+  };
+}
+
+const HEADING_TAG = /^h([1-6])$/;
+
+/**
+ * Collects the outline from the rendered tree, so Markdown and HTML headings
+ * both appear and share the ids rehype-slug gave them. Runs before KaTeX, so
+ * formulas contribute their TeX source instead of rendered glyphs.
+ */
+function rehypeCollectHeadings() {
+  return (tree: HastRoot, file: { data: Record<string, unknown> }) => {
+    const headings: MarkdownHeading[] = [];
+    visit(tree, "element", (node: Element) => {
+      const depth = HEADING_TAG.exec(node.tagName)?.[1];
+      if (!depth || headings.length >= MAX_MARKDOWN_HEADINGS) return;
+      // The visually hidden footnote label is not part of the document outline.
+      const className = node.properties.className;
+      if (Array.isArray(className) && className.includes("sr-only")) return;
+      const id = node.properties.id;
+      const text = hastToString(node).trim();
+      if (typeof id !== "string" || !text) return;
+      headings.push({ id, depth: Number(depth), text });
+    });
+    file.data.headings = headings;
+  };
+}
+
+// GitHub's schema already covers the HTML that READMEs use (img, table with
+// width/align/colspan, details, br, b, …); only additions are listed here.
+// Ids are prefixed by rehypeClobberIds instead of the sanitizer (see there).
 const sanitizeSchema: Schema = {
   ...defaultSchema,
   clobberPrefix: "",
+  // Contents of a stripped <style> would otherwise show up as plain text.
+  strip: [...(defaultSchema.strip ?? []), "style"],
   tagNames: [...(defaultSchema.tagNames ?? []), "aside", "input"],
   attributes: {
     ...defaultSchema.attributes,
     // Source line numbers for the split view synchronisation; digits only.
     "*": [...(defaultSchema.attributes?.["*"] ?? []), ["dataSourceStart", /^\d{1,7}$/], ["dataSourceEnd", /^\d{1,7}$/]],
     aside: ["className", "dataCallout"],
-    div: [...(defaultSchema.attributes?.div ?? []), ["align", "left", "center", "right"]],
     code: [
       ...(defaultSchema.attributes?.code ?? []),
       ["className", /^language-[\w-]+$/],
@@ -315,13 +374,19 @@ const renderer = unified()
   .use(remarkAlignment)
   .use(remarkCallouts)
   .use(remarkRehype, {
+    // Only hands raw HTML on to rehype-raw; rehype-sanitize below still
+    // removes scripts, event handlers and unsafe URLs (issue #6).
+    allowDangerousHtml: true,
     footnoteLabel: "Fußnoten",
     footnoteBackLabel: (referenceIndex, rereferenceIndex) =>
       `Zurück zu Verweis ${referenceIndex + 1}${rereferenceIndex > 1 ? `-${rereferenceIndex}` : ""}`,
   })
+  .use(rehypeRaw)
   .use(rehypeSourceLines)
   .use(rehypeSanitize, sanitizeSchema)
+  .use(rehypeClobberIds)
   .use(rehypeSlug)
+  .use(rehypeCollectHeadings)
   .use(rehypeKatex, katexOptions)
   .use(rehypeHighlight, {
     detect: false,
@@ -329,8 +394,6 @@ const renderer = unified()
     plainText: ["txt", "text", "plain", "plaintext", "nohighlight"],
   })
   .use(rehypeStringify);
-
-const outlineParser = unified().use(remarkParse).use(remarkGfm).use(remarkMath);
 
 export const MAX_MARKDOWN_CHARACTERS = 500_000;
 export const MAX_MARKDOWN_LINES = 5_000;
@@ -346,32 +409,22 @@ function guardMarkdown(source: string): void {
   }
 }
 
-export function renderMarkdown(source: string): string {
+export interface RenderedMarkdown {
+  html: string;
+  /** Outline of the rendered document, including headings written as HTML. */
+  headings: MarkdownHeading[];
+}
+
+export function renderMarkdownDocument(source: string): RenderedMarkdown {
   guardMarkdown(source);
-  return String(renderer.processSync(source));
+  const file = renderer.processSync(source);
+  return { html: String(file), headings: (file.data.headings as MarkdownHeading[] | undefined) ?? [] };
+}
+
+export function renderMarkdown(source: string): string {
+  return renderMarkdownDocument(source).html;
 }
 
 export function decodeMarkdownFragment(fragment: string): string {
   try { return decodeURIComponent(fragment); } catch { return fragment; }
-}
-
-export function extractMarkdownHeadings(source: string): MarkdownHeading[] {
-  guardMarkdown(source);
-  const tree = outlineParser.parse(source);
-  const slugger = new GithubSlugger();
-  const headings: MarkdownHeading[] = [];
-
-  visit(tree, "heading", (node) => {
-    const text = toString(node).trim();
-    if (!text) return;
-    const id = slugger.slug(text);
-    if (headings.length >= MAX_MARKDOWN_HEADINGS) return;
-    headings.push({
-      id,
-      depth: node.depth,
-      text,
-    });
-  });
-
-  return headings;
 }

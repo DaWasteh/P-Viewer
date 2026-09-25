@@ -244,6 +244,11 @@
 .markdown-body td {
   padding: 0.45em 0.75em;
   border: 1px solid #353a45;
+}
+
+/* An author rule would override the `align` attribute of GFM column
+   alignment and HTML cells such as <td align="center">. */
+.markdown-body th:not([align]) {
   text-align: left;
 }
 
@@ -292,6 +297,14 @@
 
 .markdown-body del {
   color: #8f97a6;
+}
+
+.markdown-body details {
+  margin: 0 0 1em;
+}
+
+.markdown-body summary {
+  cursor: pointer;
 }
 
 .markdown-body kbd {

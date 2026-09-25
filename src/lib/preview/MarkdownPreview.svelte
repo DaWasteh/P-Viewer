@@ -10,8 +10,7 @@
   import "./markdown-body.css";
   import {
     decodeMarkdownFragment,
-    extractMarkdownHeadings,
-    renderMarkdown,
+    renderMarkdownDocument,
     type MarkdownHeading,
   } from "./markdown";
 
@@ -125,8 +124,9 @@
     const source = content;
     const timer = window.setTimeout(() => {
       try {
-        rendered = renderMarkdown(source);
-        headings = extractMarkdownHeadings(source);
+        const result = renderMarkdownDocument(source);
+        rendered = result.html;
+        headings = result.headings;
         renderError = "";
       } catch (error) {
         renderError = error instanceof Error ? error.message : String(error);
@@ -169,7 +169,14 @@
   }
 
   async function resolveLocalImages(): Promise<void> {
-    if (!article || !path) return;
+    if (!article) return;
+    // A <picture> source wins over its <img>, but a relative one cannot load
+    // from the app origin; dropping it lets the resolved <img> show instead.
+    for (const source of article.querySelectorAll<HTMLSourceElement>("picture > source[srcset]")) {
+      const candidate = source.getAttribute("srcset")?.trim().split(/\s+/)[0] ?? "";
+      if (isRelativeImageSource(candidate)) source.remove();
+    }
+    if (!path) return;
     const currentArticle = article;
     const currentPath = path;
     const images = Array.from(currentArticle.querySelectorAll<HTMLImageElement>("img"));
@@ -247,13 +254,20 @@
     updateFoldVisibility();
   }
 
+  /** Heading ids first, then ids and anchor names from raw HTML, which carry GitHub's `user-content-` prefix. */
+  function fragmentTarget(id: string): HTMLElement | undefined {
+    const elements = Array.from(article?.querySelectorAll<HTMLElement>("[id], a[name]") ?? []);
+    for (const candidate of [id, `user-content-${id}`]) {
+      const match = elements.find((element) => element.id === candidate || element.getAttribute("name") === candidate);
+      if (match) return match;
+    }
+    return undefined;
+  }
+
   async function openHeading(id: string): Promise<void> {
     setAllCollapsed(false);
     await tick();
-    const target = Array.from(article?.querySelectorAll<HTMLElement>("[id]") ?? []).find(
-      (element) => element.id === id,
-    );
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    fragmentTarget(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function handleArticleClick(event: MouseEvent): void {
@@ -345,7 +359,7 @@
           <span>{renderError}</span>
         </div>
       {:else if content.trim()}
-        <!-- The unified pipeline removes raw HTML and sanitizes the HAST before this point. -->
+        <!-- The unified pipeline parses raw HTML and sanitizes the HAST (rehype-sanitize) before this point. -->
         <article class:light={theme === "light"} class="markdown-body" bind:this={article}>{@html rendered}</article>
       {:else}
         <div class="empty-preview">
