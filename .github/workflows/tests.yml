@@ -70,7 +70,7 @@ jobs:
         run: npm test
 
       - name: Install browser test runtime
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit
 
       - name: Run production-build browser regressions
         run: npm run test:browser

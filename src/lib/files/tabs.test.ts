@@ -54,6 +54,8 @@ describe("document tabs", () => {
   it("matches Windows paths case-insensitively and POSIX paths exactly", () => {
     expect(sameDocumentPath("C:\\Notes\\Draft.md", "c:/notes/draft.md")).toBe(true);
     expect(sameDocumentPath("/home/me/Draft.md", "/home/me/draft.md")).toBe(false);
+    expect(sameDocumentPath("/home/me/notes\\draft.md", "/home/me/notes/draft.md")).toBe(false);
+    expect(sameDocumentPath("/home/me/notes\\draft.md", "/home/me/notes\\draft.md")).toBe(true);
     expect(sameDocumentPath("", "/home/me/draft.md")).toBe(false);
   });
 

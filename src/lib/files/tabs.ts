@@ -92,7 +92,7 @@ export function sameDocumentPath(left: string, right: string): boolean {
   const normalize = (path: string) => path.replace(/\\/g, "/").replace(/^\/\/\?\/UNC\//i, "//").replace(/^\/\/\?\/(?=[a-z]:)/i, "");
   return windowsPath
     ? normalize(left).toLowerCase() === normalize(right).toLowerCase()
-    : normalize(left) === normalize(right);
+    : left === right;
 }
 
 export function findTabByPath(

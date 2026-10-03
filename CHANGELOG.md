@@ -2,6 +2,13 @@
 
 Alle Entwicklungsstufen folgen semantischer Vorabversionierung.
 
+## 0.2.2
+
+- **Linux-Dateipfade:** Ein Backslash in einem POSIX-Dateinamen wird beim Tab-Abgleich nicht mehr als Ordnertrenner behandelt. `notes\\draft.txt` und `notes/draft.txt` bleiben verschiedene Dokumente; Öffnen, Weiterleitung und Speicherkollisionsprüfung verwechseln sie nicht mehr. Windows-Pfadnormalisierung bleibt erhalten.
+- **Ubuntu-Prüfung:** Browserregressionen laufen unter Linux zusätzlich mit WebKit. Neuer nativer Smoke-Test mit dem echten WebKitGTK-Release-Build und temporären Benutzerverzeichnissen prüft Datei-I/O, Unicode/CRLF, PNG, JSONL, unterschiedliche Unix-Dateinamen, Single-Instance-Weiterleitung während eines Dialogs, Speicherkonflikte, Makros/Timeout und Wiederherstellungsdaten.
+- **Sicherheit:** Transitive SvelteKit-Abhängigkeit `devalue` auf 5.9.4 aktualisiert; behebt die vom Dependency-Audit gemeldeten Sicherheitslücken.
+- Ubuntu-Installation, Desktop-Starter und getrennte Build-Abhängigkeiten bei Dual-Boot dokumentiert. Windows-`node_modules` können nicht unverändert unter Ubuntu verwendet werden.
+
 ## 0.2.1
 
 Behebt die Issues #6 und #7.

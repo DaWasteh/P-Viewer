@@ -5,7 +5,7 @@ P-Viewer ist ein schneller, fokussierter Desktop-Editor und Dokumentbetrachter f
 [![Tests](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml/badge.svg)](https://github.com/DaWasteh/P-Viewer/actions/workflows/tests.yml)
 [![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-blue.svg)](LICENSE)
 
-> **Status:** aktueller Entwicklungsstand `v0.2.1`.
+> **Status:** aktueller Entwicklungsstand `v0.2.2`.
 
 ## Aktueller Funktionsumfang
 
@@ -58,6 +58,20 @@ Voraussetzungen:
 npm install
 npm run tauri dev
 ```
+
+### Ubuntu / Wechsel zwischen Windows und Linux
+
+Für die Nutzung ohne Build das **`_amd64.deb`-Paket** aus den [Releases](https://github.com/DaWasteh/P-Viewer/releases/latest) installieren. Es registriert P-Viewer im Anwendungsmenü und unter „Öffnen mit“; eine Standard-App wird dadurch nicht ungefragt geändert. Für einen Desktop-Starter den installierten Eintrag `/usr/share/applications/P-Viewer.desktop` auf den Desktop kopieren, ausführbar machen und dort per Rechtsklick **Starten erlauben** wählen.
+
+Für einen lokalen Build unter Ubuntu:
+
+```bash
+sudo apt install build-essential pkg-config libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+npm ci
+npm run build:launcher
+```
+
+Das erzeugt unter Linux **`P-Viewer`** (ohne `.exe`). Windows-EXEs und die nativen Module in `node_modules` sind nicht zwischen den Betriebssystemen austauschbar. Bei Dual-Boot am besten getrennte Klone auf den jeweiligen Systemlaufwerken verwenden; andernfalls nach jedem Betriebssystemwechsel `npm ci` ausführen. Das Lockfile dabei behalten.
 
 ### Per Doppelklick starten
 
@@ -138,11 +152,15 @@ Jede Endung besitzt unter Windows eine eigene ProgID mit eigenem Dateityp-Symbol
 
 ## Qualitätsprüfungen und Grenzen
 
-`npm run test:browser` prüft den Produktionsbuild mit Playwright (Windows: vorhandenes Edge; Linux: vorher `npx playwright install --with-deps chromium`). `node scripts/smoke-local-launcher.mjs` prüft unter Windows zusätzlich die tatsächlich gebaute Root-EXE mit temporären Dokumenten und einem eigenen WebView-Profil. Dazu wird nur für diesen Testprozess ein lokaler Debug-Port aktiviert.
+`npm run test:browser` prüft den Produktionsbuild mit Playwright (Windows: vorhandenes Edge; Linux: Chromium **und WebKit**, vorher `npx playwright install --with-deps chromium webkit`). Keine weiteren Frontend-Builds gleichzeitig starten: sie ersetzen die Dateien, die der Testserver gerade ausliefert.
+
+`python3 scripts/smoke-linux-launcher.py` prüft unter Linux den echten Release-Build mit WebKitGTK, realem Datei-I/O, Speicherkonflikten, POSIX-Dateinamen, Single-Instance-Weiterleitung, Makros und Wiederherstellungsdaten. Voraussetzung ist `WebKitWebDriver` (`sudo apt install webkitgtk-webdriver`, auf älterem Ubuntu `webkit2gtk-driver`). Vorher P-Viewer schließen. Der Test verwendet nur temporäre Dokumente und eigene Konfigurations-, Daten- und Cache-Verzeichnisse; WebView-Automatisierung wird nur für diesen Prozess aktiviert.
+
+ `node scripts/smoke-local-launcher.mjs` prüft unter Windows zusätzlich die tatsächlich gebaute Root-EXE mit temporären Dokumenten und einem eigenen WebView-Profil. Dazu wird nur für diesen Testprozess ein lokaler Debug-Port aktiviert.
 
 Vorschaugrenzen halten die App bei sehr großen/komplexen Dateien bedienbar; sie sind keine Beschränkung auf ebenso kleine Editorquellen. Markdown begrenzt Quelltext, Zeilen und Strukturmarker, Notebooks kombinieren Zell-/Text-/Ausgabelimits. Die PDF-Ansicht hält nur eine Seite mit begrenzter Bitmap-Größe vor. View ist über **Strg/Cmd+Umschalt+R** erreichbar, Split über **Strg/Cmd+Umschalt+P**, ein weiteres Fenster über **Strg/Cmd+Umschalt+N**. Tabs wandern per Drag-and-drop zwischen Fenstern; beim Verschieben bleibt die Undo-Historie im Ursprungsfenster zurück.
 
-Testumfang, bekannte Grenzen und noch offene plattformspezifische Release-Abnahmen stehen in [`docs/QUALITY-v0.2.0.md`](docs/QUALITY-v0.2.0.md). Eine vollständige Fehlerfreiheit aller Dateiformate wird nicht behauptet.
+Testumfang, bekannte Grenzen und noch offene plattformspezifische Release-Abnahmen stehen in [`docs/QUALITY-v0.2.2.md`](docs/QUALITY-v0.2.2.md). Eine vollständige Fehlerfreiheit aller Dateiformate wird nicht behauptet.
 
 ## Versionierung
 
