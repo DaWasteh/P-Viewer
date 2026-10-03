@@ -195,6 +195,16 @@ jobs:
           retryAttempts: 2
           args: --config src-tauri/tauri.release.conf.json ${{ matrix.args }}
 
+      - name: Verify Linux file-manager launcher
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dpkg-deb --fsys-tarfile src-tauri/target/release/bundle/deb/*.deb |
+            tar -xOf - usr/share/applications/P-Viewer.desktop > /tmp/P-Viewer.desktop
+          grep -Fx 'Exec=p-viewer %F' /tmp/P-Viewer.desktop
+          grep -q '^MimeType=.*text/markdown;' /tmp/P-Viewer.desktop
+
   publish:
     name: Publish release
     # The matrix jobs upload into a draft so the updater endpoint never sees a

@@ -54,6 +54,14 @@
     "resources": [
       "../THIRD_PARTY_NOTICES.md"
     ],
+    "linux": {
+      "deb": {
+        "desktopTemplate": "linux/p-viewer.desktop"
+      },
+      "rpm": {
+        "desktopTemplate": "linux/p-viewer.desktop"
+      }
+    },
     "fileAssociations": [
       {
         "ext": [

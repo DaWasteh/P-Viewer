@@ -2,7 +2,7 @@
 """Native Linux/WebKitGTK smoke, stdlib only. Close P-Viewer first.
 
 Requires WebKitWebDriver (Ubuntu: webkitgtk-webdriver, older: webkit2gtk-driver).
-Usage: python3 scripts/smoke-linux-launcher.py [path/to/p-viewer]
+Usage: python3 scripts/smoke-linux-launcher.py [path/to/p-viewer] [installed.desktop]
 """
 import base64
 import json
@@ -91,7 +91,8 @@ with tempfile.TemporaryDirectory(prefix="p-viewer-smoke-") as temporary:
         return js("return document.querySelector('.editor-pane .cm-content')?.textContent.includes(arguments[0])", value)
 
     def forward(*paths):
-        subprocess.run([str(binary), *map(str, paths)], cwd=directory, env=env, check=True, timeout=15)
+        launcher = ["gio", "launch", sys.argv[2]] if len(sys.argv) > 2 else [str(binary)]
+        subprocess.run([*launcher, *map(str, paths)], cwd=directory, env=env, check=True, timeout=15)
 
     try:
         wait(ready)
