@@ -72,7 +72,7 @@ with tempfile.TemporaryDirectory(prefix="p-viewer-smoke-") as temporary:
         return request(f"/session/{session}/execute/sync", {"script": script, "args": args})
 
     def click(label):
-        js("const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===arguments[0] || b.getAttribute('aria-label')===arguments[0]); if(!b) throw Error(arguments[0]); b.click();", label)
+        js("const root=document.querySelector('dialog[open]') || document; const b=[...root.querySelectorAll('button')].find(b=>!b.disabled && b.getClientRects().length && (b.textContent.trim()===arguments[0] || b.getAttribute('aria-label')===arguments[0])); if(!b) throw Error(arguments[0]); b.click();", label)
 
     def replace_editor(value):
         # ponytail: WebKitGTK send-keys uses the real Wayland clipboard; insert
@@ -143,6 +143,7 @@ with tempfile.TemporaryDirectory(prefix="p-viewer-smoke-") as temporary:
         click("Anwenden")
         wait(lambda: js("return document.querySelector('dialog [role=status]')?.textContent.includes('abgebrochen')"))
         click("Abbrechen")
+        wait(lambda: js("return !document.querySelector('dialog[open]')"))
         assert text.read_text() == "External change\n"
         wait(lambda: (directory / "session/session.json").is_file())
         wait(lambda: bool(list((directory / "session/recovery").glob("*"))))
