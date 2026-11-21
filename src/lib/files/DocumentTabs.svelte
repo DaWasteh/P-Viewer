@@ -30,6 +30,8 @@
   interface Props {
     tabs: DocumentTabItem[];
     activeId: string;
+    /** Tab IDs currently visible in multi-pane splitscreen (including activeId). */
+    splitIds?: readonly string[];
     disabled?: boolean;
     onActivate?: (id: string) => void;
     onClose?: (id: string) => void;
@@ -45,6 +47,7 @@
   let {
     tabs,
     activeId,
+    splitIds = [],
     disabled = false,
     onActivate = () => undefined,
     onClose = () => undefined,
@@ -87,6 +90,7 @@
       : tabs.map((tab) => tab.id),
   );
   const visibleSet = $derived(new Set(visibleIds));
+  const splitSet = $derived(new Set(splitIds));
   const visibleTabs = $derived(tabs.filter((tab) => visibleSet.has(tab.id)));
   const hiddenTabs = $derived(tabs.filter((tab) => !visibleSet.has(tab.id)));
 
@@ -127,7 +131,12 @@
   }
 
   function tooltip(tab: DocumentTabItem): string {
-    const states = [tab.dirty ? "Geändert" : "", tab.pinned ? "Angeheftet" : "", tab.readOnly ? "Schreibgeschützt" : ""].filter(Boolean);
+    const states = [
+      tab.dirty ? "Geändert" : "",
+      tab.pinned ? "Angeheftet" : "",
+      tab.readOnly ? "Schreibgeschützt" : "",
+      splitSet.has(tab.id) && tab.id !== activeId ? "Im Splitscreen sichtbar" : "",
+    ].filter(Boolean);
     return [tab.name, tab.path, states.join(" · ")].filter(Boolean).join("\n");
   }
 
@@ -326,6 +335,7 @@
       {#each visibleTabs as tab (tab.id)}
         <div
           class:active={tab.id === activeId}
+          class:in-split={tab.id !== activeId && splitSet.has(tab.id)}
           class:dragged={tab.id === draggingId}
           class:pinned={tab.pinned}
           class="tab-shell"
@@ -485,6 +495,14 @@
 
   .tab-shell.active::before {
     background: var(--accent);
+  }
+
+  .tab-shell.in-split {
+    color: var(--text);
+  }
+
+  .tab-shell.in-split::before {
+    background: color-mix(in srgb, var(--accent) 45%, transparent);
   }
 
   .tab-shell.dragged {

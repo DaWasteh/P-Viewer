@@ -15,18 +15,15 @@
     FilePlus2,
     FileText,
     FolderOpen,
-    LoaderCircle,
     Pencil,
     Save,
     Search,
     Settings2,
-    TriangleAlert,
+    SquareSplitHorizontal,
   } from "@lucide/svelte";
-  import EditorPane from "$lib/editor/EditorPane.svelte";
-  import PreviewPane from "$lib/preview/PreviewPane.svelte";
-  import { PreviewSyncController, type SyncMode } from "$lib/preview/sync";
   import { openBatch, openFind, openReplacePanel } from "$lib/editor/findReplace";
   import ContextMenu, { type MenuEntry } from "$lib/ContextMenu.svelte";
+  import DocumentPane from "$lib/files/DocumentPane.svelte";
   import DocumentTabs, { type TabDropPoint } from "$lib/files/DocumentTabs.svelte";
   import CloseTabsDialog, {
     type BulkChoice,
@@ -34,6 +31,19 @@
     type ReviewChoice,
   } from "$lib/files/CloseTabsDialog.svelte";
   import FileTypeSelector from "$lib/files/FileTypeSelector.svelte";
+  import {
+    MAX_SPLIT_PANES,
+    MIN_PANE_WEIGHT,
+    addSplitPane,
+    equalizePaneWeights,
+    normalizePaneWeights,
+    pickTabForNewPane,
+    reconcilePanesAfterTabClose,
+    removeSplitPane,
+    resizePanePair,
+    setPanePairLeftWeight,
+    type WorkspacePane,
+  } from "$lib/files/splitLayout";
   import {
     chooseAndOpenDocument,
     confirmDiscardChanges,
@@ -82,10 +92,12 @@
     storeWindowSession,
     takeRestoredSessions,
     writeRecovery,
+    type SessionPane,
     type SessionTab,
     type WindowSession,
   } from "$lib/files/session";
   import type { OpenDocument, ViewMode } from "$lib/files/types";
+  import type { SyncMode } from "$lib/preview/sync";
   import { APP_VERSION } from "$lib/version";
   import SettingsPanel from "$lib/settings/SettingsPanel.svelte";
   import UpdatePanel from "$lib/update/UpdatePanel.svelte";
@@ -115,6 +127,7 @@
   const sessionKey = (tab: Pick<DocumentTab, "id" | "revision">) => `${tab.id}:${tab.revision}`;
 
   let tabSequence = 0;
+  let paneSequence = 0;
   const MAX_TABS = 100;
   const MAX_TAB_WEIGHT = 64_000_000;
   /** Recently closed tabs kept for Strg/Cmd+Umschalt+T. */
@@ -124,6 +137,11 @@
   /** A restored file that does not answer in time (offline share) is marked unavailable. */
   const RESTORE_TIMEOUT = 15_000;
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
+  function nextPaneId(): string {
+    paneSequence += 1;
+    return `pane-${paneSequence}`;
+  }
 
   /** A tab queued for this window by another P-Viewer window (see windows.rs). */
   interface QueuedTab {
@@ -153,10 +171,119 @@
   }
 
   const initialTab = createTab(createUntitledDocument());
+  const initialPaneId = nextPaneId();
   let tabs = $state<DocumentTab[]>([initialTab]);
-  let activeTabId = $state(initialTab.id);
+  let panes = $state<WorkspacePane[]>([{ id: initialPaneId, tabId: initialTab.id, weight: 1 }]);
+  let activePaneId = $state(initialPaneId);
+  const cursorPositions = new Map<string, { line: number; column: number; selected: number }>();
+
+  function setTabMode(tabId: string, next: ViewMode): void {
+    const target = tabs.find((tab) => tab.id === tabId);
+    if (target && !target.document.binary) target.mode = next;
+  }
+
+  function setTabSplitRatio(tabId: string, ratio: number): void {
+    const target = tabs.find((tab) => tab.id === tabId);
+    if (target) target.splitRatio = clampSplitRatio(ratio);
+  }
+
   function setMode(next: ViewMode): void {
-    if (!binaryDocument) activeTab!.mode = next;
+    if (activeTab) setTabMode(activeTab.id, next);
+  }
+
+  function syncCursorFromTab(tabId: string): void {
+    const saved = cursorPositions.get(tabId);
+    if (saved) {
+      cursorLine = saved.line;
+      cursorColumn = saved.column;
+      selectedCharacters = saved.selected;
+    } else {
+      cursorLine = 1;
+      cursorColumn = 1;
+      selectedCharacters = 0;
+    }
+  }
+
+  /** Focuses the pane already showing `tabId`, or displays `tabId` in the focused pane. */
+  function focusOrShowTab(tabId: string): void {
+    if (!tabs.some((tab) => tab.id === tabId)) return;
+    const existingPane = panes.find((pane) => pane.tabId === tabId);
+    if (existingPane) {
+      activePaneId = existingPane.id;
+    } else if (activePane) {
+      activePane.tabId = tabId;
+    }
+    syncCursorFromTab(tabId);
+  }
+
+  function focusPane(paneId: string): void {
+    if (paneId === activePaneId) return;
+    const target = panes.find((pane) => pane.id === paneId);
+    if (!target) return;
+    activePaneId = paneId;
+    syncCursorFromTab(target.tabId);
+  }
+
+  function openTabInSplit(tabId: string): void {
+    if (busy || installingUpdate) return;
+    const existing = panes.find((pane) => pane.tabId === tabId);
+    if (existing) {
+      activePaneId = existing.id;
+      syncCursorFromTab(tabId);
+      return;
+    }
+    const nextId = nextPaneId();
+    const updated = addSplitPane(panes, nextId, tabId);
+    if (!updated) {
+      errorMessage = `Maximal ${MAX_SPLIT_PANES} Dokumente können gleichzeitig nebeneinander angezeigt werden.`;
+      return;
+    }
+    panes = updated;
+    activePaneId = nextId;
+    syncCursorFromTab(tabId);
+    errorMessage = "";
+  }
+
+  function addAnotherSplitPane(): void {
+    if (busy || installingUpdate) return;
+    if (panes.length >= MAX_SPLIT_PANES) {
+      errorMessage = `Maximal ${MAX_SPLIT_PANES} Dokumente können gleichzeitig nebeneinander angezeigt werden.`;
+      return;
+    }
+    let candidateId = pickTabForNewPane(tabs.map((tab) => tab.id), panes, activeTabId);
+    if (!candidateId) {
+      if (tabs.length >= MAX_TABS) {
+        errorMessage = `Maximal ${MAX_TABS} offene Tabs. Bitte zuerst einen Tab schließen.`;
+        return;
+      }
+      const name = nextUntitledName(tabs.map((tab) => tab.document));
+      const fresh = createTab(createUntitledDocument(name), preferredViewMode(settings, name));
+      tabs.push(fresh);
+      candidateId = fresh.id;
+    }
+    openTabInSplit(candidateId);
+  }
+
+  function closeSplitPane(paneId: string): void {
+    const result = removeSplitPane(panes, paneId);
+    if (!result) return;
+    panes = result.panes;
+    if (!panes.some((pane) => pane.id === activePaneId)) {
+      activePaneId = result.nextActivePaneId;
+    }
+    syncCursorFromTab(activeTabId);
+  }
+
+  function exitSplitscreen(): void {
+    if (panes.length <= 1 || !activePane) return;
+    const keep = activePane;
+    panes = [{ id: keep.id, tabId: keep.tabId, weight: 1 }];
+    activePaneId = keep.id;
+    syncCursorFromTab(keep.tabId);
+  }
+
+  function resetSplitPaneWidths(): void {
+    panes = equalizePaneWeights(panes);
   }
   let settingsLoadPromise: Promise<void> = Promise.resolve();
   let busy = $state(false);
@@ -207,6 +334,10 @@
   /** The window closes because its last tab was closed: the stored session is empty. */
   let lastTabClosed = false;
 
+  const activePane = $derived(panes.find((pane) => pane.id === activePaneId) ?? panes[0]);
+  const activeTabId = $derived(activePane?.tabId ?? tabs[0].id);
+  const multiPane = $derived(panes.length > 1);
+  const visiblePaneTabIds = $derived(panes.map((pane) => pane.tabId));
   const activeTab = $derived(tabs.find((tab) => tab.id === activeTabId) ?? tabs[0]);
   const mode = $derived(activeTab?.mode ?? "edit");
   const document = $derived(activeTab!.document);
@@ -215,7 +346,6 @@
   const binaryDocument = $derived(Boolean(document.binary));
   /** The active tab was restored from the session and its file is not loaded yet. */
   const restoring = $derived(Boolean(activeTab?.restore));
-  const splitRatio = $derived(clampSplitRatio(activeTab?.splitRatio ?? 0.5));
   const dirtyCount = $derived(tabs.filter((tab) => tabIsDirty(tab)).length);
   const tabItems = $derived(
     tabs.map((tab) => ({
@@ -234,11 +364,9 @@
   );
   const persistSession = $derived(desktop && settingsReady && settings.startupBehavior === "restore");
   const keepRecovery = $derived(persistSession && settings.restoreOptions.unsaved);
-  const extraRows = $derived((errorMessage ? 1 : 0) + (activeTab?.notice ? 1 : 0));
+  const extraRows = $derived(errorMessage ? 1 : 0);
 
-  // Editor ↔ preview synchronisation (issue #2): only the split view of a
-  // Markdown document runs it. The toolbar toggle is kept per tab.
-  const previewSync = new PreviewSyncController();
+  // Sync button state for the focused pane (each DocumentPane runs its own controller).
   const syncAvailable = $derived(mode === "split" && document.fileType.kind === "markdown" && !binaryDocument && !restoring);
   const effectiveSyncMode = $derived.by((): SyncMode => {
     const configured = settings.previewSyncMode;
@@ -247,13 +375,30 @@
     if (toggle === true) return configured === "off" ? "bidirectional" : configured;
     return configured;
   });
-  $effect(() => {
-    previewSync.configure({ active: syncAvailable, mode: effectiveSyncMode, clickNavigation: settings.previewClickNavigation });
-  });
 
   // Find and replace is reachable from the toolbar, not only by shortcut.
   let searchMenu = $state<{ x: number; y: number } | null>(null);
+  let splitMenu = $state<{ x: number; y: number } | null>(null);
   const searchAvailable = $derived(!binaryDocument && !restoring);
+
+  function splitMenuEntries(): MenuEntry[] {
+    return [
+      {
+        label: "Weiteren Bereich öffnen",
+        disabled: panes.length >= MAX_SPLIT_PANES,
+        action: addAnotherSplitPane,
+      },
+      {
+        label: "Breiten gleichmäßig verteilen",
+        action: resetSplitPaneWidths,
+      },
+      { separator: true },
+      {
+        label: "Splitscreen beenden",
+        action: exitSplitscreen,
+      },
+    ];
+  }
 
   async function startSearch(kind: "find" | "replace" | "batch"): Promise<void> {
     if (!searchAvailable || !activeTab) return;
@@ -284,17 +429,6 @@
     if (!activeTab) return;
     activeTab.previewSync = effectiveSyncMode === "off";
   }
-  /**
-   * Formatting toolbar above the editor (issue #1): "auto" offers it for
-   * Markdown and HTML only, "always" falls back to Markdown syntax elsewhere.
-   */
-  const formattingDialect = $derived.by((): "markdown" | "html" | null => {
-    const kind = document.fileType.kind;
-    if (settings.formattingToolbar === "never") return null;
-    if (kind === "html") return "html";
-    if (kind === "markdown") return "markdown";
-    return settings.formattingToolbar === "always" ? "markdown" : null;
-  });
 
   $effect(() => {
     if (!appWindow) return;
@@ -367,10 +501,12 @@
     return () => window.clearTimeout(timer);
   });
 
-  // A restored tab loads its file the first time it becomes the active tab.
+  // A restored tab loads its file the first time it becomes visible in any pane.
   $effect(() => {
-    const tab = activeTab;
-    if (tab?.restore?.state === "pending") untrack(() => void loadRestoredTab(tab));
+    for (const pane of panes) {
+      const tab = tabs.find((candidate) => candidate.id === pane.tabId);
+      if (tab?.restore?.state === "pending") untrack(() => void loadRestoredTab(tab));
+    }
   });
 
   onMount(() => {
@@ -547,10 +683,22 @@
       : tabs
           .filter((tab) => !isReplaceable(tab))
           .map((tab) => sessionTabFor(tab, captureView(tab), !discarded && recoveryAvailable(tab)));
+    const entryIds = new Set(entries.map((entry) => entry.recoveryId));
+    const sessionPanes: SessionPane[] = !lastTabClosed && panes.length >= 2
+      ? panes
+          .map((pane) => {
+            const tab = tabs.find((candidate) => candidate.id === pane.tabId);
+            return tab && entryIds.has(tab.recoveryId)
+              ? { recoveryId: tab.recoveryId, weight: Number(pane.weight.toFixed(4)) }
+              : null;
+          })
+          .filter((entry): entry is SessionPane => Boolean(entry))
+      : [];
     return {
       version: 1,
       ...(activeTab && !lastTabClosed ? { activeRecoveryId: activeTab.recoveryId } : {}),
       tabs: entries,
+      ...(sessionPanes.length >= 2 ? { panes: sessionPanes } : {}),
     };
   }
 
@@ -586,6 +734,7 @@
     const fingerprint = [
       activeTabId,
       persistSession,
+      ...panes.map((pane) => `${pane.tabId}:${pane.weight.toFixed(3)}`),
       ...tabs.map((tab) =>
         [tab.id, tab.recoveryId, tab.document.path, tab.document.name, tab.mode, tab.pinned, tab.splitRatio, tab.previewSync, tabIsDirty(tab), tab.revision, tab.restore?.state].join("|"),
       ),
@@ -744,9 +893,26 @@
       }
       normalizePinnedOrder(tabs);
       const active = restored.find((tab) => tab.recoveryId === own.activeRecoveryId) ?? restored[0];
-      activeTabId = active.id;
+      const restoredPanes = (own.panes ?? [])
+        .map((entry) => {
+          const tab = restored.find((candidate) => candidate.recoveryId === entry.recoveryId);
+          return tab ? { tab, weight: settings.restoreOptions.splitWidths ? entry.weight : 1 } : null;
+        })
+        .filter((entry): entry is { tab: DocumentTab; weight: number } => Boolean(entry));
+      if (restoredPanes.length >= 2) {
+        const nextPanes = normalizePaneWeights(
+          restoredPanes.map(({ tab, weight }) => ({ id: nextPaneId(), tabId: tab.id, weight })),
+        );
+        panes = nextPanes;
+        activePaneId = nextPanes.find((pane) => pane.tabId === active.id)?.id ?? nextPanes[0].id;
+      } else {
+        const singleId = panes[0]?.id ?? nextPaneId();
+        panes = [{ id: singleId, tabId: active.id, weight: 1 }];
+        activePaneId = singleId;
+      }
       // Unsaved text is brought back right away; other tabs load when first shown.
-      for (const tab of restored) if (tab.restore?.hasRecovery && tab.id !== active.id) void loadRestoredTab(tab);
+      const visibleIds = new Set(panes.map((pane) => pane.tabId));
+      for (const tab of restored) if (tab.restore?.hasRecovery && !visibleIds.has(tab.id)) void loadRestoredTab(tab);
     }
     for (const session of others) await restoreWindowElsewhere(session);
   }
@@ -896,7 +1062,7 @@
       if (!opened || !tab) return;
       const existing = findTabByPath(tabs, opened.path, tabId);
       if (existing) {
-        activeTabId = existing.id;
+        focusOrShowTab(existing.id);
         return;
       }
       restoreAttempts.set(tabId, (restoreAttempts.get(tabId) ?? 0) + 1);
@@ -930,7 +1096,7 @@
   function showDocument(opened: OpenDocument, replacePristine: boolean): void {
     const existing = findTabByPath(tabs, opened.path);
     if (existing) {
-      activeTabId = existing.id;
+      focusOrShowTab(existing.id);
       return;
     }
 
@@ -948,7 +1114,7 @@
 
     const tab = createTab(opened, preferredViewMode(settings, opened.name));
     tabs.push(tab);
-    activeTabId = tab.id;
+    focusOrShowTab(tab.id);
   }
 
   function newDocument(): void {
@@ -957,7 +1123,7 @@
     const name = nextUntitledName(tabs.map((tab) => tab.document));
     const tab = createTab(createUntitledDocument(name), preferredViewMode(settings, name));
     tabs.push(tab);
-    activeTabId = tab.id;
+    focusOrShowTab(tab.id);
     errorMessage = "";
   }
 
@@ -1022,7 +1188,7 @@
       const onlyPristine = tabs.length === 1 && isReplaceable(tabs[0]);
       if (existing && !incomingDirty) {
         // Same file already open here and nothing unsaved travels with it.
-        activeTabId = existing.id;
+        focusOrShowTab(existing.id);
         continue;
       }
       if (!onlyPristine && (existing || (incoming ? !canHostAnotherTab(incoming) : tabs.length >= MAX_TABS))) {
@@ -1056,12 +1222,15 @@
       if (onlyPristine) {
         editorSessions.delete(sessionKey(tabs[0]));
         tabs.splice(0, 1, tab);
+        const singleId = panes[0]?.id ?? nextPaneId();
+        panes = [{ id: singleId, tabId: tab.id, weight: 1 }];
+        activePaneId = singleId;
       } else {
         tabs.splice(dropIndexFor(entry.dropX, entry.dropY), 0, tab);
       }
       normalizePinnedOrder(tabs);
-      if (takeFocus) activeTabId = tab.id;
-      if (tab.restore?.hasRecovery && activeTabId !== tab.id) void loadRestoredTab(tab);
+      if (takeFocus) focusOrShowTab(tab.id);
+      if (tab.restore?.hasRecovery && !panes.some((pane) => pane.tabId === tab.id)) void loadRestoredTab(tab);
       cursorLine = 1;
       cursorColumn = 1;
       selectedCharacters = 0;
@@ -1146,7 +1315,7 @@
     if (busy) return;
     const existing = findTabByPath(tabs, path);
     if (existing) {
-      activeTabId = existing.id;
+      focusOrShowTab(existing.id);
       return;
     }
 
@@ -1255,7 +1424,7 @@
       tab.document = saved;
       return true;
     } catch (error) {
-      activeTabId = tabId;
+      focusOrShowTab(tabId);
       errorMessage = messageFrom(error);
       return false;
     }
@@ -1281,7 +1450,7 @@
         } else if (choice === "review") {
           for (let index = 0; index < dirtyTabs.length; index += 1) {
             const tab = dirtyTabs[index];
-            activeTabId = tab.id;
+            focusOrShowTab(tab.id);
             const decision = await askReview(tab.document.name, index + 1, dirtyTabs.length);
             if (decision === "cancel") return;
             if (decision === "skip") skipped.add(tab.id);
@@ -1300,13 +1469,15 @@
       // "Alle schließen" keeps the window: a fresh document replaces the last tab.
       const replacement = createTab(createUntitledDocument(), preferredViewMode(settings, "Unbenannt.txt"));
       tabs.push(replacement);
-      activeTabId = replacement.id;
+      const singleId = panes[0]?.id ?? nextPaneId();
+      panes = [{ id: singleId, tabId: replacement.id, weight: 1 }];
+      activePaneId = singleId;
     }
     for (const tab of closing) {
       void discardRecovery(tab);
       removeTab(tab.id);
     }
-    if (keepId && tabs.some((tab) => tab.id === keepId)) activeTabId = keepId;
+    if (keepId && tabs.some((tab) => tab.id === keepId)) focusOrShowTab(keepId);
     rememberClosed(entries);
   }
 
@@ -1318,6 +1489,7 @@
     editorSessions.delete(sessionKey(removed));
     previewMemories.delete(removed.id);
     restoreAttempts.delete(removed.id);
+    cursorPositions.delete(removed.id);
     if (tabs.length === 1) {
       if (appWindow) {
         // Keep the tab mounted until the window is gone; nothing may render
@@ -1335,16 +1507,18 @@
       const replacementDocument = createUntitledDocument();
       const replacement = createTab(replacementDocument, preferredViewMode(settings, replacementDocument.name));
       tabs.splice(0, 1, replacement);
-      activeTabId = replacement.id;
+      const singleId = panes[0]?.id ?? nextPaneId();
+      panes = [{ id: singleId, tabId: replacement.id, weight: 1 }];
+      activePaneId = singleId;
     } else {
       const nextActiveId = tabs[index + 1]?.id ?? tabs[index - 1]?.id;
       tabs.splice(index, 1);
-      if (activeTabId === tabId) activeTabId = nextActiveId;
+      const reconciled = reconcilePanesAfterTabClose(panes, activePaneId, tabId, nextActiveId);
+      panes = reconciled.panes;
+      activePaneId = reconciled.activePaneId;
     }
 
-    cursorLine = 1;
-    cursorColumn = 1;
-    selectedCharacters = 0;
+    syncCursorFromTab(activeTabId);
     errorMessage = "";
     focusDocumentTab(activeTabId);
   }
@@ -1359,7 +1533,7 @@
       if (tabs.length >= MAX_TABS) { errorMessage = `Maximal ${MAX_TABS} offene Tabs. Bitte zuerst einen Tab schließen.`; closedTabs.push(entry); closedTabCount = closedTabs.length; break; }
       const existing = entry.state.untitled ? undefined : findTabByPath(tabs, entry.state.path);
       if (existing) {
-        activeTabId = existing.id;
+        focusOrShowTab(existing.id);
         continue;
       }
       const view: TabViewState = { selection: entry.state.selection, editorScroll: entry.state.editorScroll, previewScroll: entry.state.previewScroll, folds: entry.state.folds };
@@ -1375,21 +1549,21 @@
       if (tabs.length === 1 && isReplaceable(tabs[0])) {
         editorSessions.delete(sessionKey(tabs[0]));
         tabs.splice(0, 1, tab);
+        const singleId = panes[0]?.id ?? nextPaneId();
+        panes = [{ id: singleId, tabId: tab.id, weight: 1 }];
+        activePaneId = singleId;
       } else {
         tabs.push(tab);
+        normalizePinnedOrder(tabs);
+        focusOrShowTab(tab.id);
       }
-      normalizePinnedOrder(tabs);
-      activeTabId = tab.id;
     }
     toast = null;
   }
 
   function activateTab(tabId: string): void {
     if (busy || tabId === activeTabId || !tabs.some((tab) => tab.id === tabId)) return;
-    activeTabId = tabId;
-    cursorLine = 1;
-    cursorColumn = 1;
-    selectedCharacters = 0;
+    focusOrShowTab(tabId);
     scheduleSessionSave();
   }
 
@@ -1488,6 +1662,14 @@
     const move = (kind: TabMove) => () => applyTabOrder(() => moveTab(tabs, tabId, kind));
     const sort = (kind: TabSort) => () => applyTabOrder(() => sortTabs(tabs, kind));
     const close = (kind: BulkClose) => () => void closeTabs(targets(kind), kind === "others" || kind === "folder" ? tabId : undefined);
+    const shownPane = panes.find((pane) => pane.tabId === tabId);
+    const splitMenuEntry: MenuEntry = shownPane && multiPane
+      ? { label: "Aus Splitscreen entfernen", action: () => closeSplitPane(shownPane.id) }
+      : {
+          label: "Nebeneinander öffnen",
+          disabled: panes.length >= MAX_SPLIT_PANES,
+          action: () => (shownPane ? addAnotherSplitPane() : openTabInSplit(tabId)),
+        };
     return [
       { label: "Schließen", shortcut: `${primary}+W`, action: () => void closeTab(tabId) },
       { label: "Andere schließen", disabled: targets("others").length === 0, action: close("others") },
@@ -1503,6 +1685,7 @@
         ],
       },
       { separator: true },
+      splitMenuEntry,
       { label: tab.pinned ? "Loslösen" : "Anheften", action: () => applyTabOrder(() => setTabPinned(tabs, tabId, !tab.pinned)) },
       { label: "Duplizieren", disabled: true, title: "Zwei Ansichten derselben Datei würden konkurrierende Fassungen erzeugen; P-Viewer bietet das daher noch nicht an." },
       { label: "In neues Fenster verschieben", disabled: !desktop || tabs.length < 2, action: () => void transferTab(tabId, true, false) },
@@ -1589,7 +1772,7 @@
     try {
       for (const tabId of dirtyTabIds) {
         if (!(await saveTabForClose(tabId))) {
-          if (tabs.some((tab) => tab.id === tabId)) activeTabId = tabId;
+          if (tabs.some((tab) => tab.id === tabId)) focusOrShowTab(tabId);
           return false;
         }
       }
@@ -1617,8 +1800,9 @@
     finally { busy = false; }
   }
 
-  function updateContent(content: string): void {
-    document.content = content;
+  function updateTabContent(tabId: string, content: string): void {
+    const target = tabs.find((tab) => tab.id === tabId);
+    if (target) target.document.content = content;
   }
 
   function updateFileType(fileName: string): void {
@@ -1633,10 +1817,13 @@
     errorMessage = "";
   }
 
-  function updateCursor(position: { line: number; column: number; selected: number }): void {
-    cursorLine = position.line;
-    cursorColumn = position.column;
-    selectedCharacters = position.selected;
+  function updateCursor(tabId: string, position: { line: number; column: number; selected: number }): void {
+    cursorPositions.set(tabId, position);
+    if (tabId === activeTabId) {
+      cursorLine = position.line;
+      cursorColumn = position.column;
+      selectedCharacters = position.selected;
+    }
   }
 
   function updateSettings(next: AppSettings): void {
@@ -1648,24 +1835,33 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Split view divider: per-tab ratio, never below 20 % for either side
+  // Multi-tab splitscreen dividers: adjustable width per adjacent pair
   // ---------------------------------------------------------------------------
 
-  let workspace = $state<HTMLDivElement | null>(null);
-  let resizingSplit = $state(false);
+  let workspaceDeck = $state<HTMLDivElement | null>(null);
+  let resizingPaneDivider = $state(false);
+  const deckColumns = $derived(
+    panes.length > 1
+      ? panes.map((pane) => `minmax(0, ${pane.weight}fr)`).join(" 1px ")
+      : "minmax(0, 1fr)",
+  );
 
-  function startSplitResize(event: PointerEvent): void {
-    if (event.button !== 0 || !workspace) return;
+  function startPaneResize(event: PointerEvent, dividerIndex: number): void {
+    if (event.button !== 0 || !workspaceDeck || dividerIndex < 0 || dividerIndex >= panes.length - 1) return;
     event.preventDefault();
     const divider = event.currentTarget as HTMLElement;
     divider.setPointerCapture(event.pointerId);
-    resizingSplit = true;
-    const bounds = workspace.getBoundingClientRect();
+    resizingPaneDivider = true;
+    const bounds = workspaceDeck.getBoundingClientRect();
+    const startX = event.clientX;
+    const startPanes = panes.map((pane) => ({ ...pane }));
     const move = (moveEvent: PointerEvent) => {
-      activeTab!.splitRatio = clampSplitRatio((moveEvent.clientX - bounds.left) / bounds.width);
+      if (bounds.width <= 0) return;
+      const deltaRatio = (moveEvent.clientX - startX) / bounds.width;
+      panes = resizePanePair(startPanes, dividerIndex, deltaRatio);
     };
     const end = () => {
-      resizingSplit = false;
+      resizingPaneDivider = false;
       divider.removeEventListener("pointermove", move);
       divider.removeEventListener("pointerup", end);
       divider.removeEventListener("pointercancel", end);
@@ -1675,15 +1871,24 @@
     divider.addEventListener("pointercancel", end);
   }
 
-  function handleSplitKey(event: KeyboardEvent): void {
+  function handlePaneDividerKey(event: KeyboardEvent, dividerIndex: number): void {
+    if (dividerIndex < 0 || dividerIndex >= panes.length - 1) return;
     const step = event.shiftKey ? 0.1 : 0.02;
-    if (event.key === "ArrowLeft") activeTab!.splitRatio = clampSplitRatio(splitRatio - step);
-    else if (event.key === "ArrowRight") activeTab!.splitRatio = clampSplitRatio(splitRatio + step);
-    else if (event.key === "Home") activeTab!.splitRatio = 0.2;
-    else if (event.key === "End") activeTab!.splitRatio = 0.8;
-    else if (event.key === "Enter") activeTab!.splitRatio = 0.5;
+    const pairSum = panes[dividerIndex].weight + panes[dividerIndex + 1].weight;
+    const minShare = Math.min(MIN_PANE_WEIGHT, pairSum / 2);
+    if (event.key === "ArrowLeft") panes = resizePanePair(panes, dividerIndex, -step);
+    else if (event.key === "ArrowRight") panes = resizePanePair(panes, dividerIndex, step);
+    else if (event.key === "Home") panes = setPanePairLeftWeight(panes, dividerIndex, minShare);
+    else if (event.key === "End") panes = setPanePairLeftWeight(panes, dividerIndex, pairSum - minShare);
+    else if (event.key === "Enter") panes = setPanePairLeftWeight(panes, dividerIndex, pairSum / 2);
     else return;
     event.preventDefault();
+  }
+
+  function equalizePanePair(dividerIndex: number): void {
+    if (dividerIndex < 0 || dividerIndex >= panes.length - 1) return;
+    const pairSum = panes[dividerIndex].weight + panes[dividerIndex + 1].weight;
+    panes = setPanePairLeftWeight(panes, dividerIndex, pairSum / 2);
   }
 
   // ---------------------------------------------------------------------------
@@ -1738,6 +1943,10 @@
     } else if (key === "p" && event.shiftKey) {
       event.preventDefault();
       setMode("split");
+    } else if (event.code === "Backslash" && !event.altKey && !event.shiftKey) {
+      event.preventDefault();
+      if (multiPane && panes.length >= MAX_SPLIT_PANES) exitSplitscreen();
+      else addAnotherSplitPane();
     } else if (key === ",") {
       event.preventDefault();
       updateOpen = false;
@@ -1830,6 +2039,28 @@
     </div>
 
     <button
+      class="splitscreen-button"
+      class:active={multiPane || Boolean(splitMenu)}
+      aria-haspopup={multiPane ? "menu" : undefined}
+      aria-expanded={multiPane ? Boolean(splitMenu) : undefined}
+      aria-pressed={!multiPane ? false : undefined}
+      title={multiPane ? "Tab-Splitscreen verwalten" : "Dokumente nebeneinander anzeigen (Strg/Cmd+\\)"}
+      disabled={busy || installingUpdate}
+      onclick={(event) => {
+        if (!multiPane) {
+          addAnotherSplitPane();
+          return;
+        }
+        const rect = event.currentTarget.getBoundingClientRect();
+        splitMenu = splitMenu ? null : { x: rect.left, y: rect.bottom + 4 };
+      }}
+    >
+      <SquareSplitHorizontal size={14} aria-hidden="true" />
+      <span>{multiPane ? `Splitscreen (${panes.length})` : "Splitscreen"}</span>
+      {#if multiPane}<ChevronDown size={11} aria-hidden="true" />{/if}
+    </button>
+
+    <button
       class="search-button"
       class:active={Boolean(searchMenu)}
       aria-haspopup="menu"
@@ -1888,6 +2119,7 @@
   <DocumentTabs
     tabs={tabItems}
     activeId={activeTabId}
+    splitIds={multiPane ? visiblePaneTabIds : []}
     disabled={busy}
     onActivate={activateTab}
     onClose={(tabId) => void closeTab(tabId)}
@@ -1904,127 +2136,61 @@
     </div>
   {/if}
 
-  {#if activeTab?.notice}
-    {@const tab = activeTab}
-    <div class="notice-banner" role="status">
-      <TriangleAlert size={14} aria-hidden="true" />
-      {#if tab.notice?.kind === "external-change"}
-        <span>„{tab.document.name}“ wurde seit der letzten Sitzung außerhalb von P-Viewer geändert. Angezeigt werden deine wiederhergestellten, ungespeicherten Änderungen.</span>
-        <button onclick={() => keepRecoveredVersion(tab)}>Wiederhergestellte Version behalten</button>
-        <button onclick={() => useDiskVersion(tab)}>Datenträgerversion verwenden</button>
-      {:else}
-        <span>Die Datei „{tab.document.name}“ wurde nicht gefunden. Deine ungespeicherten Änderungen wurden wiederhergestellt – mit „Speichern unter“ sichern.</span>
-        <button onclick={() => (tab.notice = undefined)}>Ausblenden</button>
-      {/if}
-    </div>
-  {/if}
-
   <div
-    id="document-workspace"
-    bind:this={workspace}
-    class:split={mode === "split" && !binaryDocument && !restoring}
-    class:resizing={resizingSplit}
-    class="workspace"
-    style={mode === "split" && !binaryDocument && !restoring ? `grid-template-columns: minmax(0, ${splitRatio}fr) 1px minmax(0, ${1 - splitRatio}fr)` : undefined}
-    role="tabpanel"
-    aria-label={document.name}
+    bind:this={workspaceDeck}
+    class="workspace-deck"
+    class:multi-pane={multiPane}
+    class:resizing={resizingPaneDivider}
+    style={`grid-template-columns: ${deckColumns}`}
   >
-    {#if activeTab?.restore}
-      {@const restore = activeTab.restore}
-      <div class="restore-panel" class:light={activeTheme === "light"}>
-        {#if restore.state === "error"}
-          <TriangleAlert size={22} aria-hidden="true" />
-          <strong>{restore.unavailable ? "Netzwerkdatei nicht erreichbar" : "Datei konnte nicht geöffnet werden"}</strong>
-          <span class="restore-path">{document.path}</span>
-          <small>{restore.error}</small>
-          <div class="restore-actions">
-            <button onclick={() => retryRestoredTab(activeTab!.id)}>Erneut versuchen</button>
-            <button onclick={() => void locateRestoredTab(activeTab!.id)} disabled={!desktop || busy}>Datei suchen …</button>
-            <button onclick={() => void closeTab(activeTab!.id)}>Tab schließen</button>
-          </div>
-        {:else}
-          <LoaderCircle class="spinning" size={20} aria-hidden="true" />
-          <span>„{document.name}“ wird geladen …</span>
-        {/if}
-      </div>
-    {:else if binaryDocument}
-      <!-- Images and PDF have no editable text: the viewer takes the whole workspace. -->
-      <div class="pane viewer-pane" aria-label="Betrachter">
-        {#key `${activeTabId}:${activeTab!.revision}`}
-        <PreviewPane
-          content=""
-          fileName={document.name}
-          path={document.path}
-          fileType={document.fileType}
-          binary={document.binary}
-          theme={activeTheme}
-          editorFontSize={settings.editorFontSize}
-          previewFontSize={settings.previewFontSize}
-          wordWrap={settings.wordWrap}
-          scrollMemory={previewMemory(activeTabId)}
+    {#each panes as pane, index (pane.id)}
+      {@const paneTab = tabs.find((candidate) => candidate.id === pane.tabId) ?? activeTab}
+      {#if paneTab}
+        <DocumentPane
+          tab={paneTab}
+          focused={pane.id === activePane?.id}
+          {multiPane}
+          {settings}
+          {activeTheme}
+          {busy}
+          {installingUpdate}
+          {desktop}
+          session={editorSession(sessionKey(paneTab))}
+          previewScrollMemory={previewMemory(paneTab.id)}
+          onFocus={() => focusPane(pane.id)}
+          onClosePane={() => closeSplitPane(pane.id)}
+          onModeChange={(nextMode) => setTabMode(paneTab.id, nextMode)}
+          onSplitRatioChange={(ratio) => setTabSplitRatio(paneTab.id, ratio)}
+          onContentChange={(content) => updateTabContent(paneTab.id, content)}
+          onCursorChange={(position) => updateCursor(paneTab.id, position)}
           onOpenPath={(path) => void openExternalDocuments([path])}
+          onRetryRestore={() => retryRestoredTab(paneTab.id)}
+          onLocateRestore={() => void locateRestoredTab(paneTab.id)}
+          onCloseTab={() => void closeTab(paneTab.id)}
+          onKeepRecovered={() => keepRecoveredVersion(paneTab)}
+          onUseDiskVersion={() => useDiskVersion(paneTab)}
+          onDismissNotice={() => (paneTab.notice = undefined)}
         />
-        {/key}
-      </div>
-    {:else}
-    <div class:hidden={mode === "view"} class="pane editor-pane" aria-label="Editor">
-      {#key `${activeTabId}:${activeTab!.revision}`}
-        <EditorPane
-          value={document.content}
-          session={editorSession(`${activeTabId}:${activeTab!.revision}`)}
-          fileName={document.name}
-          readOnly={busy || installingUpdate}
-          theme={activeTheme}
-          fontSize={settings.editorFontSize}
-          wordWrap={settings.wordWrap && (document.fileType.kind === "text" || document.fileType.kind === "markdown")}
-          spellcheck={settings.spellcheck && (document.fileType.kind === "text" || document.fileType.kind === "markdown")}
-          formatting={formattingDialect}
-          documentPath={document.path}
-          sync={previewSync}
-          onChange={updateContent}
-          onCursorChange={updateCursor}
-        />
-      {/key}
-    </div>
-
-    {#if mode === "split"}
-      <div
-        class="split-divider"
-        role="slider"
-        tabindex="0"
-        aria-orientation="horizontal"
-        aria-label="Breite von Editor und Vorschau"
-        aria-valuetext={`Editor ${Math.round(splitRatio * 100)} %, Vorschau ${100 - Math.round(splitRatio * 100)} %`}
-        aria-valuemin={20}
-        aria-valuemax={80}
-        aria-valuenow={Math.round(splitRatio * 100)}
-        title="Ziehen, um die Aufteilung zu ändern (Doppelklick: 50 / 50)"
-        onpointerdown={startSplitResize}
-        ondblclick={() => (activeTab!.splitRatio = 0.5)}
-        onkeydown={handleSplitKey}
-      ></div>
-    {/if}
-
-    {#if mode === "view" || mode === "split"}
-      <div class="pane viewer-pane" aria-label="Leseansicht">
-        {#key `${activeTabId}:${activeTab!.revision}`}
-        <PreviewPane
-          content={document.content}
-          fileName={document.name}
-          path={document.path}
-          fileType={document.fileType}
-          theme={activeTheme}
-          editorFontSize={settings.editorFontSize}
-          previewFontSize={settings.previewFontSize}
-          wordWrap={settings.wordWrap}
-          scrollMemory={previewMemory(activeTabId)}
-          sync={previewSync}
-          onOpenPath={(path) => void openExternalDocuments([path])}
-        />
-        {/key}
-      </div>
-    {/if}
-    {/if}
+      {/if}
+      {#if index < panes.length - 1}
+        {@const nextTab = tabs.find((candidate) => candidate.id === panes[index + 1]?.tabId)}
+        <div
+          class="pane-divider"
+          role="slider"
+          tabindex="0"
+          aria-orientation="horizontal"
+          aria-label={`Tab-Breite zwischen „${paneTab?.document.name ?? "Links"}“ und „${nextTab?.document.name ?? "Rechts"}“`}
+          aria-valuetext={`${Math.round(pane.weight * 100)} %`}
+          aria-valuemin={Math.round(MIN_PANE_WEIGHT * 100)}
+          aria-valuemax={Math.round((pane.weight + (panes[index + 1]?.weight ?? 0) - MIN_PANE_WEIGHT) * 100)}
+          aria-valuenow={Math.round(pane.weight * 100)}
+          title="Ziehen, um die Tab-Breite anzupassen (Doppelklick: gleichmäßig)"
+          onpointerdown={(event) => startPaneResize(event, index)}
+          ondblclick={() => equalizePanePair(index)}
+          onkeydown={(event) => handlePaneDividerKey(event, index)}
+        ></div>
+      {/if}
+    {/each}
   </div>
 
   {#if dragActive}
@@ -2093,6 +2259,17 @@
       label="Suchen und Ersetzen"
       light={activeTheme === "light"}
       onClose={() => (searchMenu = null)}
+    />
+  {/if}
+
+  {#if splitMenu}
+    <ContextMenu
+      items={splitMenuEntries()}
+      x={splitMenu.x}
+      y={splitMenu.y}
+      label="Tab-Splitscreen"
+      light={activeTheme === "light"}
+      onClose={() => (splitMenu = null)}
     />
   {/if}
 
@@ -2321,6 +2498,7 @@
     box-shadow: 0 1px 4px rgb(0 0 0 / 24%);
   }
 
+  .splitscreen-button,
   .search-button {
     display: flex;
     height: 30px;
@@ -2335,9 +2513,15 @@
     font-size: 11px;
   }
 
+  .splitscreen-button:hover:not(:disabled),
+  .splitscreen-button.active,
   .search-button:hover:not(:disabled),
   .search-button.active {
     color: var(--text);
+  }
+
+  .splitscreen-button.active {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
   }
 
   .sync-toggle {
@@ -2382,90 +2566,45 @@
     font-size: 18px;
   }
 
-  .workspace {
+  .workspace-deck {
+    position: relative;
     display: grid;
     min-width: 0;
     min-height: 0;
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
 
-  .workspace.split {
-    position: relative;
-    grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
-  }
-
-  .workspace.resizing {
+  .workspace-deck.resizing {
     cursor: col-resize;
     user-select: none;
   }
 
-  .workspace.resizing :global(iframe) {
+  .workspace-deck.resizing :global(iframe) {
     pointer-events: none;
   }
 
-  .split-divider {
+  .pane-divider {
     position: relative;
-    z-index: 3;
+    z-index: 4;
     background: var(--border-strong);
     cursor: col-resize;
   }
 
   /* A wider invisible grab area around the 1 px line. */
-  .split-divider::before {
+  .pane-divider::before {
     position: absolute;
     inset: 0 -4px;
     content: "";
   }
 
-  .split-divider:hover,
-  .split-divider:focus-visible,
-  .resizing .split-divider {
+  .pane-divider:hover,
+  .pane-divider:focus-visible,
+  .workspace-deck.resizing .pane-divider {
     outline: none;
     background: var(--accent);
   }
 
-  .restore-panel {
-    display: flex;
-    grid-column: 1 / -1;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 9px;
-    padding: 24px;
-    color: var(--text-muted);
-    background: var(--bg);
-    font-size: 12px;
-    text-align: center;
-  }
-
-  .restore-panel strong {
-    color: var(--text);
-    font-size: 13px;
-  }
-
-  .restore-path {
-    max-width: 90%;
-    overflow-wrap: anywhere;
-    font-family: var(--mono);
-    font-size: 11px;
-  }
-
-  .restore-panel small {
-    max-width: 620px;
-    color: var(--text-faint);
-    font-size: 11px;
-  }
-
-  .restore-actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 7px;
-    margin-top: 6px;
-  }
-
-  .restore-actions button,
-  .notice-banner button,
   .toast button:not(.toast-close) {
     height: 27px;
     padding: 0 10px;
@@ -2476,40 +2615,8 @@
     font-size: 11px;
   }
 
-  .restore-actions button:hover:not(:disabled),
-  .notice-banner button:hover,
   .toast button:not(.toast-close):hover {
     background: var(--surface-hover);
-  }
-
-  .restore-panel :global(.spinning) {
-    animation: spin 700ms linear infinite;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  .notice-banner {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px 10px;
-    padding: 7px 12px;
-    border-bottom: 1px solid var(--border);
-    color: var(--text);
-    background: color-mix(in srgb, #e6bd72 14%, var(--surface));
-    font-size: 11px;
-  }
-
-  .notice-banner > :global(svg) {
-    color: #e6bd72;
-  }
-
-  .notice-banner span {
-    flex: 1 1 320px;
   }
 
   .toast {
@@ -2534,17 +2641,6 @@
     color: var(--text-muted);
     background: transparent;
     font-size: 16px;
-  }
-
-  .pane {
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
-    background: var(--bg);
-  }
-
-  .pane.hidden {
-    display: none;
   }
 
   .drop-overlay {
@@ -2626,6 +2722,7 @@
     }
 
     .mode-switch span,
+    .splitscreen-button span,
     .search-button span,
     .sync-toggle span,
     .statusbar span:nth-child(2) {

@@ -148,9 +148,9 @@ try {
   const pages = () => browser.contexts().flatMap((context) => context.pages());
   await expect.poll(() => pages().length, { timeout: 20_000 }).toBe(2);
   const second = pages().find((candidate) => candidate !== page);
+  await expect(second.getByRole("tab", { name: "Unbenannt.txt", exact: true })).toBeVisible({ timeout: 20_000 });
   const secondLabel = await second.evaluate(() => window.__TAURI_INTERNALS__.metadata.currentWindow.label);
   expect(secondLabel).toMatch(/^main-[0-9]+$/);
-  await expect(second.getByRole("tab", { name: "Unbenannt.txt", exact: true })).toBeVisible();
   // An explicit hand-over goes through the Rust queue, the signal and the pull of the target window.
   const handover = { version: 1, mode: "edit", document: { path: "", name: "Handover.txt", content: "Moved between windows", savedContent: "Moved between windows", encoding: "UTF-8", hasBom: false, lineEnding: "lf", size: 0, lossy: false, untitled: true, metadataDirty: false, fileType: { kind: "text", language: "plaintext", label: "Text" } } };
   await page.evaluate(([tab, target]) => window.__TAURI_INTERNALS__.invoke("move_tab_to_window", { tab, target, insideSource: false, allowNewWindow: false }), [JSON.stringify(handover), secondLabel]);

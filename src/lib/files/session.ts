@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { parseTransferState, type DocumentTab, type TabViewState, type TransferState } from "./tabs";
+import { MAX_SPLIT_PANES } from "./splitLayout";
 import type { ViewMode } from "./types";
 
 /**
@@ -17,10 +18,17 @@ export interface SessionTab extends TransferState {
   mode: ViewMode;
 }
 
+export interface SessionPane {
+  recoveryId: string;
+  weight: number;
+}
+
 export interface WindowSession {
   version: typeof SESSION_VERSION;
   activeRecoveryId?: string;
   tabs: SessionTab[];
+  /** Multi-pane splitscreen layout; omitted in single-pane mode. */
+  panes?: SessionPane[];
 }
 
 const VIEW_MODES: readonly ViewMode[] = ["edit", "view", "split"];
@@ -62,7 +70,7 @@ export function parseWindowSession(raw: string): WindowSession | null {
     return null;
   }
   if (typeof value !== "object" || value === null || !Array.isArray((value as { tabs?: unknown }).tabs)) return null;
-  const source = value as { version?: unknown; activeRecoveryId?: unknown; tabs: unknown[] };
+  const source = value as { version?: unknown; activeRecoveryId?: unknown; tabs: unknown[]; panes?: unknown };
   if (source.version !== SESSION_VERSION) return null;
   const tabs: SessionTab[] = [];
   const seen = new Set<string>();
@@ -79,7 +87,32 @@ export function parseWindowSession(raw: string): WindowSession | null {
   const active = typeof source.activeRecoveryId === "string" && seen.has(source.activeRecoveryId)
     ? source.activeRecoveryId
     : undefined;
-  return { version: SESSION_VERSION, ...(active ? { activeRecoveryId: active } : {}), tabs };
+  const panes: SessionPane[] = [];
+  if (Array.isArray(source.panes)) {
+    const seenPanes = new Set<string>();
+    for (const candidate of source.panes) {
+      if (panes.length >= MAX_SPLIT_PANES) break;
+      if (typeof candidate !== "object" || candidate === null) continue;
+      const { recoveryId, weight } = candidate as { recoveryId?: unknown; weight?: unknown };
+      if (
+        typeof recoveryId === "string" &&
+        seen.has(recoveryId) &&
+        !seenPanes.has(recoveryId) &&
+        typeof weight === "number" &&
+        Number.isFinite(weight) &&
+        weight > 0
+      ) {
+        seenPanes.add(recoveryId);
+        panes.push({ recoveryId, weight });
+      }
+    }
+  }
+  return {
+    version: SESSION_VERSION,
+    ...(active ? { activeRecoveryId: active } : {}),
+    tabs,
+    ...(panes.length >= 2 ? { panes } : {}),
+  };
 }
 
 function desktop(): boolean {

@@ -318,3 +318,161 @@ test("the toolbar offers find, replace and the macro dialog, also from the View 
   await expect(page.getByRole("dialog", { name: "Mehrfach ersetzen und Makros" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Split", exact: true })).toHaveAttribute("aria-pressed", "true");
 });
+
+test("clicking and dragging line numbers selects whole lines and auto-scrolls near edges", async ({ page }) => {
+  const lines = Array.from({ length: 160 }, (_, index) => `Zeile ${index + 1} Inhalt`);
+  await mockDesktop(page, "long.txt", lines.join("\n"));
+  await page.goto("/");
+  await expect(page.getByRole("tab", { name: "long.txt", exact: true })).toBeVisible();
+
+  const lineGutter = (num: number) =>
+    page.locator(".editor-pane .cm-lineNumbers .cm-gutterElement").filter({ hasText: new RegExp(`^${num}$`) });
+
+  // Single click on line 2 selects the entire line including its newline.
+  await lineGutter(2).click();
+  const expectedLine2Length = `${lines[1]}\n`.length;
+  await expect(page.locator(".statusbar")).toContainText(`${expectedLine2Length} ausgewählt`);
+
+  // Drag downward from line 2 to line 4 selects lines 2, 3 and 4.
+  const box2 = (await lineGutter(2).boundingBox())!;
+  const box4 = (await lineGutter(4).boundingBox())!;
+  await page.mouse.move(box2.x + box2.width / 2, box2.y + box2.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box4.x + box4.width / 2, box4.y + box4.height / 2, { steps: 6 });
+  await page.mouse.up();
+  const expectedDownLength = `${lines[1]}\n${lines[2]}\n${lines[3]}\n`.length;
+  await expect(page.locator(".statusbar")).toContainText(`${expectedDownLength} ausgewählt`);
+
+  // Drag upward from line 5 to line 3 selects lines 3, 4 and 5.
+  const box5 = (await lineGutter(5).boundingBox())!;
+  const box3 = (await lineGutter(3).boundingBox())!;
+  await page.mouse.move(box5.x + box5.width / 2, box5.y + box5.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box3.x + box3.width / 2, box3.y + box3.height / 2, { steps: 6 });
+  await page.mouse.up();
+  const expectedUpLength = `${lines[2]}\n${lines[3]}\n${lines[4]}\n`.length;
+  await expect(page.locator(".statusbar")).toContainText(`${expectedUpLength} ausgewählt`);
+
+  // Dragging to the bottom edge auto-scrolls down and expands selection;
+  // dragging further below scrolls faster.
+  const scroller = page.locator(".editor-pane .cm-scroller");
+  const scrollerBox = (await scroller.boundingBox())!;
+  const box1 = (await lineGutter(1).boundingBox())!;
+  await page.mouse.move(box1.x + box1.width / 2, box1.y + box1.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box1.x + box1.width / 2, scrollerBox.y + scrollerBox.height - 6);
+  await expect.poll(() => scroller.evaluate((el) => el.scrollTop), { timeout: 5_000 }).toBeGreaterThan(40);
+  const scrollAfterNearEdge = await scroller.evaluate((el) => el.scrollTop);
+  await page.mouse.move(box1.x + box1.width / 2, scrollerBox.y + scrollerBox.height + 80);
+  await expect
+    .poll(async () => (await scroller.evaluate((el) => el.scrollTop)) - scrollAfterNearEdge, { timeout: 5_000 })
+    .toBeGreaterThan(200);
+  await page.mouse.up();
+  const selectedText = await page.locator(".statusbar").textContent();
+  const match = selectedText?.match(/(\d+)\s+ausgewählt/);
+  expect(Number(match?.[1] ?? 0)).toBeGreaterThan(expectedDownLength * 3);
+});
+
+test("multi-tab splitscreen displays and edits documents side-by-side with per-tab modes and resizable widths", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockDesktop(page, "left.md", "# Links\n\nAbsatz links");
+  await page.goto("/");
+  await expect(page.getByRole("tab", { name: "left.md", exact: true })).toBeVisible();
+  await openDocuments(page, ["C:/fixtures/right.json", "C:/fixtures/third.txt"]);
+  await expect(page.getByRole("tab")).toHaveCount(3);
+
+  // Focus left.md, then open right.json side-by-side via tab context menu.
+  await page.getByRole("tab", { name: "left.md", exact: true }).click();
+  await page.getByRole("tab", { name: "right.json", exact: true }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Nebeneinander öffnen" }).click();
+
+  const panes = page.locator(".document-pane");
+  await expect(panes).toHaveCount(2);
+  const leftPane = panes.nth(0);
+  const rightPane = panes.nth(1);
+  await expect(leftPane.locator(".pane-name")).toHaveText("left.md");
+  await expect(rightPane.locator(".pane-name")).toHaveText("right.json");
+
+  // Edit both documents independently side-by-side without cross-contamination.
+  await rightPane.locator(".editor-pane .cm-content").click();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.insertText('{"side":"rechts"}');
+  await leftPane.locator(".editor-pane .cm-content").click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.insertText(" bearbeitet");
+
+  await expect(leftPane.locator(".editor-pane .cm-content")).toContainText("Absatz links bearbeitet");
+  await expect(rightPane.locator(".editor-pane .cm-content")).toContainText('"side":"rechts"');
+
+  // Choose view modes independently per tab right in the pane headers.
+  await leftPane.getByRole("button", { name: "Split (left.md)" }).click();
+  await expect(leftPane.locator(".markdown-body h1")).toContainText("Links");
+  await rightPane.getByRole("button", { name: "View (right.json)" }).click();
+  await expect(rightPane.getByRole("region", { name: "JSON-Struktur" })).toContainText("rechts");
+  await expect(leftPane.locator(".editor-pane")).toBeVisible();
+  await expect(rightPane.locator(".editor-pane")).toBeHidden();
+
+  // Manually resize pane widths with mouse drag on the divider.
+  const divider = page.locator(".pane-divider").first();
+  const dividerBox = (await divider.boundingBox())!;
+  const beforeLeft = (await leftPane.boundingBox())!.width;
+  await page.mouse.move(dividerBox.x + dividerBox.width / 2, dividerBox.y + dividerBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(dividerBox.x + 180, dividerBox.y + dividerBox.height / 2, { steps: 6 });
+  await page.mouse.up();
+  const afterLeft = (await leftPane.boundingBox())!.width;
+  expect(afterLeft).toBeGreaterThan(beforeLeft + 120);
+
+  // Double-click equalizes the pair again.
+  const movedDividerBox = (await divider.boundingBox())!;
+  await page.mouse.dblclick(movedDividerBox.x + movedDividerBox.width / 2, movedDividerBox.y + movedDividerBox.height / 2);
+  const equalLeft = (await leftPane.boundingBox())!.width;
+  const equalRight = (await rightPane.boundingBox())!.width;
+  expect(Math.abs(equalLeft - equalRight)).toBeLessThan(12);
+
+  // Add a 3rd pane via the toolbar Splitscreen menu.
+  await page.getByRole("button", { name: /^Splitscreen \(2\)/ }).click();
+  await page.getByRole("menuitem", { name: "Weiteren Bereich öffnen" }).click();
+  await expect(panes).toHaveCount(3);
+  await expect(panes.nth(2).locator(".pane-name")).toHaveText("third.txt");
+
+  // Removing a pane leaves its tab open in the tab strip.
+  await panes.nth(2).getByRole("button", { name: "„third.txt“ aus Splitscreen entfernen" }).click();
+  await expect(panes).toHaveCount(2);
+  await expect(page.getByRole("tab", { name: "third.txt", exact: true })).toBeVisible();
+
+  // Exit splitscreen cleanly returns to single-pane mode.
+  await page.getByRole("button", { name: /^Splitscreen \(2\)/ }).click();
+  await page.getByRole("menuitem", { name: "Splitscreen beenden" }).click();
+  await expect(panes).toHaveCount(1);
+});
+
+test("session restore brings back multi-tab splitscreen panes and widths", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 750 });
+  await mockDesktop(page, "unused.md", "Disk content");
+  await page.addInitScript(() => {
+    const native = (window as any).__testNative;
+    native.pendingPaths = [];
+    native.sessionRestore = [JSON.stringify({
+      version: 1,
+      activeRecoveryId: "r-b",
+      tabs: [
+        { recoveryId: "r-a", path: "C:/fixtures/a.md", name: "a.md", untitled: false, mode: "edit" },
+        { recoveryId: "r-b", path: "C:/fixtures/b.md", name: "b.md", untitled: false, mode: "view" },
+      ],
+      panes: [
+        { recoveryId: "r-a", weight: 0.3 },
+        { recoveryId: "r-b", weight: 0.7 },
+      ],
+    })];
+  });
+  await page.goto("/");
+  const panes = page.locator(".document-pane");
+  await expect(panes).toHaveCount(2);
+  await expect(panes.nth(0).locator(".pane-name")).toHaveText("a.md");
+  await expect(panes.nth(1).locator(".pane-name")).toHaveText("b.md");
+  await expect(panes.nth(1)).toHaveClass(/focused/);
+  const leftW = (await panes.nth(0).boundingBox())!.width;
+  const rightW = (await panes.nth(1).boundingBox())!.width;
+  expect(leftW / (leftW + rightW)).toBeCloseTo(0.3, 1);
+});

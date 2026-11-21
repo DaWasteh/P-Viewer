@@ -2,6 +2,12 @@
 
 Alle Entwicklungsstufen folgen semantischer Vorabversionierung.
 
+## 0.2.3
+
+- **Zeilenmarkierung über Zeilenzahlen:** Ein Klick auf eine Zeilenzahl links im Editor markiert die gesamte Zeile. Durch Halten und Ziehen der linken Maustaste nach oben oder unten werden alle überstrichenen Zeilen markiert; bei langen Dokumenten scrollt der Editor an den oberen und unteren Rändern automatisch mit – je weiter am bzw. über dem Rand, desto schneller. `Umschalt+Klick` erweitert die bestehende Zeilenauswahl.
+- **Tab-Splitscreen:** Mehrere verschiedene Dokumente (bis zu vier) lassen sich über den **Splitscreen**-Knopf in der Werkzeugleiste, das Tab-Kontextmenü („Nebeneinander öffnen“) oder `Strg/Cmd+\` gleichzeitig nebeneinander anzeigen und bearbeiten. Jeder Bereich besitzt eine eigene Kopfzeile mit unabhängiger Moduswahl (**Edit**, **View**, **Split**), eigener Editor↔Vorschau-Synchronisation und einem ziehbaren Teiler zur manuellen Anpassung der Tab-Breite (Doppelklick verteilt gleichmäßig). Die Splitscreen-Aufteilung samt Breiten wird in der Sitzung gespeichert und beim Neustart wiederhergestellt.
+- **Dokumentation:** `README.md`, `docs/ARCHITECTURE.md` und `docs/RELEASING.md` aktualisiert und gestrafft; veraltete per-Version-Prüfberichte (`docs/QUALITY-v*.md`) entfernt.
+
 ## 0.2.2
 
 - **Linux „Öffnen mit“:** Der generierte Desktop-Eintrag enthielt nur `Exec=p-viewer` und nahm keine Dateien entgegen. DEB, RPM und AppImage verwenden jetzt eine gemeinsame Vorlage mit `Exec=p-viewer %F`, damit der Dateimanager Dateipfade einschließlich Leerzeichen und Umlauten übergibt. Der Release-Workflow prüft den tatsächlich gepackten DEB-Eintrag; der native Smoke kann den installierten Starter über `gio launch` prüfen.

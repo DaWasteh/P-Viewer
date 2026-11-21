@@ -1,91 +1,48 @@
-# Architekturentscheidung
+# Architektur
 
-**Status:** angenommen  
-**Version:** v0.1.4
+**Version:** v0.2.3
 
-## Entscheidung
+## Stack
 
-P-Viewer wird als **Tauri-2-App mit Rust-Backend und Svelte-5-/TypeScript-Frontend** umgesetzt.
+P-Viewer ist eine **Tauri-2-Desktop-App** mit **Rust-Backend** und **Svelte-5-/TypeScript-Frontend**.
 
-Diese Kombination liefert native, kleine Desktop-Pakete und direkten, kontrollierten Datei-/Prozesszugriff, ohne eine komplette Browser-Runtime wie Electron auszuliefern. Svelte hält die Oberfläche klein; TypeScript erschließt das ausgereifte Editor- und Dokument-Ökosystem.
-
-## Kernbausteine
-
-| Bereich | Entscheidung |
+| Bereich | Umsetzung |
 | --- | --- |
-| Desktop-Shell | Tauri 2, eine Prozessinstanz mit beliebig vielen Dokumentfenstern (`main`, `main-2`, …) |
-| Native Logik | Rust |
+| Desktop-Shell | Tauri 2, Single-Instance-Prozess mit beliebig vielen Dokumentfenstern |
+| Native Logik | Rust (Datei-E/A, Sitzungs-/Recovery-Speicher, Dateizuordnungen, LaTeX-CLI, Loopback-Server, Updater) |
 | Oberfläche | Svelte 5, TypeScript, Vite |
-| Editor | CodeMirror 6, Sprachen bei Bedarf geladen; eigene Stream-Modi für Formate ohne Paketunterstützung |
-| Markdown | unified, remark-gfm, remark-math, rehype-raw, rehype-sanitize (GitHub-Allowlist), rehype-katex, rehype-highlight |
-| HTML | sichere HAST-/Iframe-Vorschau als Standard; explizit bestätigter separater WebView über tokenisierten Loopback-Ursprung für vollständige aktive Inhalte |
-| SVG | Bild-Data-URL in einem Iframe ohne Sandbox-Rechte mit deny-by-default-CSP; kein Skript- oder Ressourcenzugriff |
-| Bilder und PDF | schreibgeschützte Base64-Payload aus Rust nach Signaturprüfung (nie Textdecodierung); Bild als `<img>`-Data-URL, PDF über PDF.js im Worker; kein Editor, kein Speicherpfad |
-| Webkomponenten | lazy Astro-/Svelte-/Vue-Mischsyntax; keine Ausführung von Projektcode |
-| JSON/JSONL/NDJSON | CodeMirror plus eigene einklappbare Baumansicht mit Quelltext-, Tiefen- und Knotengrenze |
-| Notebooks | eigener nbformat-Parser; Markdown- und Code-Zellen über die sanitisierte Markdown-Pipeline, Ausgaben nur als Text, Bilddaten oder Fehler |
-| CSV/TSV | eigener RFC-4180-Parser mit Trennzeichenerkennung und aggregiertem Tabellenzellenlimit |
-| LaTeX | gebündelter sicherer HTML-/KaTeX-Live-Renderer; optionale lokale Compilersteuerung in Rust und PDF.js |
-| Dateizuordnungen | Tauri-Bundle-Metadaten plus OS-konforme Auswahl über Windows Default Apps, Linux MIME Apps und macOS LaunchServices; Windows-Installer-Hooks (ProgIDs, „Öffnen mit“, Kontextmenü) generiert aus `associations.json` durch `scripts/nsis-hooks.mjs` |
-| Einstellungen | Tauri Store im plattformüblichen App-Konfigurationspfad, inklusive persistentem Debug-Modus |
-| Updates | signiertes Tauri-Updater-Manifest aus GitHub Releases |
-| Typografie und Icons | gebündelte Inter-/JetBrains-Mono-Schriften und Lucide-Icons |
+| Editor | CodeMirror 6 (lazy geladene Sprachpakete, eigene Stream-Modi, Zeilennummern-Auswahl mit Rand-Auto-Scroll) |
+| Vorschauen | unified/remark/rehype + KaTeX + highlight.js (Markdown), sandboxed `srcdoc`-Iframes (HTML, SVG), isolierter WebView (vollständiges HTML), eigene Parser für JSON/JSONL, CSV/TSV, Jupyter-Notebooks und LaTeX-Live, PDF.js |
+| Einstellungen | Tauri Store im plattformüblichen Benutzer-Konfigurationspfad |
+| Updates | Signiertes Tauri-Updater-Manifest aus GitHub Releases (fail-closed) |
 
-## Produktprinzipien
+## Leitprinzipien
 
-1. **Schnell öffnen:** unbekannte Textformate fallen auf Plaintext zurück; schwere Renderer werden erst bei Bedarf geladen.
-2. **Mehrere Dokumente, wenig Ablenkung:** Immutable CodeMirror-Zustände bleiben pro Tab erhalten; nur der aktive Editor ist gemountet. Vorschauen sind an die Tab-Identität gebunden.  Eine kompakte Tab-Leiste hält mehrere Dateien parallel offen; Edit-, View- und Split-Modus bleiben im Mittelpunkt.
-   **Ein Prozess, viele Fenster:** Ein zweiter Start reicht seine Argumente über `tauri-plugin-single-instance` an die laufende Instanz weiter. Rust entscheidet über das Zielfenster (zuletzt fokussiert), puffert Pfade und übergebene Tabs pro Fensterlabel und signalisiert nur; jedes Fenster holt seine Warteschlange selbst ab, damit weder Start-Races noch große Dokumente über `eval` entstehen. Tabs werden als opake JSON-Zeichenkette übergeben, die Rust nicht interpretiert; Editor-Undo bleibt im Quellfenster. Der letzte Tab schließt sein Fenster, aktive HTML-Vorschauen sind an ihr Besitzerfenster gebunden.
-   **Fenster ohne Blitzen:** Dokumentfenster werden unsichtbar erzeugt, erhalten aus `settings.json` die Hintergrundfarbe des gespeicherten Designs und werden über den Befehl `reveal_window` erst sichtbar, wenn das Frontend Einstellungen und Startdokumente gezeichnet hat; ein Rust-Timer (1,5 s) zeigt das Fenster notfalls ohne Rückmeldung. `tauri-plugin-window-state` merkt sich Größe, Position und Maximierung aller Dokumentfenster unter dem gemeinsamen Schlüssel `main`; Vorschaufenster sind ausgenommen. Neue Fenster ohne Zielposition werden vom zuletzt benutzten Fenster kaskadiert, solange sie auf dessen Arbeitsbereich passen.
-3. **Keine implizite Ausführung von Dokumentcode:** Markdown-HTML wird sanitisiert, HTML läuft standardmäßig nur statisch in einem Iframe ohne Sandbox-Rechte und SVG wird ausschließlich als Bild dargestellt. Notebook-Ausgaben vom Typ `text/html` bleiben deaktiviert. Aktives HTML erfordert eine ausdrückliche Warnungsbestätigung und öffnet ausschließlich in einem getrennten WebView ohne App-Capabilities; Astro-/Svelte-/Vue-Projektcode bleibt Quelltext.
-4. **Minimale native Rechte:** Datei-Reads sind am geöffneten Handle begrenzt. Reguläre Saves vergleichen die beim Lesen/Speichern ermittelte SHA-256-Version unmittelbar vor dem atomaren Commit (optimistische Konflikterkennung, kein betriebssystemweiter Lock).  Dateioperationen laufen über eng begrenzte Rust-Commands statt pauschaler Dateisystemfreigaben.
-   **Tabs als Arbeitsbereiche:** Tab-Befehle (Schließen-Ziele, Anheften, Verschieben, Sortieren, Overflow-Auswahl, Suche) sind reine Funktionen in `files/tabs.ts`; Tab-Leiste, Overflow-Menü und Kontextmenü sind nur Darstellungen derselben Tab-Liste. Die Sitzung speichert Reihenfolge, Pins und Ansichtszustand, nie den breitenabhängigen Overflow. Wiederhergestellte Tabs sind bis zum ersten Anzeigen Platzhalter; ungespeicherter Text liegt in eigenen Recovery-Dateien und wird bei Versionskonflikten nie still auf die Datei geschrieben.
-   **Quellzeilen-Synchronisation:** Die Markdown-Pipeline annotiert Blockelemente mit `data-source-start/-end`; die Vorschau misst daraus eine gecachte Ankerliste, die Zuordnung Zeile ↔ Position ist binäre Suche plus Interpolation. Die zuletzt vom Nutzer bediente Seite führt, programmatische Scroll-Echos der anderen Seite werden ignoriert.
-5. **Einstellungen getrennt vom Programm:** Updates ersetzen nur Anwendungsartefakte. Einstellungen bleiben in `%APPDATA%`, `~/Library/Application Support` beziehungsweise `$XDG_DATA_HOME` erhalten.
-6. **Sichere TeX-Vorgaben:** Die gebündelte Live-Ansicht escaped Text und verwendet KaTeX mit `trust: false`. Externe Compiler werden über absolute Programme aus bereinigten PATH-Ordnern ohne Benutzershell gestartet. Arbeitsausgaben bleiben temporär, Projektdateien werden nur als Inputs gesucht, und `shell-escape` bleibt aus.
-7. **Benutzer kontrollieren Standardprogramme:** Installer und Laufzeitcode registrieren P-Viewer unter Windows ausschließlich als Kandidaten und schreiben weder Extension-Defaults noch `UserChoice`. Das eigentliche Setzen geschieht nur nach expliziter Formatauswahl und, wo vom OS verlangt, in dessen geschützter Oberfläche.
-8. **Defense in depth:** App, statische HTML-Vorschau und aktive HTML-Vorschau haben getrennte Sicherheitsgrenzen. Allowlist-Sanitizing, opaque Iframe-Origin, zufällige Loopback-Tokens und -Ports, kanonische Dokumentwurzeln, Größen-/Ressourcenlimits sowie fensterspezifische Tauri-Capabilities begrenzen Dokument- und WebView-Inhalte.
-9. **Fail-closed Updates:** Lokale Builds laden nichts. Release-Builds benötigen HTTPS-Endpunkt, Public Key und signierte Pakete; unvollständige Konfiguration wird abgelehnt.
+1. **Schnell & schlank:** Unbekannte Textformate nutzen Plaintext; Sprachmodi und spezialisierte Vorschauen laden erst bei Bedarf.
+2. **Klare Arbeitsbereiche:** Eine Tab-Leiste pro Fenster verwaltet alle offenen Dokumente. Der **Tab-Splitscreen** zeigt bis zu vier verschiedene Dokumente gleichzeitig nebeneinander (`DocumentPane`), jeweils mit eigenem Ansichtsmodus, eigener Editor↔Vorschau-Synchronisation und manuell ziehbarer Bereichsbreite. Nicht sichtbare Tabs halten ihren CodeMirror-Zustand im Speicher, ohne versteckte Editoren zu mounten.
+3. **Keine implizite Codeausführung:** Markdown-HTML wird nach GitHubs Allowlist sanitisiert, statisches HTML und SVG laufen in sandboxed Iframes mit deny-by-default-CSP, und Notebook-`text/html`-Ausgaben bleiben aus. Vollständiges HTML startet nur nach ausdrücklicher Bestätigung in einem getrennten WebView ohne App-Capabilities über einen tokenisierten Loopback-Ursprung.
+4. **Sichere Dateioperationen:** Datei-I/O läuft abseits des UI-Threads über eng begrenzte Rust-Commands. Atomares Speichern nutzt eine SHA-256-Versionsprüfung gegen unbemerkte externe Überschreibungen; Binärdokumente (Bilder, PDF) werden per Signatur geprüft und bleiben schreibgeschützt.
+5. **Robuste Sitzungen:** Reihenfolge, angeheftete Tabs, Splitscreen-Aufteilung, Modus und Ansichtszustand liegen atomar im App-Datenordner; ungespeicherte Texte in separaten Recovery-Dateien.
+6. **Benutzerkontrolle bei Standardprogrammen:** Installer registrieren P-Viewer nur als Kandidaten und verändern keine fremden Standardzuordnungen oder `UserChoice`.
 
-## LaTeX-Grenze
-
-P-Viewer trennt zwei Ebenen:
-
-- **Live:** vollständig gebündeltes, offlinefähiges und während des Schreibens aktualisiertes HTML-/KaTeX-Rendering für Struktur, verbreitete Textbefehle, Listen, Tabellen und Mathematik. Nicht unterstützte Makros werden als Vereinfachungen gemeldet; die Vorschau erhebt keinen Anspruch auf TeX-identischen Satz.
-- **PDF:** Wahl und Erkennung eines Compilers, Mehrpass-Builds über `latexmk`, verständliche Build-Diagnosen, relative Includes und integrierte PDF.js-Vorschau.
-
-Eine vollständige TeX-Live-Installation kann mehrere Gigabyte groß sein und widerspricht einer schlanken App. Deshalb ist nur die optionale PDF-Ebene extern:
-
-- Windows: MiKTeX oder TeX Live
-- macOS: MacTeX
-- Linux: TeX Live
-
-Tectonic wird als optionale Engine im `--untrusted`-Modus unterstützt, ersetzt aber nicht jede spezialisierte TeX-Live-Konfiguration.
-
-## Geplante Modulgrenzen
+## Modulstruktur
 
 ```text
 src/lib/
-  debug/        WebView-/Plattformdiagnose für den expliziten Debug-Modus
-  editor/       CodeMirror-Integration, lazy Sprachauflösung, eigene Stream-Modi, Formatierungsbefehle und Suchen/Ersetzen
-  files/        Dateitypen, Zuordnungsgruppen, Dateityp-Symbole, Tab-Befehle, Sitzung, Pfade und Dialoge
-  preview/      isolierte HTML-, SVG-, Bild-, Markdown-, Notebook-, JSON-, CSV-, Text-, LaTeX- und PDF-Ansichten, Scroll-Speicher und Editor-/Vorschau-Synchronisation
-  settings/     persistente UI-/Editor-/Zuordnungseinstellungen
-  update/       Oberfläche des signierten Release-Updaters
+  debug/        WebView-/Plattformdiagnose für den Debug-Modus
+  editor/       CodeMirror-Integration, Sprachen, Stream-Modi, Zeilennummern-Auswahl, Formatierung, Suchen/Ersetzen & Makros
+  files/        Dateitypen, Zuordnungen, Symbole, Tab-Logik, Splitscreen-Layout, DocumentPane, Sitzung und Dialoge
+  preview/      Markdown-, HTML-, SVG-, Bild-, Notebook-, JSON-, CSV-, Text-, LaTeX- und PDF-Ansichten sowie Scroll-Sync
+  settings/     persistente UI-, Editor- und Zuordnungseinstellungen
+  update/       In-App-Updater-Dialog
 src-tauri/src/
   associations.rs  OS-konforme Standardprogramm-Auswahl
-  document.rs      Encoding-sichere und atomare Datei-E/A (außerhalb des UI-Threads), signaturgeprüfte Binärdokumente sowie Open-Events
-  file_icons.rs    Windows-Dateityp-Symbole: ProgID pro Endung, Symbol-/App-Modus, Reparatur symbolloser *_auto_file-Klassen
-  session.rs       Sitzungsdatei pro Fensterlabel und Wiederherstellungstexte, atomar im App-Datenordner
-  shell.rs         „Terminal hier öffnen“ ohne Befehlszeilen-Interpolation
-  html_preview.rs  isolierter Loopback-Server und Fenster-Lifecycle für aktives HTML
-  latex.rs         isolierte Compilersteuerung mit Timeouts
-  updater.rs       HTTPS-, Signatur- und Installationsgrenze
-  windows.rs       Single-Instance-Weiterleitung, Fensterregistry, Pfad-/Tab-Warteschlangen und Tab-Transfer
+  document.rs      encoding-sichere, atomare Datei-E/A und Binär-Signaturen
+  file_icons.rs    Windows-Dateityp-Symbole und ProgIDs
+  html_preview.rs  isolierter Loopback-Server für vollständige HTML-Vorschauen
+  latex.rs         lokale TeX-Compilersteuerung mit Timeouts (ohne shell-escape)
+  session.rs       atomare Sitzungs- und Recovery-Dateien
+  shell.rs         „Terminal hier öffnen“
+  updater.rs       HTTPS- und Signaturprüfung für Updates
+  windows.rs       Single-Instance-Weiterleitung, Fensterzustand und Tab-Transfer
 ```
-
-## Verworfene Alternativen
-
-- **Electron:** sehr gutes Ökosystem, aber zu hohe Runtime-/Speicherkosten für das Produktziel.
-- **reine Rust-GUI (egui, iced, Slint):** kleine Runtime, jedoch deutlich höherer Aufwand und schwächeres Ökosystem für Editor, Markdown, KaTeX und PDF.
-- **Monaco Editor:** leistungsfähig, aber näher am ausdrücklich unerwünschten VS-Code-Gewicht; CodeMirror ist modularer.

@@ -140,7 +140,7 @@ class FindReplacePanel implements Panel {
     rows.append(searchRow, this.replaceRow);
     this.dom.append(this.toggleReplace, rows);
 
-    this.toggleReplace.addEventListener("click", () => this.showReplace(this.replaceRow.hidden));
+    this.toggleReplace.addEventListener("click", () => this.showReplace(Boolean(this.replaceRow.hidden)));
     this.caseButton.addEventListener("click", () => this.flip("caseSensitive"));
     this.wordButton.addEventListener("click", () => this.flip("wholeWord"));
     this.regexButton.addEventListener("click", () => this.flip("regexp"));

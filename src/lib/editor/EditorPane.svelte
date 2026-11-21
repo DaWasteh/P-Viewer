@@ -6,6 +6,7 @@
   import { Decoration, EditorView, keymap, type DecorationSet } from "@codemirror/view";
   import { oneDark } from "@codemirror/theme-one-dark";
   import { loadLanguageForFile } from "./languages";
+  import { gutterLineSelection } from "./lineSelection";
   import { restoreEditorState, type EditorSession } from "./session";
   import FormattingToolbar from "./FormattingToolbar.svelte";
   import { findReplace } from "./findReplace";
@@ -233,6 +234,7 @@
     const mountedSession = session;
     const startState = restoreEditorState(mountedSession, value, [
         basicSetup,
+        gutterLineSelection(),
         // Above basicSetup: Mod-i is otherwise "select parent syntax".
         Prec.high(keymap.of([
           { key: "Mod-b", run: () => format((dialect) => toggleInline("bold", dialect)) },
